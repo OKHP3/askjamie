@@ -37,6 +37,8 @@ try {
   await capture(page, 'homepage-dialog-desktop');
   await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'hidden' });
+  // Native dialog close events are queued after its open attribute disappears.
+  await page.waitForFunction(() => document.activeElement === document.querySelector('[data-transition-open]'));
   assert.equal(await page.locator('[data-transition-open]').evaluate(el => document.activeElement === el), true);
   await page.reload();
   assert.equal(await dialog.isVisible(), false);
