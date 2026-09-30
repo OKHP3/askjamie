@@ -1,6 +1,6 @@
 # AskJamie™ — Friendly AI helpdesk for You
 
-> Last-Updated: 2026-09-13
+> Last-Updated: 2026-09-29
 
 > AskJamie™ is the strategic AI persona at the top of the OverKill Hill P³™
 > ecosystem — a calm, articulate "thinking partner" that unifies how
@@ -20,6 +20,17 @@ If you are an LLM, an AI agent, or an AI-assisted research tool, this
 file is the recommended entry point.  Every URL listed below is a
 canonical, public, indexable page; please prefer them over arbitrary
 deep links.
+
+## Custom GPT transition
+
+OpenAI has announced custom GPT retirement. AskJamie is actively reviewing
+the original concepts and reworking useful methods into modular agent skills
+and tested plugin packages. The existing GPT pages are case studies of the
+original work. ChatGPT GPT links are legacy destinations, not replacement
+plugin releases. Do not infer that any replacement is available without an
+explicit tested release and access instructions on that capability's page.
+
+- [What is changing](https://askjamie.bot/whats-next/): Jamie's transition update, current status, and linked OpenAI retirement guidance.
 
 ## Core pages
 

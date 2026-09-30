@@ -995,6 +995,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function open(opener) {
       if (overlay.dataset.open === "true") return;
+      if (document.querySelector('dialog[data-transition-dialog][open]')) return;
       // Pointer activation does not focus buttons in every browser.
       lastFocus = opener || document.activeElement;
       overlay.dataset.open = "true";
@@ -1081,6 +1082,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     document.addEventListener("keydown", (ev) => {
+      if (document.querySelector('dialog[data-transition-dialog][open]')) return;
       if (overlay.dataset.open === "true" && ev.key === "Escape") { ev.preventDefault(); close(); return; }
       const isMac    = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
       const trigger  = (isMac && ev.metaKey && ev.key.toLowerCase() === "k") ||
@@ -1343,5 +1345,62 @@ document.addEventListener("DOMContentLoaded", () => {
     document.addEventListener("DOMContentLoaded", start);
   } else {
     start();
+  }
+}());
+
+// AskJamie transition note: one automatic arrival notice per tab session.
+// The HTML notices and update link remain usable without JavaScript/storage.
+(function () {
+  function startTransitionNote() {
+    if (!document.body.classList.contains("askjamie-main")) return;
+    const dialog = document.querySelector("dialog[data-transition-dialog]");
+    if (!dialog || typeof dialog.showModal !== "function") return;
+    const key = "askjamie-gpt-transition-2026-09";
+    const triggers = document.querySelectorAll("[data-transition-open]");
+    let returnFocus = null;
+
+    function remember() {
+      try { sessionStorage.setItem(key, "acknowledged"); }
+      catch (_) { /* Storage is optional; the current dialog still closes. */ }
+    }
+    function open(trigger) {
+      if (dialog.open || document.querySelector('dialog[open], .okh-search-overlay[data-open="true"]')) return;
+      returnFocus = trigger || triggers[0] || document.activeElement;
+      dialog.showModal();
+      document.body.classList.add("capability-transition-open");
+    }
+    triggers.forEach((trigger) => {
+      trigger.hidden = false;
+      trigger.addEventListener("click", () => open(trigger));
+    });
+    dialog.querySelector("[data-transition-dismiss]").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key !== "Tab") return;
+      const controls = Array.from(dialog.querySelectorAll('a[href], button:not([disabled])'));
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    });
+    dialog.querySelectorAll("a[href]").forEach((link) => {
+      link.addEventListener("click", () => { remember(); dialog.close(); });
+    });
+    dialog.addEventListener("close", () => {
+      remember();
+      document.body.classList.remove("capability-transition-open");
+      if (returnFocus && typeof returnFocus.focus === "function") returnFocus.focus();
+    });
+    let acknowledged = false;
+    try { acknowledged = sessionStorage.getItem(key) === "acknowledged"; }
+    catch (_) { /* Browsing must work when storage is unavailable. */ }
+    if (!acknowledged) open();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startTransitionNote);
+  } else {
+    startTransitionNote();
   }
 }());

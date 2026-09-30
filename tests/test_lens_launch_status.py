@@ -51,10 +51,10 @@ def test_lens_hub_labels_all_four_lenses():
     hub = (ROOT / "lens-system/index.html").read_text(encoding="utf-8")
 
     for lens_id, contract in LENS_CONTRACTS.items():
-        assert f"GPT‑{lens_id} is live." in hub
+        assert f"GPT‑{lens_id} is a legacy custom GPT. Migration is in progress." in hub
         assert contract["url"] in hub
-    assert '<strong class="site-status-eyebrow">Live</strong>' in hub
-    assert "published BrandGuard GPT case studies" in hub
+    assert '<strong class="site-status-eyebrow">Legacy GPT</strong>' in hub
+    assert "original BrandGuard GPT case studies" in hub
 
 
 def test_public_gpt_probe_matches_owner_verified_destinations():

@@ -3,44 +3,50 @@
 
   <!-- Core pages -->
   <url>
+    <loc>https://askjamie.bot/whats-next/</loc>
+    <lastmod>2026-09-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://askjamie.bot/found-ry/</loc>
-    <lastmod>2026-09-07</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/about/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/how-askjamie-works/</loc>
-    <lastmod>2026-09-04</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/contact/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/legal/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/universe/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -48,25 +54,25 @@
   <!-- Lens System -->
   <url>
     <loc>https://askjamie.bot/lens-system/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/resume-representative/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/professional-portfolio/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/enterprise-sleuth/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -74,91 +80,91 @@
   <!-- BrandGuard series -->
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/lego/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/starbucks/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/coca-cola/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/brooks-running/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/costco/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/discount-tire/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/dollar-general/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/hershey/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/lvmh/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/mathews-archery/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/ping/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/lens-system/okhp3-brandguard/scheels/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://askjamie.bot/search/</loc>
-    <lastmod>2026-05-03</lastmod>
+    <lastmod>2026-09-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>

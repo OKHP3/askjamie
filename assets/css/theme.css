@@ -8013,3 +8013,40 @@ html[data-theme="light"] .askjamie-main .site-footer h4 { color: var(--color-fg)
  .a14-editorial-hero .hero-inner { padding-top: 1.25rem; padding-bottom: 1.25rem; }
  .a14-editorial-hero .hero-grid { gap: .75rem; }
 }
+
+/* AskJamie capability transition. Regional scope keeps sibling styles inert. */
+.askjamie-main.capability-transition-open { overflow: hidden; }
+.askjamie-main [data-transition-open][hidden] { display: none; }
+.askjamie-main .capability-transition {
+  margin-block: 1.5rem;
+  padding: clamp(1rem, 3vw, 1.75rem);
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border, #d7d7d7);
+  border-inline-start: 4px solid #2d6f7e;
+  border-radius: 12px;
+}
+.askjamie-main .capability-transition h2 { font-size: clamp(1.35rem, 3vw, 1.75rem); }
+.askjamie-main .capability-transition p:last-of-type { margin-bottom: .5rem; }
+.askjamie-main .capability-transition-dialog {
+  width: min(40rem, calc(100% - 2rem));
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border, #d7d7d7);
+  border-top: 5px solid #2d6f7e;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / .3);
+}
+.askjamie-main .capability-transition-dialog::backdrop { background: rgb(20 37 42 / .65); }
+.askjamie-main .capability-transition-dialog-content { padding: clamp(1.25rem, 4vw, 2.5rem); }
+.askjamie-main .capability-transition-dialog h2 { font-size: clamp(1.8rem, 4vw, 2.4rem); line-height: 1.15; }
+.askjamie-main .capability-transition-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+.askjamie-main .capability-transition-story { max-width: 72rem; }
+.askjamie-main .capability-transition-story > p { max-width: 70ch; }
+.askjamie-main .capability-transition-story > h2 { margin-top: 2rem; }
