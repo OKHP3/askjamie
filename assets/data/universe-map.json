@@ -5,8 +5,8 @@
   "sources": [
     {
       "origin": "https://askjamie.bot",
-      "sha256": "f36cef3b2d475f7f51ac74cc41c8aa2562d89af4b71a1c4adea6ff6ed536c3a6",
-      "records": 26
+      "sha256": "edd846805b97f592aa362b230d6a19429a78b3aae5da52a0a58860ba677900ff",
+      "records": 27
     }
   ],
   "nodes": [
@@ -84,7 +84,7 @@
       "id": "https://askjamie.bot/lens-system/enterprise-sleuth/",
       "url": "https://askjamie.bot/lens-system/enterprise-sleuth/",
       "title": "Enterprise Sleuth™",
-      "description": "GPT‑AJ03: Enterprise Sleuth™ — an AI detective for enterprise knowledge. A working demo and recipe pack for building investigative GPTs at work.",
+      "description": "Enterprise Sleuth: an original custom GPT knowledge workflow in transition toward agent skills and plugins. Explore its methods and boundaries.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
@@ -104,7 +104,7 @@
       "id": "https://askjamie.bot/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/",
       "url": "https://askjamie.bot/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/",
       "title": "AskJamie™ — GPT‑BFS01: BFS Framing Intelligent Futures",
-      "description": "GPT‑BFS01: Builders FirstSource Framing Intelligent Futures. A public-source-only BrandGuard™ GPT turning open BFS material into safe, on-brand help.",
+      "description": "Builders FirstSource BrandGuard: an original public-source custom GPT case study in transition toward agent skills and plugins. Explore the learning.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
@@ -174,7 +174,7 @@
       "id": "https://askjamie.bot/lens-system/okhp3-brandguard/lego/",
       "url": "https://askjamie.bot/lens-system/okhp3-brandguard/lego/",
       "title": "AskJamie™ — GPT‑BRG01: LEGO — OKHP³ BrandGuard™",
-      "description": "GPT‑BRG01: LEGO BrandGuard™ — a public, brand‑safe GPT proof‑of‑concept showing how LEGO's tone, ethics, and identity can be protected at GPT speed.",
+      "description": "LEGO BrandGuard: an original public-source custom GPT case study in transition toward agent skills and plugins. Explore its voice and identity guardrails.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
@@ -234,7 +234,7 @@
       "id": "https://askjamie.bot/lens-system/professional-portfolio/",
       "url": "https://askjamie.bot/lens-system/professional-portfolio/",
       "title": "AskJamie™ — GPT‑AJ02: Professional Portfolio",
-      "description": "GPT‑AJ02: AskJamie™ Professional Portfolio turns your work, wins, and weirdly specific strengths into a living, conversational AI portfolio agent.",
+      "description": "Professional Portfolio: an original custom GPT portfolio workflow in transition toward agent skills and plugins. Explore its methods and learning.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
@@ -244,7 +244,7 @@
       "id": "https://askjamie.bot/lens-system/resume-representative/",
       "url": "https://askjamie.bot/lens-system/resume-representative/",
       "title": "Résumé Representative",
-      "description": "GPT‑AJ01: AskJamie™ Résumé Representative turns your career into a living, conversational AI agent that writes tailored, on‑voice résumés on demand.",
+      "description": "Resume Representative: an original custom GPT career workflow in transition toward agent skills and plugins. Explore its methods and learning.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
@@ -265,6 +265,16 @@
       "url": "https://askjamie.bot/universe/",
       "title": "AskJamie™ — OKHP³ Universe Map",
       "description": "Visual map of the OverKill Hill P³™ universe. See how AskJamie™, Glee-fully Tools, BrandGuard™, BFS work, and narrative experiments interconnect.",
+      "origin": "https://askjamie.bot",
+      "status": "Published page",
+      "indexed": true,
+      "parent": "https://askjamie.bot/"
+    },
+    {
+      "id": "https://askjamie.bot/whats-next/",
+      "url": "https://askjamie.bot/whats-next/",
+      "title": "A new chapter for AskJamie | A Workbench for Useful Capabilities",
+      "description": "Custom GPTs are retiring. Jamie is preserving the learning and reworking AskJamie concepts into modular agent skills and tested plugin packages.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
@@ -292,7 +302,8 @@
       "nodes": [
         "https://askjamie.bot/",
         "https://askjamie.bot/search/",
-        "https://askjamie.bot/universe/"
+        "https://askjamie.bot/universe/",
+        "https://askjamie.bot/whats-next/"
       ]
     },
     {

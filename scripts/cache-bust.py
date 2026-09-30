@@ -43,7 +43,7 @@ def iter_html_files(root: Path):
     for name in sorted(filter(None, names)):
         parts = Path(name).parts
         if name.startswith("assets/templates/") or (
-            parts[0] in {"about", "contact", "found-ry", "how-askjamie-works", "legal",
+            parts[0] in {"about", "contact", "found-ry", "whats-next", "how-askjamie-works", "legal",
                          "lens-system", "search", "universe"}
             or len(parts) == 1
         ):

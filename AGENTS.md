@@ -106,6 +106,7 @@ Out of scope unless explicitly requested:
 index.html                  Homepage
 about/ contact/ legal/      Primary interior pages
 found-ry/                   Public feature page for the private local workbench
+whats-next/                 Public GPT retirement and replatforming update
 how-askjamie-works/          Explanation of the Lens System and its boundaries
 universe/                   Mermaid ecosystem map
 search/                     Dedicated client-side search page
@@ -144,6 +145,14 @@ sitemap and release allowlist: 28 QA-relevant source pages and 26 content
 routes, producing 208 responsive route/viewport rows. The older counts above
 record the September 5 baseline. The current evidence boundaries are recorded in
 `assets/docs/project-scorecard.md`.
+
+The September 29, 2026 transition update adds `/whats-next/`: 29 public HTML
+pages including two utilities, 27 content routes, and 216 responsive
+route/viewport checks. The homepage and 16 dedicated GPT pages contain a
+native transition dialog. It appears once per tab session, can be reopened,
+and leaves persistent HTML notices and links available without JavaScript.
+Published GPT names and links remain historical source references. A notice
+does not establish a tested or available replacement skill or plugin.
 
 ### Agent skills
 

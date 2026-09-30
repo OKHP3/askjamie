@@ -186,6 +186,10 @@ async function runWithPlaywright() {
                  errors: ['navigation timeout: ' + err.message.split('\n')[0]], warnings };
       }
 
+      // Review the underlying layout after acknowledging the arrival note.
+      // Dedicated transition tests cover the open dialog at narrow widths.
+      const transitionDismiss = page.locator('[data-transition-dialog][open] [data-transition-dismiss]');
+      if (await transitionDismiss.isVisible()) await transitionDismiss.click();
       // Lazy loading is viewport-driven. Scroll each lazy image into view so
       // every runtime observes the same request opportunity before the page
       // is inspected and closed. The wait is only for request start: lazy

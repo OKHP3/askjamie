@@ -11,6 +11,9 @@ let browser;
 async function context(options = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'no-preference', colorScheme: 'light', ...options });
   await ctx.route('**/*', route => new URL(route.request().url()).origin === new URL(base).origin ? route.continue() : route.abort());
+  // These checks cover existing navigation/search after acknowledging the note.
+  // The transition spec separately tests first-arrival and no-storage behavior.
+  await ctx.addInitScript(() => sessionStorage.setItem('askjamie-gpt-transition-2026-09', 'acknowledged'));
   return ctx;
 }
 async function check(name, run) {

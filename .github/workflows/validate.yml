@@ -95,6 +95,7 @@ jobs:
           curl --silent --fail http://127.0.0.1:5000/ >/dev/null
           node scripts/responsive-qa.mjs --base=http://127.0.0.1:5000
           node tests/test_js_smoke.spec.mjs
+          node tests/test_gpt_transition.spec.mjs
           node tests/test_foundry_reflow.spec.mjs
           node tests/test_universe_map.spec.mjs
           node scripts/experience-qa.cjs

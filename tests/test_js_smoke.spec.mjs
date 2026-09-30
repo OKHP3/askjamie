@@ -72,6 +72,7 @@ try {
   }
   const searchTrigger = page.locator(".okh-search-trigger");
   await waitFor(searchTrigger, { state: "visible", timeout: 5000 }, "/", "Search trigger unavailable");
+  await page.locator('[data-transition-dialog][open] [data-transition-dismiss]').click();
   await searchTrigger.click();
   const overlay = page.locator(".okh-search-overlay");
   await waitFor(overlay, { state: "visible", timeout: 5000 }, "/", "Search overlay unavailable");
