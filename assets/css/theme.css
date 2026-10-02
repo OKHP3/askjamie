@@ -3341,6 +3341,21 @@ html[data-theme="light"] .pf-boundary-label--private    { color: #475569; }
   line-height: 1.55;
 }
 
+.mermaid-render-status {
+  margin: 1rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 18px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.mermaid-render-status[hidden] {
+  display: none;
+}
+
 .mermaid-noscript p {
   margin: 0.5rem 0 0;
 }

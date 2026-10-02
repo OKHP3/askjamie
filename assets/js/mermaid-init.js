@@ -278,6 +278,16 @@ function enhanceMermaidLinks(node) {
   });
 }
 
+function showUniverseRenderFailure(node) {
+  const status = node
+    .closest(".askjamie-mermaid-shell")
+    ?.querySelector("[data-mermaid-failure-status]");
+  if (!status) return;
+  status.hidden = false;
+  status.textContent =
+    "The diagram could not be displayed. Use the links below to browse these pages.";
+}
+
 function renderOne(node) {
   if (node.dataset.mermaidRendered === "1") return;
   node.dataset.mermaidRendered = "1";
@@ -289,7 +299,10 @@ function renderOne(node) {
   loadMermaid()
     .then((mermaid) => mermaid.run({ nodes: [node] }))
     .then(() => enhanceMermaidLinks(node))
-    .catch((err) => console.warn("[mermaid-init] render error:", err));
+    .catch((err) => {
+      showUniverseRenderFailure(node);
+      console.warn("[mermaid-init] render error:", err);
+    });
 }
 
 function scheduleRender(node) {

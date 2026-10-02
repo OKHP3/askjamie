@@ -1088,6 +1088,7 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
       '.askjamie-hero--universe .askjamie-mermaid-shell'
     );
     const diagram = figure?.querySelector('.mermaid');
+    const status = figure?.querySelector('[data-mermaid-failure-status]');
     const caption = figure?.querySelector('figcaption');
     const links = [...(figure?.querySelectorAll('.link-list a') ?? [])];
     const visible = element => Boolean(
@@ -1100,6 +1101,10 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
     return {
       caption: caption?.textContent.trim() ?? '',
       caption_visible: visible(caption),
+      failure_status_visible: visible(status),
+      failure_status_text: status?.textContent.trim() ?? '',
+      failure_status_role: status?.getAttribute('role') ?? null,
+      failure_status_live: status?.getAttribute('aria-live') ?? null,
       links: links.map(link => ({
         text: link.textContent.trim(),
         href: link.getAttribute('href'),
@@ -1169,6 +1174,7 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
         '.universe-map-generated .universe-map-group'
       );
       const diagram = group?.querySelector('.mermaid');
+      const status = group?.querySelector('[data-mermaid-failure-status]');
       const visible = element => Boolean(
         element &&
         element.getClientRects().length > 0 &&
@@ -1183,6 +1189,10 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
         summary_visible: visible(group?.querySelector('summary')),
         caption: caption?.textContent.trim() ?? '',
         caption_visible: visible(caption),
+        failure_status_visible: visible(status),
+        failure_status_text: status?.textContent.trim() ?? '',
+        failure_status_role: status?.getAttribute('role') ?? null,
+        failure_status_live: status?.getAttribute('aria-live') ?? null,
         links: links.map(link => ({
           text: link.textContent.trim(),
           href: link.getAttribute('href'),
@@ -1199,6 +1209,14 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
     }
     if (!state.caption_visible || !state.caption) {
       errors.push(`UNIVERSE MERMAID FAILURE HID PAGE MAP CAPTION: ${JSON.stringify(state)}`);
+    }
+    if (!state.failure_status_visible ||
+        !state.failure_status_text.includes('could not be displayed') ||
+        state.failure_status_role !== 'status' ||
+        state.failure_status_live !== 'polite') {
+      errors.push(
+        `UNIVERSE MERMAID FAILURE STATUS UNAVAILABLE OR INACCESSIBLE: ${JSON.stringify(state)}`
+      );
     }
     if (state.links.length < 3 || state.links.some(link => !link.visible || !link.href)) {
       errors.push(`UNIVERSE MERMAID FAILURE MADE GENERATED PAGE LINKS UNAVAILABLE: ${JSON.stringify(state.links)}`);
@@ -1289,6 +1307,14 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
     if (!failedState.caption_visible || !failedState.caption) {
       errors.push(`UNIVERSE MERMAID FAILURE HID CAPTION: ${JSON.stringify(failedState)}`);
     }
+    if (!failedState.failure_status_visible ||
+        !failedState.failure_status_text.includes('could not be displayed') ||
+        failedState.failure_status_role !== 'status' ||
+        failedState.failure_status_live !== 'polite') {
+      errors.push(
+        `UNIVERSE MERMAID FAILURE STATUS UNAVAILABLE OR INACCESSIBLE: ${JSON.stringify(failedState)}`
+      );
+    }
     if (failedState.links.length < 3 || failedState.links.some(link => !link.visible || !link.href)) {
       errors.push(`UNIVERSE MERMAID FAILURE MADE PAGE LINKS UNAVAILABLE: ${JSON.stringify(failedState.links)}`);
     }
@@ -1322,6 +1348,11 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
     if (!noJsState.noscript_visible ||
         !noJsState.noscript_text.includes('The page links below work without JavaScript.')) {
       errors.push(`UNIVERSE NO-JAVASCRIPT FALLBACK MISSING: ${JSON.stringify(noJsState)}`);
+    }
+    if (noJsState.failure_status_visible) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT FAILURE STATUS SHOULD REMAIN HIDDEN: ${JSON.stringify(noJsState)}`
+      );
     }
     if (!noJsState.caption_visible || noJsState.links.length < 3 ||
         noJsState.links.some(link => !link.visible || !link.href)) {
