@@ -715,6 +715,77 @@ class DecisionLedgerTests(unittest.TestCase):
             git(root, "status", "--porcelain", "--untracked-files=all"),
         )
 
+    def test_cli_archive_statuses_use_selected_active_line_not_checkout(self) -> None:
+        root, _ = self.make_repo()
+
+        git(root, "branch", "archive")
+        git(root, "checkout", "-q", "archive")
+        (root / "archive-only.txt").write_text("archive\n", encoding="utf-8")
+        git(root, "add", "archive-only.txt")
+        git(root, "commit", "-qm", "archive-only path")
+        archive_tip = git(root, "rev-parse", "HEAD")
+
+        git(root, "checkout", "-q", "main")
+        (root / "active-only.txt").write_text("active\n", encoding="utf-8")
+        git(root, "add", "active-only.txt")
+        git(root, "commit", "-qm", "active-only path")
+        active_tip = git(root, "rev-parse", "HEAD")
+
+        git(root, "branch", "checkout-only-line")
+        git(root, "checkout", "-q", "checkout-only-line")
+        (root / "checkout-only.txt").write_text("checkout\n", encoding="utf-8")
+        git(root, "add", "checkout-only.txt")
+        git(root, "commit", "-qm", "checkout-only path")
+
+        ledger = self.write_ledger(
+            root,
+            f"| `archive` | **archive** | `{archive_tip}` | reviewed |",
+        )
+        refs_before = git(
+            root, "for-each-ref", "--format=%(refname) %(objectname)"
+        )
+        self.assertEqual(git(root, "branch", "--show-current"), "checkout-only-line")
+        self.assertNotEqual(git(root, "rev-parse", "HEAD"), active_tip)
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--root",
+                str(root),
+                "--base",
+                "main",
+                "--decision-ledger",
+                str(ledger),
+                "--active-line",
+                "main",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        report = json.loads(result.stdout)
+        archive = report["archive_equivalents"]["archives"][0]
+        self.assertEqual(report["archive_equivalents"]["active_line"], "main")
+        self.assertEqual(
+            report["archive_equivalents"]["active_line_tip_sha"], active_tip
+        )
+        self.assertEqual(
+            archive["file_difference_direction"], "active-line-to-archive-tip"
+        )
+        self.assertCountEqual(
+            [
+                (difference["status"], difference["path"])
+                for difference in archive["file_differences"]
+            ],
+            [("D", "active-only.txt"), ("A", "archive-only.txt")],
+        )
+        self.assertEqual(
+            refs_before,
+            git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+        )
+
     def test_archive_equivalence_accepts_exact_tip_supersession_evidence(self) -> None:
         root, _ = self.make_repo()
         git(root, "branch", "superseded-archive")
