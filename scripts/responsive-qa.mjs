@@ -629,10 +629,10 @@ async function runWithPlaywright() {
             { timeout: LAZY_IMAGE_REQUEST_TIMEOUT_MS }
           ).then(() => true, () => false);
           if (!observed) {
-            const observedLate = await page.waitForRequest(
+            const observedLate = requestedAtByUrl.has(imageUrl) || await page.waitForRequest(
               request => request.url() === imageUrl,
               { timeout: LAZY_IMAGE_LATE_REQUEST_GRACE_MS }
-            ).then(() => true, () => false);
+            ).then(() => true, () => false) || requestedAtByUrl.has(imageUrl);
             if (observedLate) {
               const requestedAt = requestedAtByUrl.get(imageUrl) ?? Date.now();
               warnings.push(
