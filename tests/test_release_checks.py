@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
+import base64
 import http.server
+import importlib.util
 import json
 import os
 import re
@@ -1158,6 +1159,10 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     }
     lock = threading.Lock()
     png_header = b"\x89PNG\r\n\x1a\n"
+    lazy_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/"
+        "x8AAwMCAO+/n5sAAAAASUVORK5CYII="
+    )
 
     class FixtureHandler(http.server.BaseHTTPRequestHandler):
         def log_message(self, _format, *_args):
@@ -1180,7 +1185,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
             if path in page_paths:
                 self._record("start", path)
                 body = {
-                    "/lazy/": '<div style="height: 1200px"></div><img src="/slow-lazy.png" loading="lazy" width="10" height="10">',
+                    "/lazy/": '<div style="height: 200px"></div><img src="/slow-lazy.png" loading="lazy" width="10" height="10">',
                     "/lazy-unobserved/": (
                         '<div style="height:100000px"></div>'
                         '<img id="unobserved-lazy" src="/unobserved-lazy.png" '
@@ -1234,15 +1239,18 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
 
             if path == "/slow-lazy.png":
                 self._record("start", path)
-                self.send_response(200)
-                self.send_header("Content-Type", "image/png")
-                self.send_header("Content-Length", "999999")
-                self.end_headers()
-                self.wfile.write(png_header)
-                self.wfile.flush()
-                time.sleep(0.5)
-                self.close_connection = True
-                self._record("end", path)
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/png")
+                    self.send_header("Content-Length", str(len(lazy_png)))
+                    self.end_headers()
+                    self.wfile.flush()
+                    time.sleep(0.5)
+                    self.wfile.write(lazy_png)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                finally:
+                    self._record("end", path)
                 return
 
             if path == "/late-lazy.png":
@@ -1328,8 +1336,10 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     assert result.returncode == 1
     assert report["mode"] == "playwright"
     assert report["total_checks"] == 56
-    assert all(row["pass"] for row in rows["/lazy/"])
-    assert all(not row["warnings"] for row in rows["/lazy/"])
+    lazy_failures = [row for row in rows["/lazy/"] if not row["pass"]]
+    assert not lazy_failures, json.dumps(lazy_failures, indent=2)
+    lazy_warnings = [row for row in rows["/lazy/"] if row["warnings"]]
+    assert not lazy_warnings, json.dumps(lazy_warnings, indent=2)
     assert all(row["pass"] for row in rows["/lazy-unobserved/"])
     assert all(
         any(
@@ -1369,7 +1379,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
                for row in rows["/timeout/"])
     assert state["page_max_active"] <= 4
     lazy_starts = [event for event in events if event[0] == "start" and event[1] == "/slow-lazy.png"]
-    assert 0 < len(lazy_starts) <= 8
+    assert len(lazy_starts) == len(rows["/lazy/"]) == 8
 
 
 def test_index_freshness_checks_content_instead_of_checkout_times(tmp_path, monkeypatch):

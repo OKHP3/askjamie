@@ -7581,6 +7581,31 @@ html[data-theme="light"] .askjamie-main {
   .askjamie-brandguard-page .askjamie-logo--crumb img {
     max-width: 7.5rem;
   }
+
+  .askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label {
+    min-width: 15.25rem;
+  }
+}
+
+/* Keep the 390px fallback and deferred BrandGuard fonts on the same line
+   counts so text reflow does not add empty space or shift the hero. */
+@media (min-width: 381px) and (max-width: 400px) {
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2) {
+    letter-spacing: -0.005em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {
+    letter-spacing: -0.03em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    letter-spacing: -0.04em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .askjamie-hero-tagline {
+    letter-spacing: -0.04em;
+  }
 }
 
 /* ===================================================================== */

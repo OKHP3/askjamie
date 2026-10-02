@@ -314,6 +314,10 @@ body.askjamie-main a {
   gap: 0.5rem;
 }
 
+.askjamie-main .askjamie-breadcrumb .breadcrumb-label {
+  white-space: nowrap;
+}
+
 .askjamie-main .askjamie-logo--crumb {
   display: inline-block;
   margin-bottom: 1rem;
@@ -488,8 +492,33 @@ body.askjamie-main a {
     padding-inline: 0;
   }
 
+  .askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label {
+    min-width: 15.25rem;
+  }
+
   .askjamie-brandguard-page .askjamie-hero-copy h1 {
     font-size: 2rem;
     letter-spacing: -0.02em;
+  }
+}
+
+/* At 390px, small tracking adjustments keep the fallback and deferred fonts
+   on the same line counts without leaving reserved blank space in the copy. */
+@media (min-width: 381px) and (max-width: 400px) {
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2) {
+    letter-spacing: -0.005em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {
+    letter-spacing: -0.03em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    letter-spacing: -0.04em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .askjamie-hero-tagline {
+    letter-spacing: -0.04em;
   }
 }

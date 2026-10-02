@@ -57,6 +57,28 @@ def test_brandguard_mobile_breadcrumb_matches_critical_geometry_fallback():
     assert drift._last_value(theme, selector, "max-width") == "7.5rem"
     assert drift._last_value(critical, crumb_selector, "margin-bottom") == "0"
     assert drift._last_value(theme, crumb_selector, "margin-bottom") == "0"
+    label_selector = ".askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label"
+    assert drift._last_value(critical, label_selector, "min-width") == "15.25rem"
+    assert drift._last_value(theme, label_selector, "min-width") == "15.25rem"
+
+
+def test_brandguard_390px_font_tracking_keeps_fallback_line_counts():
+    critical = drift.parse_rules(
+        (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
+    )
+    theme = drift.parse_rules(
+        (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+    )
+    tracked_blocks = {
+        ".askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2)": "-0.005em",
+        ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1": "-0.03em",
+        ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle": "-0.04em",
+        ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-tagline": "-0.04em",
+    }
+
+    for selector, expected in tracked_blocks.items():
+        assert drift._last_value(critical, selector, "letter-spacing") == expected
+        assert drift._last_value(theme, selector, "letter-spacing") == expected
 
 
 def test_capability_transition_geometry_drift_is_reported(tmp_path):
