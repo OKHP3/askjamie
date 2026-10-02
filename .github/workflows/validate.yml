@@ -91,9 +91,12 @@ jobs:
       - name: Verify committed search index is current
         run: python3 scripts/build-search-index.py --check
 
+      - name: Prepare public Pages artifact for browser QA
+        run: python3 scripts/prepare-pages-artifact.py --output .scratch/pages-release
+
       - name: Run full browser responsive QA and JavaScript smoke tests
         run: |
-          python3 -m http.server 5000 --bind 127.0.0.1 >/tmp/askjamie-server.log 2>&1 &
+          python3 -m http.server 5000 --bind 127.0.0.1 --directory .scratch/pages-release >/tmp/askjamie-server.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
           for attempt in {1..20}; do
@@ -101,7 +104,7 @@ jobs:
             sleep 0.5
           done
           curl --silent --fail http://127.0.0.1:5000/ >/dev/null
-          node scripts/responsive-qa.mjs --base=http://127.0.0.1:5000
+          node scripts/responsive-qa.mjs --require-release-hero-routes --base=http://127.0.0.1:5000
           node tests/test_js_smoke.spec.mjs
           node tests/test_gpt_transition.spec.mjs
           node tests/test_foundry_reflow.spec.mjs
@@ -113,10 +116,6 @@ jobs:
         # sitemap reconciliation, image hygiene, and governance checks.
         # Exits 1 if any issues are found.
         run: python3 scripts/audit-site.py --quiet
-
-      - name: Prepare public Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: python3 scripts/prepare-pages-artifact.py --output .scratch/pages-release
 
       - name: Preserve validated Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

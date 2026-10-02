@@ -45,6 +45,8 @@ const ROOT       = resolve(__dirname, '..');
 const BASE_URL   = process.argv.find(a => a.startsWith('--base='))?.split('=')[1]
                  ?? 'http://localhost:5000';
 const FORCE_STATIC = process.argv.includes('--static');
+const REQUIRE_RELEASE_HERO_ROUTES =
+  process.argv.includes('--require-release-hero-routes');
 
 const VIEWPORTS = [
   { name: 'mobile-360',   width: 360,  height: 780  },
@@ -101,6 +103,8 @@ const BRANDGUARD_FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.co
 const BRANDGUARD_FONT_FAMILIES = ['Kalam', 'Baloo 2', 'Kalam', 'Open Sans'];
 const BRANDGUARD_LOGO_SELECTOR =
   '.askjamie-brandguard-page .askjamie-logo--crumb img';
+const CRITICAL_HERO_STYLESHEET_PATH = '/assets/css/critical-hero.css';
+const BRANDGUARD_CRITICAL_STYLE_VIEWPORT = 'mobile-390';
 const UNIVERSE_DIAGRAM_GEOMETRY_PATH = '/universe/';
 const UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set(['mobile-390', 'desktop-1280']);
 const UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX = 1;
@@ -114,6 +118,133 @@ const UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS = [
   '.askjamie-hero--universe .mermaid-scroll-wrap',
   '.askjamie-hero--universe .askjamie-mermaid-shell',
 ];
+
+async function checkCriticalHeroStyles(page, path, viewportWidth, stylesheetResponses) {
+  if (path !== BRANDGUARD_GEOMETRY_PATH &&
+      path !== UNIVERSE_DIAGRAM_GEOMETRY_PATH) {
+    return null;
+  }
+
+  const evidence = await page.evaluate(({ path, stylesheetPath, viewportWidth }) => {
+    const stylesheetLink = [...document.querySelectorAll('link[rel~="stylesheet"]')]
+      .find(link => new URL(link.href).pathname === stylesheetPath);
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize
+    );
+    const evidence = {
+      stylesheet: {
+        href: stylesheetLink?.href ?? null,
+        same_origin: stylesheetLink
+          ? new URL(stylesheetLink.href).origin === location.origin
+          : false,
+        attached: Boolean(stylesheetLink?.sheet),
+      },
+      root_font_size_px: rootFontSize,
+      computed: {},
+    };
+
+    if (path === '/lens-system/okhp3-brandguard/') {
+      const selector = '.askjamie-brandguard-page .askjamie-hero-copy h1';
+      const heading = document.querySelector(selector);
+      const style = heading ? getComputedStyle(heading) : null;
+      evidence.computed.brandguard_heading = {
+        selector,
+        present: Boolean(heading),
+        font_size: style?.fontSize ?? null,
+        letter_spacing: style?.letterSpacing ?? null,
+        expected_font_size: `${rootFontSize * 2}px`,
+        expected_letter_spacing: `${rootFontSize * 2 * -0.03}px`,
+      };
+    } else {
+      const selector = '.askjamie-hero--universe .mermaid-scroll-wrap';
+      const wrapper = document.querySelector(selector);
+      const style = wrapper ? getComputedStyle(wrapper) : null;
+      const minHeightRem = viewportWidth <= 640 ? 18 : 22;
+      evidence.computed.universe_diagram_wrapper = {
+        selector,
+        present: Boolean(wrapper),
+        min_height: style?.minHeight ?? null,
+        overflow: style?.overflow ?? null,
+        expected_min_height: `${rootFontSize * minHeightRem}px`,
+      };
+    }
+    return evidence;
+  }, { path, stylesheetPath: CRITICAL_HERO_STYLESHEET_PATH, viewportWidth });
+
+  const errors = [];
+  const releaseOrigin = new URL(BASE_URL).origin;
+  const stylesheetResponse = [...stylesheetResponses].reverse().find(response =>
+    new URL(response.url).origin === releaseOrigin &&
+    new URL(response.url).pathname === CRITICAL_HERO_STYLESHEET_PATH
+  );
+  if (!evidence.stylesheet.href) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET LINK MISSING: route ${path} has no ` +
+      `${CRITICAL_HERO_STYLESHEET_PATH} link`
+    );
+  }
+  if (evidence.stylesheet.href && !evidence.stylesheet.same_origin) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET NOT LOCAL: route ${path} ` +
+      `${evidence.stylesheet.href} is not served by ${releaseOrigin}`
+    );
+  }
+  if (!stylesheetResponse) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET RESPONSE MISSING: route ${path} did not request ` +
+      `${CRITICAL_HERO_STYLESHEET_PATH}`
+    );
+  } else if (stylesheetResponse.status >= 400) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET HTTP ${stylesheetResponse.status}: route ${path} ` +
+      `${stylesheetResponse.url}`
+    );
+  }
+  if (!evidence.stylesheet.attached) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET NOT APPLIED: route ${path} ` +
+      `${CRITICAL_HERO_STYLESHEET_PATH} has no attached CSSStyleSheet`
+    );
+  }
+
+  const closeEnough = (actual, expected) =>
+    Number.isFinite(Number.parseFloat(actual)) &&
+    Math.abs(Number.parseFloat(actual) - Number.parseFloat(expected)) < 0.05;
+  if (path === BRANDGUARD_GEOMETRY_PATH) {
+    const heading = evidence.computed.brandguard_heading;
+    if (!heading.present ||
+        !closeEnough(heading.font_size, heading.expected_font_size) ||
+        !closeEnough(heading.letter_spacing, heading.expected_letter_spacing)) {
+      errors.push(
+        `CRITICAL HERO STYLE MISMATCH: route ${path} ${heading.selector} ` +
+        `computed font-size=${JSON.stringify(heading.font_size)}, ` +
+        `letter-spacing=${JSON.stringify(heading.letter_spacing)}; expected ` +
+        `font-size=${heading.expected_font_size}, ` +
+        `letter-spacing=${heading.expected_letter_spacing}`
+      );
+    }
+  } else {
+    const wrapper = evidence.computed.universe_diagram_wrapper;
+    if (!wrapper.present ||
+        !closeEnough(wrapper.min_height, wrapper.expected_min_height) ||
+        wrapper.overflow !== 'hidden') {
+      errors.push(
+        `CRITICAL HERO STYLE MISMATCH: route ${path} ${wrapper.selector} ` +
+        `computed min-height=${JSON.stringify(wrapper.min_height)}, ` +
+        `overflow=${JSON.stringify(wrapper.overflow)}; expected ` +
+        `min-height=${wrapper.expected_min_height}, overflow="hidden"`
+      );
+    }
+  }
+
+  return {
+    errors,
+    evidence: {
+      ...evidence,
+      stylesheet_response: stylesheetResponse ?? null,
+    },
+  };
+}
 
 function hasDarkUniverseTheme(state) {
   return state?.color_scheme === 'dark' && state?.prefers_dark === true;
@@ -1465,6 +1596,7 @@ async function runWithPlaywright() {
     const consoleErrors = [];
     const requestFailures = [];
     const failedResponses = [];
+    const criticalHeroStylesheetResponses = [];
     const brandGuardFontResponses = [];
     const requestInfo = new WeakMap();
     const requestedUrls = new Set();
@@ -1505,6 +1637,14 @@ async function runWithPlaywright() {
     };
     const onResponse = resp => {
       const responseUrl = new URL(resp.url());
+      if (responseUrl.pathname === CRITICAL_HERO_STYLESHEET_PATH &&
+          resp.request().resourceType() === 'stylesheet') {
+        criticalHeroStylesheetResponses.push({
+          url: resp.url(),
+          status: resp.status(),
+          resourceType: resp.request().resourceType(),
+        });
+      }
       if (checkBrandGuardFonts && BRANDGUARD_FONT_HOSTS.has(responseUrl.hostname)) {
         brandGuardFontResponses.push({
           host: responseUrl.hostname,
@@ -1607,6 +1747,19 @@ async function runWithPlaywright() {
       const transitionDismiss = page.locator('[data-transition-dialog][open] [data-transition-dismiss]');
       if (await transitionDismiss.isVisible()) await transitionDismiss.click();
 
+      const criticalHeroStyles =
+        (path === BRANDGUARD_GEOMETRY_PATH &&
+          vp.name === BRANDGUARD_CRITICAL_STYLE_VIEWPORT) ||
+        (path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
+          UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name))
+          ? await checkCriticalHeroStyles(
+            page,
+            path,
+            vp.width,
+            criticalHeroStylesheetResponses
+          )
+          : null;
+
       // Compare the critical shell with the live deferred theme on the supported
       // phone BrandGuard viewports. Do this before scrolling lazy images so the
       // two geometry samples cover only theme activation, not later page work.
@@ -1698,6 +1851,7 @@ async function runWithPlaywright() {
         ![...blockedExternal].some(blocked => blocked === src)
       );
       const errors = [
+        ...(criticalHeroStyles?.errors ?? []),
         ...(heroThemeGeometry?.errors ?? []),
         ...(heroFontGeometry?.errors ?? []),
         ...(universeDiagramGeometry?.errors ?? []),
@@ -1721,6 +1875,9 @@ async function runWithPlaywright() {
                     ...(heroThemeGeometry
                       ? { hero_theme_geometry: heroThemeGeometry.evidence }
                       : {}),
+                     ...(criticalHeroStyles
+                       ? { critical_hero_styles: criticalHeroStyles.evidence }
+                       : {}),
                      ...(heroFontGeometry
                       ? { hero_font_geometry: heroFontGeometry.evidence }
                       : {}),
@@ -1951,6 +2108,17 @@ async function staticAnalysis() {
   console.log('AskJamie™ Responsive QA\n' + '='.repeat(40));
   console.log(`Base URL: ${BASE_URL}`);
   console.log(`Pages: ${PUBLIC_PATHS.length} | Viewports: ${VIEWPORTS.length}\n`);
+
+  if (REQUIRE_RELEASE_HERO_ROUTES) {
+    const requiredRoutes = [BRANDGUARD_GEOMETRY_PATH, UNIVERSE_DIAGRAM_GEOMETRY_PATH];
+    const missingRoutes = requiredRoutes.filter(path => !PUBLIC_PATHS.includes(path));
+    if (missingRoutes.length > 0) {
+      console.error(
+        `Required release hero routes are missing from sitemap.xml: ${missingRoutes.join(', ')}`
+      );
+      process.exit(1);
+    }
+  }
 
   const pwResult = FORCE_STATIC ? null : await runWithPlaywright();
   if (pwResult?.ok === false) {

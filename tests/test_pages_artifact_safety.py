@@ -185,6 +185,12 @@ class PagesArtifactSafetyTests(unittest.TestCase):
         workflow = (SCRIPT.parent.parent / ".github/workflows/validate.yml").read_text()
         upload = workflow.split("- name: Preserve validated Pages artifact", 1)[1].split("  deploy:", 1)[0]
         self.assertIn("--output .scratch/pages-release", workflow)
+        prepare = workflow.index("- name: Prepare public Pages artifact for browser QA")
+        browser_qa = workflow.index("- name: Run full browser responsive QA and JavaScript smoke tests")
+        self.assertLess(prepare, browser_qa)
+        browser_step = workflow[browser_qa:].split("\n      - name:", 1)[0]
+        self.assertIn("--directory .scratch/pages-release", browser_step)
+        self.assertIn("--require-release-hero-routes", browser_step)
         self.assertIn("path: .scratch/pages-release", upload)
         self.assertIn("include-hidden-files: true", upload)
         pages_upload = workflow.split("- name: Upload site artifact", 1)[1].split(

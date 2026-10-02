@@ -444,6 +444,33 @@ Module.prototype.require = function (id) {
     assert "static-lint mode" not in result.stdout
 
 
+def test_responsive_qa_can_require_release_hero_routes(tmp_path):
+    runner = tmp_path / "runner"
+    scripts = runner / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts/responsive-qa.mjs", scripts / "responsive-qa.mjs")
+    (runner / "sitemap.xml").write_text(
+        '<urlset><url><loc>https://askjamie.bot/about/</loc></url></urlset>',
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            "node",
+            "scripts/responsive-qa.mjs",
+            "--require-release-hero-routes",
+        ],
+        cwd=runner,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "Required release hero routes are missing from sitemap.xml" in result.stderr
+    assert "/lens-system/okhp3-brandguard/" in result.stderr
+    assert "/universe/" in result.stderr
+
+
 def test_responsive_qa_static_output_omits_browser_versions():
     result = subprocess.run(
         ["node", "scripts/responsive-qa.mjs", "--static"],
@@ -477,6 +504,10 @@ def test_responsive_qa_keeps_csp_suppression_narrow_and_reports_resource_failure
     assert "REQUEST FAILED: [" in source
     assert "HTTP ${r.status}: [" in source
     assert "CONSOLE: " in source
+    assert "checkCriticalHeroStyles" in source
+    assert "CRITICAL HERO STYLESHEET RESPONSE MISSING" in source
+    assert "CRITICAL HERO STYLE MISMATCH" in source
+    assert "critical_hero_styles: criticalHeroStyles.evidence" in source
 
 
 def test_responsive_qa_measures_every_universe_group_without_parallel_renders():
