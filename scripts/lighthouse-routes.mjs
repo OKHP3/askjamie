@@ -16,6 +16,13 @@ import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+export const routes = {
+  homepage: "/",
+  brandguard: "/lens-system/okhp3-brandguard/",
+  universe: "/universe/",
+  search: "/search/",
+};
+
 export function createSummary({ date, preset, controlled, baseUrl }) {
   return {
     schemaVersion: 2,
@@ -90,12 +97,6 @@ function main() {
   }
   const outputSuffix = `${preset === "mobile" ? "-mobile" : ""}${controlled ? "-controlled" : ""}`;
   const outputDir = resolve(root, "assets/audit", `lighthouse-${date}${outputSuffix}`);
-  const routes = {
-    homepage: "/",
-    brandguard: "/lens-system/okhp3-brandguard/",
-    universe: "/universe/",
-    search: "/search/",
-  };
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
   const lighthouseBin = resolve(root, "node_modules/.bin/lighthouse");
   const controlledBlockedUrlPatterns = [
