@@ -11,8 +11,13 @@
  *   node scripts/lighthouse-routes.mjs --preset=mobile --controlled
  *   node scripts/lighthouse-routes.mjs --preset=mobile --controlled --brandguard-samples=3
  *   node scripts/lighthouse-routes.mjs --base-url=https://askjamie.bot
+ *   node scripts/lighthouse-routes.mjs --preset=mobile --date=2026-10-01 --run-id=rerun-2
+ *   node scripts/lighthouse-routes.mjs --preset=mobile --date=2026-10-01 --replace
+ *
+ * Existing dated output is preserved by default. Use --run-id to write to a
+ * separate directory, or --replace to explicitly clear and reuse that output.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -216,6 +221,24 @@ function main() {
   }
   const dateArg = process.argv.find((arg) => arg.startsWith("--date="));
   const date = dateArg ? dateArg.slice("--date=".length) : new Date().toISOString().slice(0, 10);
+  const parsedDate = new Date(`${date}T00:00:00.000Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date)
+    || Number.isNaN(parsedDate.valueOf())
+    || parsedDate.toISOString().slice(0, 10) !== date
+  ) {
+    console.error("Lighthouse run date must be a valid YYYY-MM-DD date.");
+    process.exit(1);
+  }
+  const runIdArg = process.argv.find((arg) => arg.startsWith("--run-id="));
+  const runId = runIdArg ? runIdArg.slice("--run-id=".length) : "";
+  if (runIdArg && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(runId)) {
+    console.error(
+      "Run identifier must start with a letter or number and contain only letters, numbers, periods, underscores, or hyphens (up to 64 characters).",
+    );
+    process.exit(1);
+  }
+  const replaceExisting = process.argv.includes("--replace");
   const controlled = process.argv.includes("--controlled");
   const brandguardSamplesArg = process.argv.find((arg) => arg.startsWith("--brandguard-samples="));
   const brandguardSamples = brandguardSamplesArg
@@ -234,7 +257,17 @@ function main() {
     process.exit(1);
   }
   const outputSuffix = `${preset === "mobile" ? "-mobile" : ""}${controlled ? "-controlled" : ""}`;
-  const outputDir = resolve(root, "assets/audit", `lighthouse-${date}${outputSuffix}`);
+  const runIdSuffix = runId ? `-${runId}` : "";
+  const outputDir = resolve(root, "assets/audit", `lighthouse-${date}${outputSuffix}${runIdSuffix}`);
+  const collisionMessage = () => (
+    `Lighthouse evidence already exists at ${outputDir}. Refusing to overwrite it. `
+    + "Choose a new identifier with --run-id=<identifier> (for example --run-id=rerun-2), "
+    + "or explicitly replace this evidence with --replace."
+  );
+  if (existsSync(outputDir) && !replaceExisting) {
+    console.error(collisionMessage());
+    process.exit(1);
+  }
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
   const lighthouseBin = resolve(root, "node_modules/.bin/lighthouse");
   const controlledBlockedUrlPatterns = [
@@ -268,7 +301,18 @@ function main() {
     encoding: "utf8",
   }));
 
-  mkdirSync(outputDir, { recursive: true });
+  if (replaceExisting) {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+  try {
+    mkdirSync(outputDir);
+  } catch (error) {
+    if (error.code === "EEXIST") {
+      console.error(collisionMessage());
+      process.exit(1);
+    }
+    throw error;
+  }
   let lighthouseVersion = null;
   let chromiumUserAgent = null;
   const baselineMeasurementStack = HISTORICAL_REFERENCE_MEASUREMENT_STACK;
