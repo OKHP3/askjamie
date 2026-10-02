@@ -5,8 +5,11 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from collections import Counter
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "audit-repo.py"
@@ -292,6 +295,191 @@ class RetirementLedgerTests(unittest.TestCase):
             "--audit-retirement-history", self.policy_path,
             "--ledger-baseline", baseline, *args,
         )
+
+    def assert_cached_history_equivalent(self, baseline, migrations=()):
+        ledger = audit.retirement_ledger
+
+        def snapshot():
+            # Include checkout, index, refs, objects and reflogs, not only status.
+            return {
+                path.relative_to(self.root).as_posix(): path.read_bytes()
+                for path in self.root.rglob("*")
+                if path.is_file() and not path.is_symlink()
+            }
+
+        before = snapshot()
+        cached = ledger.audit_history(self.root, self.policy_path, baseline, migrations)
+        self.assertEqual(snapshot(), before)
+
+        def uncached(reader, tree, policy_path):
+            return ledger.tree_ledger(reader.root, tree, policy_path)
+
+        with patch.object(ledger.HistoryLedgerReader, "read", uncached):
+            reference = ledger.audit_history(self.root, self.policy_path, baseline, migrations)
+        self.assertEqual(snapshot(), before)
+        self.assertEqual(json.dumps(cached, sort_keys=True),
+                         json.dumps(reference, sort_keys=True))
+        return cached
+
+    def test_long_history_reads_each_immutable_blob_once(self):
+        # Representative benchmark: 81 decisions and 1,000 unrelated files,
+        # followed by 120 commits changing only unrelated content.
+        for index in range(80):
+            self.write(self.records_path + f"/retained-{index}.json", {
+                **self.record, "ref": f"refs/recovery/retained-{index}",
+            })
+        directory = self.root / "content"
+        directory.mkdir()
+        for index in range(1000):
+            (directory / f"page-{index}.txt").write_text("Content\n", encoding="utf-8")
+        self.git("add", "content")
+        self.commit()
+        baseline = self.git("rev-parse", "HEAD")
+        for index in range(120):
+            (directory / "page-0.txt").write_text(f"Unrelated edit {index}\n", encoding="utf-8")
+            self.git("add", "content")
+            self.commit()
+        ledger = audit.retirement_ledger
+        refs, status = self.git("show-ref"), self.git("status", "--porcelain")
+        index_bytes = (self.root / ".git/index").read_bytes()
+        with patch.object(ledger, "history_git", wraps=ledger.history_git) as reads, \
+                patch.object(ledger, "validate_record", wraps=ledger.validate_record) as validations:
+            start = time.perf_counter()
+            result = ledger.audit_history(self.root, self.policy_path, baseline)
+            elapsed = time.perf_counter() - start
+        counts = Counter(call.args[1] for call in reads.call_args_list)
+        self.assertEqual(counts["cat-file"], 82)
+        self.assertEqual(counts["ls-tree"], 121)
+        self.assertEqual(validations.call_count, 81)
+        self.assertEqual(result, {
+            "passed": True, "baseline": baseline, "head": self.git("rev-parse", "HEAD"),
+            "history_scope": "first-parent", "commits_checked": 121,
+            "retained_record_count": 81, "added_record_count": 0,
+            "policy_file": self.policy_path, "approved_migrations": [], "holds": [],
+        })
+        self.assertEqual((self.root / ".git/index").read_bytes(), index_bytes)
+        self.assertEqual(self.git("show-ref"), refs)
+        self.assertEqual(self.git("status", "--porcelain"), status)
+        print(f"\nRetirement history benchmark: {elapsed:.3f}s; "
+              f"{counts['cat-file']} blob reads; {validations.call_count} record validations")
+
+    def test_repeated_tree_reads_are_reused_without_dropping_commits(self):
+        baseline = self.git("rev-parse", "HEAD")
+        for _ in range(40):
+            self.commit()
+        ledger = audit.retirement_ledger
+        with patch.object(ledger, "history_git", wraps=ledger.history_git) as reads:
+            result = ledger.audit_history(self.root, self.policy_path, baseline)
+        counts = Counter(call.args[1] for call in reads.call_args_list)
+        self.assertEqual(counts["ls-tree"], 1)
+        self.assertEqual(counts["cat-file"], 2)
+        self.assertEqual(result["commits_checked"], 41)
+        self.assertTrue(result["passed"])
+        self.assert_cached_history_equivalent(baseline)
+
+    def test_cached_history_preserves_all_transient_holds_and_dirty_checkout(self):
+        baseline = self.git("rev-parse", "HEAD")
+        expected = []
+        for content, reason in (
+            (None, "removed-record"),
+            ({**self.record, "evidence": "Temporary rewrite."}, "rewritten-record"),
+            ("{invalid}", "invalid-ledger"),
+        ):
+            path = self.root / self.record_path
+            if content is None:
+                path.unlink()
+            elif isinstance(content, str):
+                path.write_text(content, encoding="utf-8")
+            else:
+                self.write(self.record_path, content)
+            for _ in range(2):
+                self.commit()
+                expected.append((self.git("rev-parse", "HEAD"), reason))
+            self.write(self.record_path, self.record)
+            self.commit()
+        # History must ignore uncommitted files and leave them alone.
+        (self.root / self.policy_path).write_text("Dirty policy\n", encoding="utf-8")
+        (self.root / "untracked.txt").write_text("Keep this\n", encoding="utf-8")
+        result = self.assert_cached_history_equivalent(baseline)
+        self.assertEqual([(hold["commit"], hold["reason"]) for hold in result["holds"]], expected)
+        self.assertFalse(result["passed"])
+
+    def test_cached_history_preserves_additions_and_approved_migrations(self):
+        baseline = self.git("rev-parse", "HEAD")
+        added = {**self.record, "ref": "refs/recovery/added"}
+        self.write(self.records_path + "/added.json", added)
+        self.commit()
+        (self.root / (self.records_path + "/added.json")).unlink()
+        self.commit()
+        removal = self.git("rev-parse", "HEAD")
+        self.write(self.records_path + "/added.json", added)
+        self.commit()
+        destination = self.root / "governance/retained/decisions"
+        destination.mkdir(parents=True)
+        self.git("mv", self.records_path + "/added.json",
+                 "governance/retained/decisions/added.json")
+        migration, new_policy, _ = self.migrate()
+        approvals = [f"{migration}={self.policy_path},{new_policy}"]
+        self.commit()
+        result = self.assert_cached_history_equivalent(baseline, approvals)
+        self.assertEqual(result["added_record_count"], 1)
+        self.assertEqual(result["holds"], [{
+            "commit": removal, "ref": added["ref"], "reason": "removed-record",
+            "record_file": self.records_path + "/added.json",
+        }])
+        self.assertEqual(len(result["approved_migrations"]), 1)
+
+    def test_cached_history_keys_include_policy_location_and_mode(self):
+        baseline = self.git("rev-parse", "HEAD")
+        other = "governance/other-policy.json"
+        self.write(other, self.policy)
+        self.commit()
+        # The migration commit has the same tree as its parent but a different
+        # selected policy. Tree identity alone must not suppress that migration.
+        self.commit()
+        migration = self.git("rev-parse", "HEAD")
+        result = self.assert_cached_history_equivalent(
+            baseline, [f"{migration}={self.policy_path},{other}"],
+        )
+        self.assertTrue(result["passed"])
+        self.git("update-index", "--chmod=+x", self.record_path)
+        self.git("commit", "-m", "Executable regular record")
+        executable = self.git("rev-parse", "HEAD")
+        # A cached blob is still rejected if the same identity is a symlink.
+        oid = self.git("rev-parse", f"HEAD:{self.record_path}")
+        self.git("update-index", "--cacheinfo", f"120000,{oid},{self.record_path}")
+        self.git("commit", "-m", "Redirected record")
+        invalid = self.git("rev-parse", "HEAD")
+        self.git("read-tree", executable)
+        self.git("commit", "-m", "Restore regular record")
+        result = self.assert_cached_history_equivalent(
+            baseline, [f"{migration}={self.policy_path},{other}"],
+        )
+        self.assertEqual(result["holds"][0]["commit"], invalid)
+        self.assertEqual(result["holds"][0]["reason"], "invalid-ledger")
+
+    def test_cached_unchanged_migration_still_requires_a_policy_change(self):
+        baseline = self.git("rev-parse", "HEAD")
+        self.commit()
+        migration = self.git("rev-parse", "HEAD")
+        approvals = [f"{migration}={self.policy_path},{self.policy_path}"]
+        ledger = audit.retirement_ledger
+        with self.assertRaisesRegex(ledger.LedgerError, "does not identify a policy change"):
+            ledger.audit_history(self.root, self.policy_path, baseline, approvals)
+
+    def test_cached_objects_do_not_survive_into_a_later_audit(self):
+        baseline = self.git("rev-parse", "HEAD")
+        ledger = audit.retirement_ledger
+        with patch.object(ledger, "history_git", wraps=ledger.history_git) as reads:
+            first = ledger.audit_history(self.root, self.policy_path, baseline)
+            second = ledger.audit_history(self.root, self.policy_path, baseline)
+        self.assertEqual(first, second)
+        counts = Counter(call.args[1] for call in reads.call_args_list)
+        self.assertEqual(counts["ls-tree"], 2)
+        self.assertEqual(counts["cat-file"], 4)
+        self.write(self.record_path, {**self.record, "approver": "changed-owner"})
+        self.commit()
+        self.assertFalse(ledger.audit_history(self.root, self.policy_path, baseline)["passed"])
 
     def test_history_retains_old_records_without_ref_or_object_lookup(self):
         self.git("update-ref", "-d", self.ref)

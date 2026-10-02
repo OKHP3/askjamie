@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -216,7 +217,7 @@ def history_path(value):
     return value
 
 
-def tree_ledger(root, commit, policy_path):
+def tree_ledger(root, commit, policy_path, *, blobs=None, validated_records=None):
     """Read only regular blobs from an exact committed tree; no ref lookup."""
     policy_path = history_path(policy_path)
     entries = {}
@@ -237,13 +238,19 @@ def tree_ledger(root, commit, policy_path):
         if any(entries.get(parent.as_posix(), ("",))[0] == "120000"
                for parent in Path(path).parents):
             raise LedgerError("retirement history: symlinked locations are not allowed")
+        oid = entry[2]
+        if blobs is not None and oid in blobs:
+            return blobs[oid]
         try:
-            return json.loads(
-                history_git(root, "cat-file", "blob", entry[2]).decode("utf-8"),
+            data = json.loads(
+                history_git(root, "cat-file", "blob", oid).decode("utf-8"),
                 object_pairs_hook=unique_fields,
             )
         except (UnicodeError, json.JSONDecodeError) as exc:
             raise LedgerError("retirement history: could not read valid UTF-8 JSON") from exc
+        if blobs is not None:
+            blobs[oid] = data
+        return data
 
     policy = read(policy_path)
     validate_policy(policy)
@@ -259,7 +266,11 @@ def tree_ledger(root, commit, policy_path):
         if "/" in filename or not filename.endswith(".json"):
             raise LedgerError("retirement history: records directory must contain only JSON records")
         record = read(path)
-        validate_record(root, record)
+        oid = entries[path][2]
+        if validated_records is None or oid not in validated_records:
+            validate_record(root, record)
+            if validated_records is not None:
+                validated_records.add(oid)
         ref = record["ref"]
         if ref in records:
             raise LedgerError("retirement history: duplicate recovery ref decisions")
@@ -269,6 +280,35 @@ def tree_ledger(root, commit, policy_path):
     return policy, records, paths
 
 
+class HistoryLedgerReader:
+    """Audit-local immutable-object reuse; never cache mutable refs or files."""
+
+    def __init__(self, root):
+        self.root = root
+        self.blobs = {}
+        self.validated_records = set()
+        # Bound the number of full ledger snapshots for unrelated tree changes.
+        # Blob identities still share parsed records across evicted snapshots.
+        self.state = lru_cache(maxsize=32)(self._state)
+
+    def _state(self, tree, policy_path):
+        try:
+            return tree_ledger(
+                self.root, tree, policy_path, blobs=self.blobs,
+                validated_records=self.validated_records,
+            )
+        except LedgerError as exc:
+            # Invalid immutable trees can repeat too. Replay the sanitized error
+            # at every commit rather than dropping any per-commit hold.
+            return str(exc)
+
+    def read(self, tree, policy_path):
+        state = self.state(tree, policy_path)
+        if isinstance(state, str):
+            raise LedgerError(state)
+        return state
+
+
 def audit_history(root, policy_path, baseline, migrations=()):
     """Audit every first-parent state from an explicit baseline through HEAD."""
     root = Path(root).resolve()
@@ -276,7 +316,11 @@ def audit_history(root, policy_path, baseline, migrations=()):
         root, "rev-parse", "--verify", "--end-of-options", baseline + "^{commit}",
     ).decode("ascii").strip()
     head = history_git(root, "rev-parse", "--verify", "HEAD^{commit}").decode("ascii").strip()
-    chain = history_git(root, "rev-list", "--first-parent", head).decode("ascii").splitlines()
+    history = history_git(
+        root, "log", "--first-parent", "--format=%H %T", head,
+    ).decode("ascii").splitlines()
+    trees = dict(line.split() for line in history)
+    chain = list(trees)
     if baseline_id not in chain:
         raise LedgerError("retirement history: baseline must be on HEAD's first-parent history")
     commits = list(reversed(chain[:chain.index(baseline_id)]))
@@ -292,7 +336,10 @@ def audit_history(root, policy_path, baseline, migrations=()):
         approvals[commit] = (history_path(old), history_path(new))
 
     location = history_path(policy_path)
-    policy, retained, retained_paths = tree_ledger(root, baseline_id, location)
+    reader = HistoryLedgerReader(root)
+    policy, baseline_records, baseline_paths = reader.read(trees[baseline_id], location)
+    # Retention grows as new decisions appear. Do not mutate cached snapshots.
+    retained, retained_paths = dict(baseline_records), dict(baseline_paths)
     # Baseline decisions may predate a previously approved location migration.
     # Their original contents are the retention anchor, not new retirements.
     holds, approved, added = [], [], 0
@@ -304,7 +351,7 @@ def audit_history(root, policy_path, baseline, migrations=()):
                 raise LedgerError("retirement history: migration source differs from active policy")
             location = migration[1]
         try:
-            current_policy, records, paths = tree_ledger(root, commit, location)
+            current_policy, records, paths = reader.read(trees[commit], location)
         except LedgerError as exc:
             holds.append({"commit": commit, "reason": "invalid-ledger", "detail": str(exc)})
             # Keep the last valid state; later restoration cannot erase this hold.
