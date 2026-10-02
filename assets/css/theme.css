@@ -7807,7 +7807,13 @@ html[data-color-scheme="dark"] .askjamie-main .mermaid .edgePath path {
 /* Reserve a minimum diagram height while Mermaid loads. The rendered SVG
    determines the final height without imposing a fixed aspect ratio. */
 .askjamie-hero--universe .mermaid-scroll-wrap {
-  min-height: 14rem;
+  min-height: 22rem;
+}
+
+@media (max-width: 640px) {
+  .askjamie-hero--universe .mermaid-scroll-wrap {
+    min-height: 18rem;
+  }
 }
 
 @media (min-width: 900px) {

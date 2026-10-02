@@ -396,7 +396,13 @@ body.askjamie-main a {
 }
 
 .askjamie-main .askjamie-hero--universe .mermaid-scroll-wrap {
-  min-height: 14rem;
+  min-height: 22rem;
+}
+
+@media (max-width: 640px) {
+  .askjamie-main .askjamie-hero--universe .mermaid-scroll-wrap {
+    min-height: 18rem;
+  }
 }
 
 .askjamie-main .askjamie-mermaid-shell .mermaid:not([data-universe-ready="1"]) {

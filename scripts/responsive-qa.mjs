@@ -9,6 +9,7 @@
  *   - All images loaded (no broken img src)
  *   - CSS and JS assets load (no 404 on critical resources)
  *   - BrandGuard hero geometry stays stable when its deferred theme activates
+ *   - Universe diagram shell stays stable while its rendered SVG initializes
  *
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
@@ -87,6 +88,13 @@ const BRANDGUARD_GEOMETRY_SELECTORS = [
 ];
 const BRANDGUARD_LOGO_SELECTOR =
   '.askjamie-brandguard-page .askjamie-logo--crumb img';
+const UNIVERSE_DIAGRAM_GEOMETRY_PATH = '/universe/';
+const UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set(['mobile-390', 'desktop-1280']);
+const UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX = 1;
+const UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS = [
+  '.askjamie-hero--universe .mermaid-scroll-wrap',
+  '.askjamie-hero--universe .askjamie-mermaid-shell',
+];
 
 async function checkBrandGuardHeroGeometry(page) {
   const errors = [];
@@ -225,6 +233,213 @@ async function checkBrandGuardHeroGeometry(page) {
   };
 }
 
+async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequestSeen) {
+  const errors = [];
+  let before = null;
+  let after = null;
+  let themeActive = false;
+  let mermaidRequested = false;
+  let rendered = false;
+
+  const capture = () => page.evaluate((selectors) => {
+    const round = value => Math.round(value * 100) / 100;
+    const geometry = {};
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) {
+        geometry[selector] = null;
+        continue;
+      }
+      const rect = element.getBoundingClientRect();
+      geometry[selector] = Object.fromEntries(
+        ['x', 'y', 'width', 'height'].map(property => [
+          property,
+          round(rect[property] + (property === 'x' ? window.scrollX : property === 'y' ? window.scrollY : 0)),
+        ])
+      );
+    }
+
+    const shell = document.querySelector(
+      '.askjamie-hero--universe .mermaid-scroll-wrap'
+    );
+    const diagram = document.querySelector(
+      '.askjamie-hero--universe .mermaid'
+    );
+    const figure = document.querySelector(
+      '.askjamie-hero--universe .askjamie-mermaid-shell'
+    );
+    return {
+      ready: diagram?.dataset.universeReady === '1',
+      has_svg_node: Boolean(diagram?.querySelector('svg .node')),
+      source_present: diagram?.textContent.includes('flowchart') ?? false,
+      visibility: diagram ? getComputedStyle(diagram).visibility : null,
+      shell_aria_hidden: shell?.getAttribute('aria-hidden') ?? null,
+      shell_min_height: shell ? round(parseFloat(getComputedStyle(shell).minHeight)) : null,
+      diagram_geometry: diagram ? (() => {
+        const rect = diagram.getBoundingClientRect();
+        return {
+          x: round(rect.x + window.scrollX),
+          y: round(rect.y + window.scrollY),
+          width: round(rect.width),
+          height: round(rect.height),
+        };
+      })() : null,
+      accessible_fallback: {
+        caption: figure?.querySelector('figcaption')?.textContent.trim() ?? '',
+        visible_links: [...(figure?.querySelectorAll('.link-list a') ?? [])]
+          .filter(link => link.getClientRects().length > 0).length,
+      },
+      geometry,
+    };
+  }, UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS);
+
+  const waitForTwoFrames = () => page.evaluate(() =>
+    new Promise(resolve => requestAnimationFrame(() =>
+      requestAnimationFrame(resolve)
+    ))
+  );
+
+  try {
+    await page.locator(UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS[0]).scrollIntoViewIfNeeded();
+
+    [themeActive, mermaidRequested] = await Promise.all([
+      page.waitForFunction(() => {
+        const themeLink = document.querySelector('link[data-deferred-styles]');
+        return themeLink?.media === 'all' && Boolean(themeLink.sheet);
+      }, undefined, { timeout: 15000 }).then(() => true, () => false),
+      mermaidRequestSeen,
+    ]);
+
+    if (themeActive) await waitForTwoFrames();
+    before = await capture();
+    if (!themeActive) {
+      errors.push(
+        'UNIVERSE DIAGRAM GEOMETRY BASELINE UNAVAILABLE: deferred theme did not activate; ' +
+        `measured before=${JSON.stringify(before.geometry)}`
+      );
+    }
+    if (!mermaidRequested) {
+      errors.push(
+        'UNIVERSE DIAGRAM NOT INITIALIZED: Mermaid module request was not observed after bringing the hero into view'
+      );
+    }
+    if (before.ready || before.has_svg_node) {
+      errors.push(
+        'UNIVERSE DIAGRAM BASELINE UNAVAILABLE: SVG rendered before the reserved-shell measurement; ' +
+        `before=${JSON.stringify(before)}`
+      );
+    }
+    if (before.visibility !== 'hidden' || !before.source_present) {
+      errors.push(
+        'UNIVERSE DIAGRAM SOURCE FALLBACK CHANGED: expected hidden Mermaid source before SVG render; ' +
+        `before=${JSON.stringify({ visibility: before.visibility, source_present: before.source_present })}`
+      );
+    }
+    if (before.shell_aria_hidden !== 'true' ||
+        !before.accessible_fallback.caption ||
+        before.accessible_fallback.visible_links < 3) {
+      errors.push(
+        'UNIVERSE DIAGRAM ACCESSIBLE FALLBACK CHANGED: expected an aria-hidden visual diagram, ' +
+        'a figure caption, and three visible page links; ' +
+        `fallback=${JSON.stringify({ aria_hidden: before.shell_aria_hidden, ...before.accessible_fallback })}`
+      );
+    }
+
+    const expectedReservation = (page.viewportSize().width <= 640 ? 18 : 22) * 16;
+    if (before.geometry[UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS[0]]?.height + UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX < expectedReservation) {
+      errors.push(
+        `UNIVERSE DIAGRAM RESERVATION TOO SMALL: expected at least ${expectedReservation}px ` +
+        `before rendering; measured=${JSON.stringify(before.geometry[UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS[0]])}`
+      );
+    }
+
+    releaseMermaid();
+    if (mermaidRequested) {
+      rendered = await page.waitForFunction(() => {
+        const diagram = document.querySelector('.askjamie-hero--universe .mermaid');
+        return diagram?.dataset.universeReady === '1' && Boolean(diagram.querySelector('svg .node'));
+      }, undefined, { timeout: 15000 }).then(() => true, () => false);
+      if (rendered) {
+        await waitForTwoFrames();
+        after = await capture();
+      } else {
+        after = await capture();
+        errors.push(
+          'UNIVERSE DIAGRAM DID NOT REACH READY STATE: expected a rendered SVG node and data-universe-ready=1; ' +
+          `before=${JSON.stringify(before.geometry)}; after=${JSON.stringify(after.geometry)}`
+        );
+      }
+    }
+  } catch (error) {
+    errors.push(`UNIVERSE DIAGRAM GEOMETRY CHECK ERROR: ${error.message.split('\n')[0]}`);
+  } finally {
+    releaseMermaid();
+  }
+
+  const shifts = [];
+  if (before && after && rendered) {
+    for (const selector of UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS) {
+      const beforeRect = before.geometry[selector];
+      const afterRect = after.geometry[selector];
+      if (!beforeRect || !afterRect) {
+        errors.push(
+          `UNIVERSE DIAGRAM GEOMETRY MISSING: ${selector}; ` +
+          `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+        );
+        continue;
+      }
+
+      const delta = Object.fromEntries(
+        ['x', 'y', 'width', 'height'].map(property => [
+          property,
+          Math.round((afterRect[property] - beforeRect[property]) * 100) / 100,
+        ])
+      );
+      const changedProperties = Object.keys(delta).filter(
+        property => Math.abs(delta[property]) > UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX
+      );
+      if (changedProperties.length > 0) {
+        shifts.push({ selector, before: beforeRect, after: afterRect, delta, changed_properties: changedProperties });
+        errors.push(
+          `UNIVERSE DIAGRAM GEOMETRY SHIFT: ${selector} changed ` +
+          `${changedProperties.map(property => `${property}=${delta[property]}px`).join(', ')} ` +
+          `with ${UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+          `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+        );
+      }
+    }
+
+    if (after.diagram_geometry &&
+        before.geometry[UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS[0]].height + UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX < after.diagram_geometry.height) {
+      errors.push(
+        'UNIVERSE DIAGRAM CONTENT EXCEEDS RESERVED SHELL: ' +
+        `reserved=${JSON.stringify(before.geometry[UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS[0]])}; ` +
+        `rendered=${JSON.stringify(after.diagram_geometry)}`
+      );
+    }
+    if (after.visibility !== 'visible' || !after.ready || !after.has_svg_node) {
+      errors.push(
+        'UNIVERSE DIAGRAM READY STATE INVALID: expected the rendered SVG to be visible and marked ready; ' +
+        `after=${JSON.stringify({ ready: after.ready, has_svg_node: after.has_svg_node, visibility: after.visibility })}`
+      );
+    }
+  }
+
+  return {
+    errors,
+    evidence: {
+      threshold_px: UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX,
+      theme_active_before_render: themeActive,
+      mermaid_module_requested: mermaidRequested,
+      rendered_svg_ready: rendered,
+      expected_reservation_px: (page.viewportSize().width <= 640 ? 18 : 22) * 16,
+      before,
+      after,
+      shifts,
+    },
+  };
+}
+
 // ── MODE A: Playwright ────────────────────────────────────────────────────────
 
 async function runWithPlaywright() {
@@ -260,6 +475,26 @@ async function runWithPlaywright() {
   async function runViewport(worker, path, url) {
     const { vp, ctx } = worker;
     const page = await ctx.newPage();
+    const checkUniverseDiagram =
+      path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
+      UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
+    let releaseUniverseMermaid;
+    let universeMermaidImportGate = Promise.resolve();
+    let universeMermaidRequestSeen = Promise.resolve(false);
+    if (checkUniverseDiagram) {
+      let releaseImport;
+      universeMermaidImportGate = new Promise(resolve => { releaseImport = resolve; });
+      let released = false;
+      releaseUniverseMermaid = () => {
+        if (released) return;
+        released = true;
+        releaseImport();
+      };
+      universeMermaidRequestSeen = page.waitForRequest(
+        request => new URL(request.url()).pathname === '/assets/vendor/mermaid/mermaid.esm.min.mjs',
+        { timeout: 15000 }
+      ).then(() => true, () => false);
+    }
     const blockedExternal = new Set();
     const consoleErrors = [];
     const requestFailures = [];
@@ -312,6 +547,10 @@ async function runWithPlaywright() {
     };
 
     await page.route('**/*', route => {
+      if (checkUniverseDiagram &&
+          new URL(route.request().url()).pathname === '/assets/vendor/mermaid/mermaid.esm.min.mjs') {
+        return universeMermaidImportGate.then(() => route.continue());
+      }
       if (EXTERNAL_BLOCK.test(route.request().url())) {
         blockedExternal.add(route.request().url());
         return route.abort();
@@ -347,6 +586,13 @@ async function runWithPlaywright() {
         path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_GEOMETRY_VIEWPORT
           ? await checkBrandGuardHeroGeometry(page)
           : null;
+      const universeDiagramGeometry = checkUniverseDiagram
+        ? await checkUniverseDiagramGeometry(
+          page,
+          releaseUniverseMermaid,
+          universeMermaidRequestSeen
+        )
+        : null;
 
       // Lazy loading is viewport-driven. Scroll each lazy image into view so
       // every runtime observes the same request opportunity before the page
@@ -388,6 +634,7 @@ async function runWithPlaywright() {
       );
       const errors = [
         ...(heroThemeGeometry?.errors ?? []),
+        ...(universeDiagramGeometry?.errors ?? []),
         ...(overflow ? [`OVERFLOW: scrollWidth > ${vp.width}px`] : []),
         ...consoleErrors.slice(0, 5).map(e => 'CONSOLE: ' + e),
         ...requestFailures.slice(0, 5).map(r =>
@@ -406,6 +653,9 @@ async function runWithPlaywright() {
                     mode: 'playwright', pass: errors.length === 0, errors, warnings,
                     ...(heroThemeGeometry
                       ? { hero_theme_geometry: heroThemeGeometry.evidence }
+                      : {}),
+                    ...(universeDiagramGeometry
+                      ? { universe_diagram_geometry: universeDiagramGeometry.evidence }
                       : {}) };
       if (!row.pass) {
         const ssFile = `${path.replace(/\//g, '_')}_${vp.name}.png`;
@@ -586,6 +836,7 @@ async function staticAnalysis() {
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 8 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-390.',
+      'Universe diagram shell geometry through Mermaid rendering is checked only in Playwright mode at mobile-390 and desktop-1280.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
     base_url: BASE_URL,
