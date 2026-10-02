@@ -70,4 +70,4 @@ publicDir = "."
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 360000
+timeoutMs = 480000
