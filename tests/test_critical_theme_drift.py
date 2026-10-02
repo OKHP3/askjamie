@@ -150,3 +150,19 @@ def test_responsive_qa_measures_brandguard_geometry_after_branded_fonts_load():
     assert "after=${JSON.stringify(afterRect)}" in source
     assert "font_asset_loaded=${hasFontAsset}" in source
     assert "hero_font_geometry" in source
+
+
+def test_responsive_qa_measures_universe_page_map_geometry_with_dark_theme():
+    source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
+
+    assert "UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set(['mobile-390', 'desktop-1280'])" in source
+    assert "page.emulateMedia({ colorScheme: 'dark' })" in source
+    assert "localStorage.setItem('askjamie-color-scheme', 'dark')" in source
+    assert "UNIVERSE PAGE MAP DARK THEME NOT ACTIVE" in source
+    assert "UNIVERSE PAGE MAP GEOMETRY SHIFT" in source
+    assert "UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX" in source
+    assert "UNIVERSE PAGE MAP KEYBOARD OPEN FAILED" in source
+    assert "UNIVERSE PAGE MAP KEYBOARD CLOSE FAILED" in source
+    assert "UNIVERSE PAGE MAP COLLAPSED STATE INVALID" in source
+    assert "dark_theme_active_before_render" in source
+    assert "dark_theme_active_after_render" in source

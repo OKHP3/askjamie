@@ -12,7 +12,7 @@
  *   - BrandGuard hero geometry stays stable after its branded web fonts load
  *   - Universe diagram shell stays stable while its rendered SVG initializes
  *   - Universe caption and links remain usable when Mermaid fails or JavaScript is off
- *   - Every opened Universe page-map group keeps its shell and nearby content stable
+ *   - Every opened Universe page-map group keeps its shell and nearby content stable in dark mode
  *
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
@@ -115,6 +115,10 @@ const UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS = [
   '.askjamie-hero--universe .askjamie-mermaid-shell',
 ];
 
+function hasDarkUniverseTheme(state) {
+  return state?.color_scheme === 'dark' && state?.prefers_dark === true;
+}
+
 async function captureUniversePageMapGeometry(page, groupIndex) {
   return page.evaluate((index) => {
     const round = value => Math.round(value * 100) / 100;
@@ -142,6 +146,8 @@ async function captureUniversePageMapGeometry(page, groupIndex) {
     const nextSummary = groups[index + 1]?.querySelector('summary');
 
     return {
+      color_scheme: document.documentElement.getAttribute('data-color-scheme'),
+      prefers_dark: window.matchMedia('(prefers-color-scheme: dark)').matches,
       title: summary?.textContent.trim() ?? '',
       node_count: Number(group.dataset.mapNodeCount),
       open: group.open,
@@ -238,6 +244,13 @@ async function openUniversePageMapGroupForGeometryCheck(page, groupIndex, groupC
       `generated group was also open; before=${JSON.stringify(before)}`
     );
   }
+  if (!hasDarkUniverseTheme(before)) {
+    errors.push(
+      `UNIVERSE PAGE MAP DARK THEME NOT ACTIVE: expected a pinned dark color scheme and dark ` +
+      `browser preference before measuring group ${groupIndex + 1}; ` +
+      `before=${JSON.stringify({ color_scheme: before?.color_scheme, prefers_dark: before?.prefers_dark })}`
+    );
+  }
 
   const expectedReservation = UNIVERSE_PAGE_MAP_RESERVATIONS_PX.get(before?.node_count) ??
     DEFAULT_UNIVERSE_PAGE_MAP_RESERVATION_PX;
@@ -283,6 +296,13 @@ async function compareUniversePageMapGeometry(page, groupCheck, after) {
   const shifts = [];
   const groupLabel = before?.title ? `"${before.title}"` : `group ${groupIndex + 1}`;
   if (before && after) {
+    if (!hasDarkUniverseTheme(after)) {
+      errors.push(
+        `UNIVERSE PAGE MAP DARK THEME NOT ACTIVE: expected a pinned dark color scheme and dark ` +
+        `browser preference after rendering group ${groupIndex + 1}; ` +
+        `after=${JSON.stringify({ color_scheme: after?.color_scheme, prefers_dark: after?.prefers_dark })}`
+      );
+    }
     for (const selector of [
       'group',
       'summary',
@@ -806,6 +826,8 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
       '.askjamie-hero--universe .askjamie-mermaid-shell'
     );
     return {
+      color_scheme: document.documentElement.getAttribute('data-color-scheme'),
+      prefers_dark: window.matchMedia('(prefers-color-scheme: dark)').matches,
       ready: diagram?.dataset.universeReady === '1',
       has_svg_node: Boolean(diagram?.querySelector('svg .node')),
       source_present: diagram?.textContent.includes('flowchart') ?? false,
@@ -861,6 +883,15 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
       errors.push(
         'UNIVERSE DIAGRAM GEOMETRY BASELINE UNAVAILABLE: deferred theme did not activate; ' +
         `measured before=${JSON.stringify(before.geometry)}`
+      );
+    }
+    if (!hasDarkUniverseTheme(before)) {
+      errors.push(
+        'UNIVERSE DIAGRAM DARK THEME NOT ACTIVE: expected a pinned dark color scheme and dark ' +
+        `browser preference before rendering; before=${JSON.stringify({
+          color_scheme: before.color_scheme,
+          prefers_dark: before.prefers_dark,
+        })}`
       );
     }
     if (before.ready || before.has_svg_node) {
@@ -928,6 +959,15 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
       errors.push(
         'UNIVERSE DIAGRAM DID NOT REACH READY STATE: expected a rendered SVG node and data-universe-ready=1; ' +
         `before=${JSON.stringify(before.geometry)}; after=${JSON.stringify(after.geometry)}`
+      );
+    }
+    if (after && !hasDarkUniverseTheme(after)) {
+      errors.push(
+        'UNIVERSE DIAGRAM DARK THEME NOT ACTIVE: expected a pinned dark color scheme and dark ' +
+        `browser preference after rendering; after=${JSON.stringify({
+          color_scheme: after.color_scheme,
+          prefers_dark: after.prefers_dark,
+        })}`
       );
     }
 
@@ -1004,6 +1044,8 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
     evidence: {
       threshold_px: UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX,
       theme_active_before_render: themeActive,
+      dark_theme_active_before_render: hasDarkUniverseTheme(before),
+      dark_theme_active_after_render: hasDarkUniverseTheme(after),
       mermaid_module_requested: mermaidRequested,
       rendered_svg_ready: rendered,
       expected_reservation_px: (page.viewportSize().width <= 640 ? 18 : 22) * 16,
@@ -1351,7 +1393,9 @@ async function runWithPlaywright() {
       return route.continue();
     });
     if (checkUniverseDiagram) {
+      await page.emulateMedia({ colorScheme: 'dark' });
       await page.addInitScript(() => {
+        localStorage.setItem('askjamie-color-scheme', 'dark');
         const queue = [];
         Object.defineProperty(window, '__responsiveQaMermaidRenderQueue', {
           configurable: false,
@@ -1720,7 +1764,7 @@ async function staticAnalysis() {
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-360, mobile-390, and mobile-430.',
       'BrandGuard hero geometry after deferred web fonts load is checked only in Playwright mode at mobile-390.',
-      'Universe hero and opened page-map shell geometry through Mermaid rendering is checked only in Playwright mode at mobile-390 and desktop-1280.',
+      'Universe hero and opened page-map shell geometry through Mermaid rendering is checked in dark mode only in Playwright mode at mobile-390 and desktop-1280.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
     base_url: BASE_URL,
