@@ -986,6 +986,89 @@ class DecisionLedgerTests(unittest.TestCase):
                 )
                 self.assertEqual(git(root, "rev-parse", "HEAD"), checkout_tip)
 
+    def test_cli_missing_active_line_is_unverifiable_without_checkout_differences(
+        self,
+    ) -> None:
+        root, _ = self.make_repo()
+
+        git(root, "branch", "archive")
+        git(root, "checkout", "-q", "archive")
+        (root / "archive-only.txt").write_text("archive\n", encoding="utf-8")
+        git(root, "add", "archive-only.txt")
+        git(root, "commit", "-qm", "archive-only path")
+        archive_tip = git(root, "rev-parse", "HEAD")
+
+        git(root, "checkout", "-q", "main")
+        (root / "active-only.txt").write_text("active\n", encoding="utf-8")
+        git(root, "add", "active-only.txt")
+        git(root, "commit", "-qm", "active-only path")
+        git(root, "checkout", "-qb", "checkout-only-line")
+        (root / "checkout-only.txt").write_text("checkout\n", encoding="utf-8")
+        git(root, "add", "checkout-only.txt")
+        git(root, "commit", "-qm", "checkout-only path")
+
+        missing_active_line = "stale-selected-line"
+        ledger = self.write_ledger(
+            root,
+            f"| `archive` | **archive** | `{archive_tip}` | reviewed |",
+        )
+        refs_before = git(
+            root, "for-each-ref", "--format=%(refname) %(objectname)"
+        )
+        checkout_tip = git(root, "rev-parse", "HEAD")
+        worktree_before = git(
+            root, "status", "--porcelain", "--untracked-files=all"
+        )
+        self.assertEqual(
+            git(root, "branch", "--show-current"), "checkout-only-line"
+        )
+        self.assertNotEqual(checkout_tip, archive_tip)
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--root",
+                str(root),
+                "--base",
+                "main",
+                "--decision-ledger",
+                str(ledger),
+                "--active-line",
+                missing_active_line,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        archive_report = report["archive_equivalents"]["archives"][0]
+        self.assertEqual(
+            report["archive_equivalents"]["active_line"], missing_active_line
+        )
+        self.assertIsNone(report["archive_equivalents"]["active_line_tip_sha"])
+        self.assertEqual(archive_report["tip_sha"], archive_tip)
+        self.assertEqual(archive_report["branch_tip_sha"], archive_tip)
+        self.assertEqual(archive_report["classification"], "unverifiable")
+        self.assertIn(
+            "active line does not resolve to a commit", archive_report["error"]
+        )
+        self.assertEqual(archive_report.get("file_differences", []), [])
+        self.assertEqual(
+            refs_before,
+            git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+        )
+        self.assertEqual(
+            git(root, "branch", "--show-current"), "checkout-only-line"
+        )
+        self.assertEqual(git(root, "rev-parse", "HEAD"), checkout_tip)
+        self.assertEqual(
+            worktree_before,
+            git(root, "status", "--porcelain", "--untracked-files=all"),
+        )
+
     def test_archive_equivalence_accepts_exact_tip_supersession_evidence(self) -> None:
         root, _ = self.make_repo()
         git(root, "branch", "superseded-archive")
