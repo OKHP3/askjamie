@@ -221,7 +221,7 @@ body.askjamie-main a {
 
 .askjamie-main .capability-transition .eyebrow {
   margin: 0 0 1rem;
-  color: #3c8ea1;
+  color: var(--color-inline-link, #1f5a67);
   font-family: var(--font-accent, "Kalam", system-ui, -apple-system, "Segoe UI", sans-serif);
   font-size: 0.95rem;
   font-weight: 400;
@@ -302,7 +302,7 @@ body.askjamie-main a {
 
 .askjamie-main .askjamie-hero-copy .eyebrow {
   margin: 0 0 0.75rem;
-  color: #3c8ea1;
+  color: var(--color-inline-link, #1f5a67);
   font-family: "Kalam", "Segoe UI", sans-serif;
   font-size: 0.95rem;
 }
