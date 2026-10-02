@@ -65,6 +65,7 @@ IGNORED_DIRS = {
 KEBAB_OK = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REPLIT_BRANCH_PATTERNS = re.compile(r"^(subrepl-|replit-agent$|agent/)")
 HOSTED_COMMAND_TIMEOUT_SECONDS = 30
+HOSTED_HISTORY_MAX_PAGES = 10
 
 
 class AuditError(RuntimeError):
@@ -275,10 +276,9 @@ def gh_api_list(
     root: Path, endpoint: str, label: str,
     record_validator: Callable[[object], bool] | None = None,
 ) -> tuple[list | None, str | None]:
-    """Read every 100-item page; never expose a partial history as complete."""
+    """Read at most 10 100-item pages; discard history unless completion is proven."""
     items: list = []
-    page = 1
-    while True:
+    for page in range(1, HOSTED_HISTORY_MAX_PAGES + 1):
         data, error = gh_api_json(root, f"{endpoint}&per_page=100&page={page}")
         if error:
             return None, f"GitHub {label} history incomplete at page {page}: {error}"
@@ -291,7 +291,11 @@ def gh_api_list(
         items.extend(data)
         if len(data) < 100:
             return items, None
-        page += 1
+    return None, (
+        f"GitHub {label} history incomplete after page {HOSTED_HISTORY_MAX_PAGES}: "
+        f"pagination budget exhausted ({HOSTED_HISTORY_MAX_PAGES} pages); "
+        "no short or empty page confirmed completion"
+    )
 
 
 def github_hosted_evidence(

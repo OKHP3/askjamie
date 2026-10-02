@@ -466,6 +466,111 @@ class AuditRepoTests(unittest.TestCase):
                     self.assertEqual(report["entries"][0][other]["status"], "available")
                     self.assert_single_hosted_hold(report, code, "review")
 
+    def test_history_page_budget_discards_unique_or_repeated_full_pages(self) -> None:
+        self.assertEqual(audit_repo.HOSTED_HISTORY_MAX_PAGES, 10)
+        for repeated in (False, True):
+            for label in ("deployments", "pull-request"):
+                calls = []
+
+                def response(_root, endpoint):
+                    calls.append(endpoint)
+                    start = 0 if repeated else (len(calls) - 1) * 100
+                    return [{"id": n} for n in range(start, start + 100)], None
+
+                with self.subTest(repeated=repeated, label=label), patch.object(
+                    audit_repo, "gh_api_json", side_effect=response,
+                ):
+                    data, error = audit_repo.gh_api_list(Path("."), "history?ref=work", label)
+                self.assertIsNone(data)
+                self.assertEqual(error, (
+                    f"GitHub {label} history incomplete after page 10: "
+                    "pagination budget exhausted (10 pages); "
+                    "no short or empty page confirmed completion"
+                ))
+                self.assertEqual(calls, [
+                    f"history?ref=work&per_page=100&page={page}" for page in range(1, 11)
+                ])
+
+    def test_history_completes_on_short_or_empty_last_budgeted_page(self) -> None:
+        for final_count in (0, 99):
+            pages = [[{"id": page * 100 + n} for n in range(100)] for page in range(9)]
+            pages.append([{"id": 900 + n} for n in range(final_count)])
+            with self.subTest(final_count=final_count), patch.object(
+                audit_repo, "gh_api_json", side_effect=[(page, None) for page in pages],
+            ) as api:
+                data, error = audit_repo.gh_api_list(Path("."), "history?ref=work", "deployments")
+            self.assertIsNone(error)
+            self.assertEqual(data, sum(pages, []))
+            self.assertEqual(api.call_count, 10)
+
+    def test_history_budget_holds_continue_other_evidence_and_provider_ref_pairs(self) -> None:
+        keys = ("deployments", "pull_requests")
+        codes = (
+            "hosted-deployment-evidence-unknown", "hosted-pull-request-evidence-unknown",
+        )
+        for exhausted in ((0,), (1,), (0, 1)):
+            calls = []
+            pair = -1
+            full_page = [{"id": n, "number": n, "state": "closed", "merged_at": "2099-01-01"}
+                         for n in range(100)]
+
+            def command(args, _root):
+                nonlocal pair
+                if args[0] == "git":
+                    pair += 1
+                    return subprocess.CompletedProcess(args, 0, f"{'a' * 40}\t{args[-1]}\n", "")
+                endpoint = args[2]
+                calls.append((pair, endpoint))
+                if "/branches/" in endpoint:
+                    data = {"protected": False}
+                else:
+                    index = 0 if "/deployments?" in endpoint else 1
+                    data = full_page if pair == 0 and index in exhausted else []
+                return subprocess.CompletedProcess(args, 0, json.dumps(data), "")
+
+            with self.subTest(exhausted=exhausted), patch.object(
+                audit_repo, "remote_url_for_provider",
+                side_effect=lambda _root, provider: (provider, "https://github.com/fixture/repo.git"),
+            ), patch.object(audit_repo.shutil, "which", return_value="/fixture/gh"), patch.object(
+                audit_repo, "hosted_command", side_effect=command,
+            ):
+                report = audit_repo.audit_hosted_branches(
+                    Path("."), ["origin=work", "mirror=work", "origin=later"],
+                )
+            first = report["entries"][0]
+            self.assertEqual(first["protection"]["status"], "unprotected")
+            expected_codes = sorted(codes[index] for index in exhausted)
+            self.assertEqual(first["blocking_reasons"], expected_codes)
+            self.assertTrue(first["deletion_blocked"])
+            for index, key in enumerate(keys):
+                evidence = first[key]
+                if index in exhausted:
+                    self.assertEqual(evidence["status"], "unknown")
+                    self.assertIn("pagination budget exhausted (10 pages)", evidence["reason"])
+                    self.assertNotIn("items", evidence)
+                    self.assertNotIn("count", evidence)
+                else:
+                    self.assertEqual(evidence["status"], "available")
+                    self.assertEqual(evidence["count"], 0)
+                fragment = "/deployments?" if index == 0 else "/pulls?"
+                endpoints = [endpoint for current, endpoint in calls
+                             if current == 0 and fragment in endpoint]
+                self.assertEqual(len(endpoints), 10 if index in exhausted else 1)
+                self.assertTrue(endpoints[-1].endswith(f"page={len(endpoints)}"))
+            for current, later in enumerate(report["entries"][1:], 1):
+                self.assertEqual(later["classification"], "present")
+                self.assertFalse(later["deletion_blocked"])
+                self.assertEqual(len([endpoint for pair_index, endpoint in calls
+                                      if pair_index == current]), 3)
+                for key in keys:
+                    self.assertEqual(later[key]["status"], "available")
+                    self.assertEqual(later[key]["count"], 0)
+            self.assertEqual(report["blocking_entries"], ["origin:work"])
+            self.assertEqual(len(report["cleanup_plan"]["review"]), 1)
+            self.assertEqual(report["cleanup_plan"]["review"][0]["blocking_reasons"], expected_codes)
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
     def test_check_delete_rejects_hosted_options_before_repository_or_fetch(self) -> None:
         for option in ("--hosted-branch", "--hosted-ref"):
             with self.subTest(option=option), tempfile.TemporaryDirectory() as directory:

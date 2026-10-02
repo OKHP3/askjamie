@@ -130,9 +130,15 @@ pair with `--hosted-branch origin=feature/example` (repeat as needed).
 the remote ref without fetching or pruning. For GitHub remotes it reads
 protection, deployment, and PR evidence through an installed, authenticated
 `gh` CLI; unavailable evidence remains an explicit hold.
-Deployment and PR history are read in 100-record pages until a short or empty
-page confirms completion. A failed or malformed page discards that partial
-history and retains its unknown-evidence hold, with the failing page identified.
+Deployment and PR history are read in 100-record pages, with a **10-page budget
+per history lookup**. Only a short or empty page within that budget confirms
+completion. A full tenth page exhausts the budget: the entire partial history
+is discarded, the affected evidence stays `unknown`, and its existing
+`hosted-deployment-evidence-unknown` or `hosted-pull-request-evidence-unknown`
+hold blocks deletion. The reason identifies the last page and the page limit.
+This also bounds providers that continually return full or repeated pages.
+A failed or malformed page likewise discards partial history and retains its
+unknown-evidence hold, with the failing page identified.
 Run hosted inspection separately from
 `--check-delete`; combining those options is rejected before fetching or
 preparing deletion commands.
@@ -144,9 +150,14 @@ its protection, deployment, or PR evidence `unknown` and retains the
 corresponding unknown-evidence hold. The reason states that the command timed
 out and gives the time limit. Partial output is discarded, never interpreted
 as a missing branch, empty history, or deletion approval. Other evidence
-lookups and requested provider/ref pairs still run; the limit is per command,
-not a total audit deadline (remote and protection probes plus all deployment
-and PR history pages for each present GitHub ref).
+lookups and requested provider/ref pairs still run, including after a history
+lookup exhausts its page budget. The timeout is per command, not a total audit
+deadline. Combined with the independent 10-page budgets, each present GitHub ref
+uses at most 22 hosted commands (remote and protection probes plus up to 10
+deployment and 10 PR pages), or 660 seconds of command timeout allowances,
+excluding process-start and local processing overhead. Budgets reset for each
+history lookup and requested provider/ref pair; they are not shared across the
+audit.
 This limit does not apply to local Git checks or the separate opt-in `--fetch`.
 
 If a hosted process cannot start (`OSError`, including a missing executable or
@@ -388,6 +399,7 @@ unblocked entries are not deletion approvals and are omitted from this plan.
 | Detached HEAD | Audit may continue, but no branch deletion may be recommended until the active work is identified |
 | PR lookup unavailable | Put affected branches in `review`; never infer abandonment |
 | Hosted command times out | Preserve an inaccessible or unknown-evidence hold with a timeout reason; continue other requested checks, never approve deletion |
+| Hosted history reaches 10 full pages | Discard partial history, retain its unknown-evidence deletion hold with the page-budget reason, and continue other requested checks |
 | Hosted command cannot start | Preserve an inaccessible or unknown-evidence hold with the operating-system error; continue other lookups and provider/ref pairs, never approve deletion |
 | Unique unmerged commits | Preserve in `review` unless the owner explicitly abandons them |
 | Rename affects public URL | Require redirect or transition plan before execution |
