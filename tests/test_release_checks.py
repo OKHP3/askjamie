@@ -1295,6 +1295,72 @@ process.stdout.write(JSON.stringify(summary));
     ]
 
 
+def test_lighthouse_non_finite_metrics_are_unavailable_without_browser():
+    runner = """
+import {
+  LIGHTHOUSE_ROUTES,
+  summarizePage,
+} from "./scripts/lighthouse-routes.mjs";
+
+const report = {
+  categories: {
+    performance: { score: Number.NaN },
+    accessibility: { score: Number.POSITIVE_INFINITY },
+    "best-practices": { score: Number.NEGATIVE_INFINITY },
+    seo: { score: Number.NaN },
+  },
+  audits: {
+    "largest-contentful-paint": { numericValue: Number.POSITIVE_INFINITY },
+    "cumulative-layout-shift": { numericValue: Number.NEGATIVE_INFINITY },
+    "total-blocking-time": { numericValue: Number.NaN },
+    "first-contentful-paint": { numericValue: Number.POSITIVE_INFINITY },
+    "speed-index": { numericValue: Number.NEGATIVE_INFINITY },
+    "largest-contentful-paint-element": {
+      details: { items: [{ items: [{ node: { selector: "main" } }] }] },
+    },
+  },
+};
+const summary = summarizePage({
+  report,
+  path: LIGHTHOUSE_ROUTES.brandguard,
+  baselinePage: { performance: 88, lcpMs: 2000 },
+});
+process.stdout.write(JSON.stringify(summary));
+""".strip()
+
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", runner],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    summary = json.loads(result.stdout)
+    assert summary["path"] == "/lens-system/okhp3-brandguard/"
+    assert summary["performance"] is None
+    assert summary["accessibility"] is None
+    assert summary["bestPractices"] is None
+    assert summary["seo"] is None
+    assert summary["lcpMs"] is None
+    assert summary["cls"] is None
+    assert summary["tbtMs"] is None
+    assert summary["fcpMs"] is None
+    assert summary["speedIndexMs"] is None
+    assert summary["deltaPerformance"] is None
+    assert summary["deltaLcpMs"] is None
+    assert summary["unavailableMetrics"] == [
+        {"field": "performance", "source": "categories.performance.score"},
+        {"field": "accessibility", "source": "categories.accessibility.score"},
+        {"field": "bestPractices", "source": "categories.best-practices.score"},
+        {"field": "seo", "source": "categories.seo.score"},
+        {"field": "lcpMs", "source": "audits.largest-contentful-paint.numericValue"},
+        {"field": "cls", "source": "audits.cumulative-layout-shift.numericValue"},
+        {"field": "tbtMs", "source": "audits.total-blocking-time.numericValue"},
+        {"field": "fcpMs", "source": "audits.first-contentful-paint.numericValue"},
+        {"field": "speedIndexMs", "source": "audits.speed-index.numericValue"},
+    ]
+
+
 def test_lighthouse_brandguard_repeat_summary_keeps_conditions_and_missing_values_separate(tmp_path):
     runner = tmp_path / "repeat-summary-fixture.mjs"
     runner.write_text(
