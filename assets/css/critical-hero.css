@@ -399,6 +399,14 @@ body.askjamie-main a {
   min-height: 22rem;
 }
 
+.askjamie-main .universe-map-group[data-map-node-count="4"] .mermaid-scroll-wrap {
+  min-height: 22rem;
+}
+
+.askjamie-main .universe-map-group[data-map-node-count="5"] .mermaid-scroll-wrap {
+  min-height: 17rem;
+}
+
 @media (max-width: 640px) {
   .askjamie-main .askjamie-hero--universe .mermaid-scroll-wrap {
     min-height: 18rem;

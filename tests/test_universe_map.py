@@ -52,6 +52,7 @@ def test_add_remove_idempotence_and_readonly_check(tmp_path):
     assert b'click n' not in before and b'Keep this introduction' in before
     assert b'class="mermaid-scroll-wrap" aria-hidden="true" tabindex="-1"' in before
     assert b'class="mermaid" inert' in before
+    assert b'data-map-node-count="2"' in before and b'flowchart LR' in before
     rows.pop()
     index.write_text(json.dumps({'entries': rows}))
     with pytest.raises(ValueError, match='Stale universe output'):
@@ -59,6 +60,22 @@ def test_add_remove_idempotence_and_readonly_check(tmp_path):
     assert page.read_bytes() == before
     adapter.sync(tmp_path)
     assert '/new/' not in page.read_text()
+
+
+def test_wider_groups_use_top_to_bottom_and_record_node_count(tmp_path):
+    adapter = load('sync-universe-map')
+    rows = fixture_site(tmp_path)
+    rows.extend([
+        {'url': '/second/', 'title': 'Second'},
+        {'url': '/third/', 'title': 'Third'},
+    ])
+    index = tmp_path / 'index.json'
+    index.write_text(json.dumps({'entries': rows}))
+    adapter.sync(tmp_path)
+
+    page = (tmp_path / 'universe/index.html').read_bytes()
+    assert b'data-map-node-count="4"' in page
+    assert b'flowchart TB' in page
 
 
 def test_invalid_input_preserves_published_output(tmp_path):
