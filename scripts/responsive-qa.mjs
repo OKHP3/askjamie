@@ -56,6 +56,7 @@ const VIEWPORTS = [
 // Cap concurrent viewport work at four to limit browser request bursts while
 // preserving every viewport row in the release inventory.
 const VIEWPORT_CONCURRENCY = 4;
+const LAZY_IMAGE_REQUEST_TIMEOUT_MS = 5000;
 
 // The sitemap is the release inventory. This avoids silently testing a stale
 // hand-maintained list when a public route is added or retired.
@@ -616,10 +617,18 @@ async function runWithPlaywright() {
       );
       const pendingLazyRequests = lazyImageUrls
         .filter(imageUrl => !requestedUrls.has(imageUrl))
-        .map(imageUrl =>
-          page.waitForRequest(request => request.url() === imageUrl, { timeout: 5000 })
-            .catch(() => null)
-        );
+        .map(async imageUrl => {
+          const observed = await page.waitForRequest(
+            request => request.url() === imageUrl,
+            { timeout: LAZY_IMAGE_REQUEST_TIMEOUT_MS }
+          ).then(() => true, () => false);
+          if (!observed) {
+            warnings.push(
+              `lazy image request not observed within ${LAZY_IMAGE_REQUEST_TIMEOUT_MS}ms: ` +
+              `route ${url}; image ${imageUrl}`
+            );
+          }
+        });
       for (let index = 0, count = await lazyImages.count(); index < count; index += 1) {
         await lazyImages.nth(index).scrollIntoViewIfNeeded().catch(() => {});
       }
