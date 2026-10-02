@@ -1468,7 +1468,10 @@ def test_lighthouse_brandguard_repeat_summary_keeps_conditions_and_missing_value
     runner = tmp_path / "repeat-summary-fixture.mjs"
     runner.write_text(
         """
-import { summarizeBrandGuardSamples } from "./scripts/lighthouse-routes.mjs";
+import {
+  formatUnavailableBrandGuardSampleMetricsNotice,
+  summarizeBrandGuardSamples
+} from "./scripts/lighthouse-routes.mjs";
 
 const pages = [
   { fcpMs: 100, speedIndexMs: 500, lcpMs: 3500, tbtMs: 20, lcpInvalidated: false },
@@ -1477,11 +1480,17 @@ const pages = [
 ];
 const samples = pages.map((page, index) => ({
   report: index === 0 ? "brandguard.json" : `brandguard-sample-0${index + 1}.json`,
-  page
+  page: {
+    ...page,
+    unavailableMetrics: index === 2 ? [{ field: "fcpMs" }, { field: "tbtMs" }] : []
+  }
 }));
+const controlledSummary = summarizeBrandGuardSamples(samples, { controlled: true });
 process.stdout.write(JSON.stringify({
-  controlled: summarizeBrandGuardSamples(samples, { controlled: true }),
-  normal: summarizeBrandGuardSamples(samples, { controlled: false })
+  controlled: controlledSummary,
+  normal: summarizeBrandGuardSamples(samples, { controlled: false }),
+  controlledNotice: formatUnavailableBrandGuardSampleMetricsNotice(samples),
+  completeNotice: formatUnavailableBrandGuardSampleMetricsNotice(samples.slice(0, 2))
 }));
 """.strip()
         + "\n",
@@ -1518,6 +1527,11 @@ process.stdout.write(JSON.stringify({
         "unavailableCount": 1,
     }
     assert controlled["samples"][1]["report"] == "brandguard-sample-02.json"
+    assert emitted["controlledNotice"] == (
+        "Unavailable repeated BrandGuard sample metrics:\n"
+        "  sample 3 (brandguard-sample-03.json): fcpMs, tbtMs, lcpInvalidated"
+    )
+    assert emitted["completeNotice"] == ""
 
     normal = emitted["normal"]
     assert normal["condition"] == "normal"
@@ -1613,6 +1627,9 @@ const report = {
     metrics: { details: { items: [{ lcpInvalidated: sampleOffset === 2 }] } }
   }
 };
+if (sampleIndex === 3 || (args[0].includes("single-sample.invalid") && isBrandGuard)) {
+  delete report.audits["first-contentful-paint"];
+}
 fs.writeFileSync(reportPath, JSON.stringify(report));
 """,
         encoding="utf-8",
@@ -1641,6 +1658,37 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
         text=True,
     )
     assert normal_run.returncode == 0, normal_run.stderr
+    assert (
+        "Unavailable repeated BrandGuard sample metrics:\n"
+        "  sample 3 (brandguard-sample-03.json): fcpMs"
+    ) in normal_run.stderr
+    assert "sample 1 (brandguard.json)" not in normal_run.stderr
+    assert "sample 2 (brandguard-sample-02.json)" not in normal_run.stderr
+
+    single_sample_run = subprocess.run(
+        [
+            *common_args[:3],
+            "--brandguard-samples=1",
+            common_args[4],
+            "--base-url=https://single-sample.invalid",
+            "--run-id=single-sample",
+        ],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert single_sample_run.returncode == 0, single_sample_run.stderr
+    assert "Unavailable Lighthouse metrics:" in single_sample_run.stderr
+    assert "Unavailable repeated BrandGuard sample metrics:" not in single_sample_run.stderr
+    single_sample_summary = json.loads(
+        (
+            audit_dir
+            / "lighthouse-2099-02-03-mobile-single-sample/summary.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert "brandguardRepeatSamples" not in single_sample_summary
+
     normal_dir = audit_dir / "lighthouse-2099-02-03-mobile"
     original_evidence = {
         path.name: path.read_bytes()
@@ -1750,11 +1798,28 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
             "max": 3700,
             "spread": 200,
         }
+        assert repeat["metrics"]["fcpMs"] == {
+            "availableCount": 2,
+            "unavailableCount": 1,
+            "min": 120,
+            "max": 140,
+            "spread": 20,
+        }
         assert [sample["report"] for sample in repeat["samples"]] == [
             "brandguard.json",
             "brandguard-sample-02.json",
             "brandguard-sample-03.json",
         ]
+        assert repeat["samples"][2]["fcpMs"] is None
+        assert set(repeat["samples"][2]) == {
+            "sample",
+            "report",
+            "fcpMs",
+            "speedIndexMs",
+            "lcpMs",
+            "tbtMs",
+            "lcpInvalidated",
+        }
         assert all((output_dir / report).is_file() for report in (
             "brandguard.json",
             "brandguard-sample-02.json",

@@ -446,6 +446,31 @@ export function formatUnavailableMetricsNotice(pages) {
     : "";
 }
 
+export function formatUnavailableBrandGuardSampleMetricsNotice(samples) {
+  const numericFields = ["fcpMs", "speedIndexMs", "lcpMs", "tbtMs"];
+  const affectedSamples = (Array.isArray(samples) ? samples : [])
+    .flatMap(({ report, page }, index) => {
+      const fields = new Set(
+        (Array.isArray(page?.unavailableMetrics) ? page.unavailableMetrics : [])
+          .map((metric) => metric?.field)
+          .filter((field) => typeof field === "string" && field.length > 0),
+      );
+      for (const field of numericFields) {
+        if (typeof page?.[field] !== "number" || !Number.isFinite(page[field])) fields.add(field);
+      }
+      if (typeof page?.lcpInvalidated !== "boolean") fields.add("lcpInvalidated");
+      if (fields.size === 0) return [];
+
+      const reportName = typeof report === "string" && report.length > 0
+        ? report
+        : "report unavailable";
+      return [`  sample ${index + 1} (${reportName}): ${[...fields].join(", ")}`];
+    });
+  return affectedSamples.length
+    ? `Unavailable repeated BrandGuard sample metrics:\n${affectedSamples.join("\n")}`
+    : "";
+}
+
 export function summarizeBrandGuardSamples(samples, { controlled }) {
   if (!Array.isArray(samples) || samples.length === 0) {
     throw new Error("At least one BrandGuard sample is required.");
@@ -758,6 +783,13 @@ function main() {
   ])));
   const unavailableMetricsNotice = formatUnavailableMetricsNotice(summary.pages);
   if (unavailableMetricsNotice) console.warn(`\n${unavailableMetricsNotice}`);
+  if (summary.brandguardRepeatSamples) {
+    const unavailableBrandGuardSampleMetricsNotice =
+      formatUnavailableBrandGuardSampleMetricsNotice(repeatedBrandGuardSamples);
+    if (unavailableBrandGuardSampleMetricsNotice) {
+      console.warn(`\n${unavailableBrandGuardSampleMetricsNotice}`);
+    }
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
