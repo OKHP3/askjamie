@@ -130,6 +130,10 @@ pair with `--hosted-branch origin=feature/example` (repeat as needed).
 the remote ref without fetching or pruning. For GitHub remotes it reads
 protection, deployment, and PR evidence through an installed, authenticated
 `gh` CLI; unavailable evidence remains an explicit hold.
+An API page containing 100 PR results is treated as incomplete history and
+retains an unknown-evidence hold. Run hosted inspection separately from
+`--check-delete`; combining those options is rejected before fetching or
+preparing deletion commands.
 
 ### 3. Classify every branch
 

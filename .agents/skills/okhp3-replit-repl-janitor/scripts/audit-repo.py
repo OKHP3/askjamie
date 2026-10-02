@@ -160,8 +160,13 @@ def hosted_command(args: list[str], cwd: Path) -> subprocess.CompletedProcess[st
     """Run a hosted read-only command without allowing interactive auth."""
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
-    ssh_command = env.get("GIT_SSH_COMMAND", "ssh")
-    if "BatchMode" not in ssh_command:
+    ssh_command = env.get("GIT_SSH_COMMAND", "ssh").strip() or "ssh"
+    ssh_command, replaced = re.subn(
+        r"(?i)(-o\s*BatchMode)(?:\s+|=)(?:yes|no)\b",
+        r"\1=yes",
+        ssh_command,
+    )
+    if not replaced:
         ssh_command = f"{ssh_command} -o BatchMode=yes"
     env["GIT_SSH_COMMAND"] = ssh_command
     return subprocess.run(
@@ -295,6 +300,10 @@ def github_hosted_evidence(
     )
     if pull_requests_error:
         pull_requests: dict[str, object] = unknown_hosted_evidence(pull_requests_error)
+    elif isinstance(pull_requests_data, list) and len(pull_requests_data) >= 100:
+        pull_requests = unknown_hosted_evidence(
+            "GitHub pull-request history reached the 100-result limit; additional history may be missing"
+        )
     elif isinstance(pull_requests_data, list):
         pull_requests = {
             "status": "available", "source": "github-api",
@@ -574,6 +583,11 @@ def main() -> int:
     args = parse_args()
     root = Path(args.root).resolve()
     try:
+        if args.check_delete and args.hosted_branches:
+            raise AuditError(
+                "--check-delete cannot be combined with --hosted-branch or --hosted-ref; "
+                "review hosted holds separately before preparing deletion"
+            )
         ensure_repository(root)
         if args.fetch:
             run(["git", "fetch", "--all"], root)

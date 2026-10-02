@@ -18,6 +18,64 @@ SPEC.loader.exec_module(audit_repo)
 
 
 class AuditRepoTests(unittest.TestCase):
+    def test_hosted_command_forces_noninteractive_ssh_batch_mode(self) -> None:
+        commands = (
+            "ssh", "", "ssh -o BatchMode=no", "ssh -oBatchMode no",
+            "ssh -o batchmode=no -o BatchMode=yes",
+        )
+        for command in commands:
+            with self.subTest(command=command), patch.dict(
+                audit_repo.os.environ, {"GIT_SSH_COMMAND": command}, clear=True
+            ), patch.object(audit_repo.subprocess, "run") as run:
+                audit_repo.hosted_command(["git", "ls-remote", "origin"], Path("."))
+                options = run.call_args.kwargs
+                self.assertEqual(options["env"]["GIT_TERMINAL_PROMPT"], "0")
+                self.assertEqual(options["stdin"], subprocess.DEVNULL)
+                normalized = options["env"]["GIT_SSH_COMMAND"].lower()
+                self.assertNotIn("batchmode=no", normalized)
+                self.assertIn("batchmode=yes", normalized)
+
+    def test_hosted_pull_request_page_limit_retains_unknown_history_hold(self) -> None:
+        for count in (99, 100, 101):
+            with self.subTest(count=count), patch.object(
+                audit_repo, "gh_api_json", side_effect=[
+                    ({"protected": False}, None),
+                    ([], None),
+                    ([{"state": "closed", "merged_at": "2099-01-01"}] * count, None),
+                ]
+            ):
+                evidence = audit_repo.github_hosted_evidence(
+                    Path("."), "https://github.com/fixture/repo.git", "feature/work"
+                )
+            expected = "unknown" if count >= 100 else "available"
+            self.assertEqual(evidence["pull_requests"]["status"], expected)
+            with patch.object(audit_repo, "remote_url_for_provider", return_value=(
+                "origin", "https://github.com/fixture/repo.git"
+            )), patch.object(audit_repo, "hosted_command", return_value=(
+                subprocess.CompletedProcess([], 0, f"{'a' * 40}\trefs/heads/feature/work\n", "")
+            )), patch.object(audit_repo, "github_hosted_evidence", return_value=evidence):
+                report = audit_repo.audit_hosted_branches(Path("."), ["origin=feature/work"])
+            self.assertEqual(report["deletion_blocked"], count >= 100)
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            if count >= 100:
+                self.assertEqual(report["entries"][0]["blocking_reasons"], [
+                    "hosted-pull-request-evidence-unknown"
+                ])
+
+    def test_check_delete_rejects_hosted_options_before_repository_or_fetch(self) -> None:
+        for option in ("--hosted-branch", "--hosted-ref"):
+            with self.subTest(option=option), tempfile.TemporaryDirectory() as directory:
+                result = subprocess.run([
+                    sys.executable, str(SCRIPT), "--root", directory, "--check-delete",
+                    "--branch", "feature/work", "--reviewed-head", "a" * 40,
+                    "--fetch", option, "origin=feature/work",
+                ], capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode, 1)
+                report = json.loads(result.stdout)
+                self.assertIn("cannot be combined", report["error"])
+                self.assertNotIn("commands", report)
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_every_hosted_hold_has_a_stable_code_and_specific_explanation(self) -> None:
         expected = {
             "hosted-remote-inaccessible": ("review", "The hosted remote could not be accessed; check access before reviewing deletion."),
