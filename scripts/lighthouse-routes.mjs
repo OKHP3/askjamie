@@ -71,6 +71,24 @@ export const HISTORICAL_REFERENCE_RUN_CONDITIONS = Object.freeze({
   }),
   emulatedUserAgent: "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
   blockedUrlPatterns: null,
+  collectionTiming: Object.freeze({
+    maxWaitForFcp: 30000,
+    maxWaitForLoad: 45000,
+    pauseAfterFcpMs: 1000,
+    pauseAfterLoadMs: 1000,
+    networkQuietThresholdMs: 1000,
+    cpuQuietThresholdMs: 1000,
+  }),
+  locale: "en-US",
+  storage: Object.freeze({
+    disableStorageReset: false,
+    clearStorageTypes: Object.freeze([
+      "file_systems",
+      "shader_cache",
+      "service_workers",
+      "cache_storage",
+    ]),
+  }),
 });
 
 export function summarizeRunConditions(report) {
@@ -107,6 +125,26 @@ export function summarizeRunConditions(report) {
     blockedUrlPatterns: Object.hasOwn(settings, "blockedUrlPatterns")
       ? settings.blockedUrlPatterns
       : "unavailable",
+    collectionTiming: Object.fromEntries([
+      "maxWaitForFcp",
+      "maxWaitForLoad",
+      "pauseAfterFcpMs",
+      "pauseAfterLoadMs",
+      "networkQuietThresholdMs",
+      "cpuQuietThresholdMs",
+    ].map((field) => [
+      field,
+      Object.hasOwn(settings, field) ? settings[field] : "unavailable",
+    ])),
+    locale: Object.hasOwn(settings, "locale") ? settings.locale : "unavailable",
+    storage: {
+      disableStorageReset: Object.hasOwn(settings, "disableStorageReset")
+        ? settings.disableStorageReset
+        : "unavailable",
+      clearStorageTypes: Object.hasOwn(settings, "clearStorageTypes")
+        ? settings.clearStorageTypes
+        : "unavailable",
+    },
   };
 }
 
@@ -156,7 +194,7 @@ export function createRunConditionsReview(
     changedComponents: entries.length === 0 ? ["run conditions unavailable"] : changedComponents,
     changedReports,
     action: reviewRequired
-      ? "Owner review is required before interpreting or changing the BrandGuard lab budget because Lighthouse run conditions differ from or are missing in the historical reference."
+      ? "Owner review is required before interpreting or changing the BrandGuard lab budget because Lighthouse collection, locale, storage, emulation, or throttling settings differ from or are missing in the historical reference."
       : "No Lighthouse run-condition change from the historical reference.",
   };
 }
@@ -187,7 +225,7 @@ export function createSummary({
   const reviewRequired = changedComponents.length > 0;
 
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     capturedAt: date,
     tool: `Lighthouse ${measurementStack.lighthouseVersion}`,
     measurementStack,

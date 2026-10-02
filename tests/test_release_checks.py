@@ -601,6 +601,15 @@ const emit = (
 };
 const changedRunConditions = {
   ...baselineRunConditions,
+  collectionTiming: {
+    ...baselineRunConditions.collectionTiming,
+    pauseAfterFcpMs: 1250
+  },
+  locale: "fr-FR",
+  storage: {
+    ...baselineRunConditions.storage,
+    disableStorageReset: true
+  },
   throttling: {
     ...baselineRunConditions.throttling,
     cpuSlowdownMultiplier: 5
@@ -658,7 +667,7 @@ process.stdout.write(JSON.stringify({
 
     normal = emitted["normal"]
     assert emitted["parsedChromiumVersion"] == "153.0.8010.12"
-    assert normal["schemaVersion"] == 4
+    assert normal["schemaVersion"] == 5
     assert normal["capturedAt"] == "2099-01-02"
     assert normal["tool"] == "Lighthouse 12.8.2"
     assert normal["measurementStack"] == {
@@ -693,6 +702,24 @@ process.stdout.write(JSON.stringify({
         "uploadThroughputKbps": 675,
         "cpuSlowdownMultiplier": 4,
     }
+    assert normal["runConditions"]["reports"]["homepage.json"]["collectionTiming"] == {
+        "maxWaitForFcp": 30000,
+        "maxWaitForLoad": 45000,
+        "pauseAfterFcpMs": 1000,
+        "pauseAfterLoadMs": 1000,
+        "networkQuietThresholdMs": 1000,
+        "cpuQuietThresholdMs": 1000,
+    }
+    assert normal["runConditions"]["reports"]["homepage.json"]["locale"] == "en-US"
+    assert normal["runConditions"]["reports"]["homepage.json"]["storage"] == {
+        "disableStorageReset": False,
+        "clearStorageTypes": [
+            "file_systems",
+            "shader_cache",
+            "service_workers",
+            "cache_storage",
+        ],
+    }
     assert normal["runConditionsReview"]["status"] == "not-required"
     assert normal["runConditionsReview"]["changedComponents"] == []
     assert normal["runConditionsReview"]["changedReports"] == []
@@ -722,12 +749,20 @@ process.stdout.write(JSON.stringify({
     assert run_condition_change["measurementStackReview"]["status"] == "not-required"
     assert run_condition_change["runConditionsReview"]["status"] == "required"
     assert run_condition_change["runConditionsReview"]["changedComponents"] == [
+        "collectionTiming.pauseAfterFcpMs",
         "formFactor",
+        "locale",
+        "storage.disableStorageReset",
         "throttling.cpuSlowdownMultiplier",
     ]
     assert run_condition_change["runConditionsReview"]["changedReports"] == [{
         "report": "brandguard.json",
-        "changedComponents": ["throttling.cpuSlowdownMultiplier"],
+        "changedComponents": [
+            "collectionTiming.pauseAfterFcpMs",
+            "locale",
+            "storage.disableStorageReset",
+            "throttling.cpuSlowdownMultiplier",
+        ],
     }, {
         "report": "search.json",
         "changedComponents": ["formFactor"],
@@ -738,6 +773,18 @@ process.stdout.write(JSON.stringify({
     assert missing_run_conditions["runConditionsReview"]["status"] == "required"
     assert "formFactor" in missing_run_conditions["runConditionsReview"]["changedComponents"]
     assert "blockedUrlPatterns" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+    assert "collectionTiming.cpuQuietThresholdMs" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+    assert "locale" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+    assert "storage.clearStorageTypes" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+    assert "storage.disableStorageReset" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+    assert missing_run_conditions["runConditions"]["reports"]["homepage.json"]["collectionTiming"] == {
+        "maxWaitForFcp": "unavailable",
+        "maxWaitForLoad": "unavailable",
+        "pauseAfterFcpMs": "unavailable",
+        "pauseAfterLoadMs": "unavailable",
+        "networkQuietThresholdMs": "unavailable",
+        "cpuQuietThresholdMs": "unavailable",
+    }
 
     controlled = emitted["controlled"]
     assert controlled["tool"] == "Lighthouse 13.5.0"
@@ -771,7 +818,7 @@ process.stdout.write(JSON.stringify({
         "search": {"performance": 91, "lcpMs": 3000},
     }}
     for summary in (normal, controlled):
-        assert summary["schemaVersion"] == 4
+        assert summary["schemaVersion"] == 5
         assert summary["property"] == "https://fixture.invalid"
         assert summary["baseline"] == "assets/audit/lighthouse-baseline-2026-08-22.json"
         assert set(summary["pages"]) == set(expected_routes)
@@ -1033,6 +1080,15 @@ const report = {
       disabled: false
     },
     emulatedUserAgent: "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+    maxWaitForFcp: 30000,
+    maxWaitForLoad: 45000,
+    pauseAfterFcpMs: 1000,
+    pauseAfterLoadMs: 1000,
+    networkQuietThresholdMs: 1000,
+    cpuQuietThresholdMs: 1000,
+    locale: "en-US",
+    disableStorageReset: false,
+    clearStorageTypes: ["file_systems", "shader_cache", "service_workers", "cache_storage"],
     blockedUrlPatterns: args.some((arg) => arg.startsWith("--blocked-url-patterns="))
       ? args
         .filter((arg) => arg.startsWith("--blocked-url-patterns="))
@@ -1156,6 +1212,24 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
             "brandguard-sample-03.json",
         }
         assert summary["runConditionsReview"]["status"] == "not-required"
+        assert summary["runConditions"]["reports"]["brandguard-sample-03.json"]["collectionTiming"] == {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000,
+        }
+        assert summary["runConditions"]["reports"]["brandguard-sample-03.json"]["locale"] == "en-US"
+        assert summary["runConditions"]["reports"]["brandguard-sample-03.json"]["storage"] == {
+            "disableStorageReset": False,
+            "clearStorageTypes": [
+                "file_systems",
+                "shader_cache",
+                "service_workers",
+                "cache_storage",
+            ],
+        }
         assert summary["runConditions"]["reports"]["brandguard.json"]["blockedUrlPatterns"] == (
             [
                 "https://fonts.googleapis.com/*",
