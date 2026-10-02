@@ -224,6 +224,48 @@ For an approved merge:
 For approved files, use `git rm` and `git mv` so the change is explicit. Plain
 `rm` is acceptable only for an untracked or gitignored working file.
 
+#### Retain recovery-ref retirement decisions
+
+Recovery refs are not ordinary branch-delete candidates. Retiring one requires
+the owner's approval of the **exact ref, protected commit, evidence, decision
+date, approver, ledger location, and JSON format**. An elapsed retention period
+alone is not evidence. Do not infer approval from a record supplied by tooling.
+
+Before the first retirement, have the owner approve a repository-private
+ledger location. The suggested layout is
+`governance/recovery-retirements/policy.json` plus a `decisions/` directory;
+this is a proposal, not an already approved location. Keep this ledger outside
+public-site release artifacts and never use `.scratch`, `/tmp`, `.git`, or a
+generated report as the retained record. See
+`references/retirement-ledger.md` for the exact format and full procedure.
+
+Commit the approved policy and one append-only JSON record per exact recovery
+ref **before** taking the pre-removal snapshot. Store the full protected commit
+ID, evidence explaining why the work no longer needs this ref, ISO decision
+date, and a public approver handle or role (not credentials or personal contact
+details). Review/redact the content before committing. The validator rejects
+unknown fields and common credential patterns, but cannot certify that free
+text contains no secret.
+
+The audit remains read-only: it writes only an explicitly requested snapshot,
+never deletes a ref or creates approval records. Run ledger preflight with
+`--validate-retirement-ledger '<approved policy path>'` and
+`--approve-recovery-retirement '<exact ref>=<exact recorded evidence>'`.
+Then take a snapshot at a **new, nonexistent path**, remove only the explicitly
+approved ref using its reviewed commit as Git's expected old value, and run
+`--verify-recovery '<snapshot path>' --retirement-ledger '<approved policy path>'`
+with the same exact retirement allowance. Do not combine recovery modes with
+fetch, hosted probes, or branch-delete checks.
+
+A retirement is complete only when verification exits zero, reports
+`recovery_guard.passed: true`, and includes the validated retained decision in
+`recovery_guard.retirement_ledger.decisions`. Missing, uncommitted, modified,
+malformed, duplicate, or mismatched records block completion. Without a retained
+record, an approval flag alone cannot make retirement pass. Unapproved ref
+changes, stash changes, or loss of previously reachable objects still fail.
+Keep the ledger and verification evidence after cleanup; a JSON stdout report
+is not a replacement for the committed decision.
+
 ### 7. Verify and report
 
 After every approved batch:
@@ -253,6 +295,9 @@ Return:
   read-only;
 - post-change audit, Git status, and workflow validation results when execution
   was authorized.
+- for recovery retirement, the committed ledger policy and record paths,
+  exact ref and protected commit, evidence, decision date, approver, and
+  successful recovery/ledger validation; otherwise report retirement incomplete.
 
 When hosted branches are requested, JSON includes
 `hosted_lifecycle.cleanup_plan` with `keep`, `merge`, `delete`, and `review`
@@ -316,6 +361,12 @@ unblocked entries are not deletion approvals and are omitted from this plan.
 
 - `scripts/audit-repo.py` — deterministic, no-fetch-by-default JSON audit of
   branches, naming violations, and nested detritus.
+- `scripts/recovery-guard.py` — read-only snapshot integrity and protected-state
+  comparison used by the audit.
+- `scripts/retirement-ledger.py` — validates committed owner-approved policy and
+  retirement records before the guard accepts retirement.
+- `references/retirement-ledger.md` — retained decision format, owner approval,
+  redaction, and preflight/post-removal procedure.
 - `references/naming-conventions.md` — portable kebab-case policy and structural
   exceptions.
 - `references/foundry-architecture.md` — Phase 1 intent, scope, and brand
