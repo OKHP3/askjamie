@@ -120,12 +120,29 @@ def validate_record(root, record):
     iso_date(record["decision_date"], "decision_date")
 
 
-def validate_ledger(root, policy_path, before, approvals=()):
+def validate_ledger(root, policy_path, before, approvals=(), *,
+                    baseline=None, baseline_policy=None, migrations=()):
     """Validate retained records and bind selected decisions to snapshot evidence."""
     root = Path(root).resolve()
     policy_file = project_path(root, policy_path)
     policy = committed_json(root, policy_file)
     validate_policy(policy)
+    provenance = None
+    migrated = {}
+    if baseline or baseline_policy or migrations:
+        if not (baseline and baseline_policy and migrations):
+            raise LedgerError("retirement ledger: migration proof requires baseline commit, baseline policy, and exact migration approvals")
+        provenance = audit_history(root, baseline_policy, baseline, migrations)
+        if not provenance["passed"]:
+            raise LedgerError("retirement ledger: migration history has retention holds")
+        if provenance["policy_file"] != policy_file.relative_to(root).as_posix():
+            raise LedgerError("retirement ledger: migration proof ends at a different policy")
+        historical_policy, _, _ = tree_ledger(root, provenance["head"], provenance["policy_file"])
+        if historical_policy != policy:
+            raise LedgerError("retirement ledger: migration proof differs from current policy")
+        latest = provenance["approved_migrations"][-1]
+        parent = history_git(root, "rev-parse", latest["commit"] + "^1").decode("ascii").strip()
+        _, migrated, _ = tree_ledger(root, parent, latest["from_policy"])
     directory = project_path(root, policy["records_directory"])
     if not directory.is_dir():
         raise LedgerError("retirement ledger: approved records directory is missing")
@@ -140,7 +157,8 @@ def validate_ledger(root, policy_path, before, approvals=()):
         record = committed_json(root, path)
         validate_record(root, record)
         ref = record["ref"]
-        if record["decision_date"] < policy["approved_on"]:
+        if (record["decision_date"] < policy["approved_on"]
+                and migrated.get(ref) != record):
             raise LedgerError("retirement ledger: decision predates location/format approval")
         if ref in records:
             raise LedgerError("retirement ledger: duplicate recovery ref decisions")
@@ -166,12 +184,15 @@ def validate_ledger(root, policy_path, before, approvals=()):
         if evidence != record["evidence"]:
             raise LedgerError("retirement ledger: evidence differs from the exact approval")
         selected.append({"record_file": paths[ref], **record})
-    return {
+    result = {
         "validated": True,
         "policy_file": policy_file.relative_to(root).as_posix(),
         "record_count": len(records),
         "decisions": sorted(selected, key=lambda item: item["ref"]),
     }
+    if provenance is not None:
+        result["migration_provenance"] = provenance
+    return result
 
 
 def history_git(root, *args):

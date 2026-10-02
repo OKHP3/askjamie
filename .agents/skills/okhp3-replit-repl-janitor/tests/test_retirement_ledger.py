@@ -410,6 +410,200 @@ class RetirementLedgerTests(unittest.TestCase):
             "to_policy": new_policy, "status": "owner-approved-policy-migration",
         }])
 
+    def new_retirement_after_migration(self):
+        baseline = self.git("rev-parse", "HEAD")
+        old_policy = self.policy_path
+        self.git("update-ref", "-d", self.ref, self.sha)
+        migration, new_policy, old_record_path = self.migrate()
+        new_record = {
+            **self.record, "ref": "refs/recovery/new-work",
+            "decision_date": "2026-10-03",
+        }
+        new_record_path = "governance/retained/decisions/new.json"
+        self.write(new_record_path, new_record)
+        self.git("update-ref", new_record["ref"], self.sha)
+        self.commit()
+        proof = (
+            "--ledger-baseline", baseline,
+            "--ledger-baseline-policy", old_policy,
+            "--approve-ledger-migration", f"{migration}={old_policy},{new_policy}",
+        )
+        self.policy_path = new_policy
+        self.record_path = new_record_path
+        self.ref = new_record["ref"]
+        self.record = new_record
+        return proof, old_record_path
+
+    def proven_preflight(self, proof, allowance=None):
+        return self.cli(
+            "--validate-retirement-ledger", self.policy_path, *proof,
+            "--approve-recovery-retirement", allowance or self.allowance(),
+        )
+
+    def test_migrated_old_decision_allows_new_retirement_and_verification(self):
+        proof, _ = self.new_retirement_after_migration()
+        refs = self.git("show-ref")
+        status = self.git("status", "--porcelain")
+        result, data = self.proven_preflight(proof)
+        self.assertEqual(result.returncode, 0, data)
+        ledger = data["retirement_ledger"]
+        self.assertEqual(ledger["record_count"], 2)
+        self.assertEqual(ledger["decisions"][0]["ref"], self.ref)
+        self.assertTrue(ledger["migration_provenance"]["passed"])
+        self.assertEqual(refs, self.git("show-ref"))
+        self.assertEqual(status, self.git("status", "--porcelain"))
+        self.snapshot.unlink()
+        result, data = self.cli("--snapshot-recovery", str(self.snapshot))
+        self.assertEqual(result.returncode, 0, data)
+        self.git("update-ref", "-d", self.ref, self.sha)
+        result, data = self.cli(
+            "--verify-recovery", str(self.snapshot),
+            "--retirement-ledger", self.policy_path, *proof,
+            "--approve-recovery-retirement", self.allowance(),
+        )
+        self.assertEqual(result.returncode, 0, data)
+        self.assertTrue(data["recovery_guard"]["passed"])
+        self.assertTrue(data["recovery_guard"]["retirement_ledger"]["migration_provenance"]["passed"])
+
+    def test_migrated_preflight_requires_complete_exact_proof(self):
+        proof, _ = self.new_retirement_after_migration()
+        for partial in ((), proof[:2], proof[2:4], proof[4:], proof[:4], proof[2:]):
+            with self.subTest(proof=partial):
+                result, data = self.proven_preflight(partial)
+                self.assertNotEqual(result.returncode, 0, data)
+                self.assertIn("error", data)
+        for index, value in (
+            (1, "missing-baseline"),
+            (3, "governance/wrong/policy.json"),
+            (5, proof[5].split("=")[0] + "=governance/wrong/policy.json," + self.policy_path),
+        ):
+            incorrect = list(proof)
+            incorrect[index] = value
+            result, data = self.proven_preflight(incorrect)
+            self.assertNotEqual(result.returncode, 0, data)
+
+    def test_migration_proof_does_not_excuse_new_backdated_decision(self):
+        proof, _ = self.new_retirement_after_migration()
+        self.record["decision_date"] = "2026-10-02"
+        self.write(self.record_path, self.record)
+        self.commit()
+        result, data = self.proven_preflight(proof)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn("retention holds", data["error"])
+
+    def test_migration_proof_blocks_each_old_field_rewrite_even_if_restored(self):
+        proof, old_path = self.new_retirement_after_migration()
+        original = json.loads((self.root / old_path).read_text())
+        for field, value in (
+            ("evidence", "Changed evidence."),
+            ("protected_commit", "f" * 40),
+            ("decision_date", "2026-10-03"),
+            ("approver", "another-owner"),
+        ):
+            with self.subTest(field=field):
+                # Start each case at the same clean post-migration state.
+                anchor = self.git("rev-parse", "HEAD")
+                self.write(old_path, {**original, field: value})
+                self.commit()
+                result, data = self.proven_preflight(proof)
+                self.assertNotEqual(result.returncode, 0, data)
+                self.assertIn("retention holds", data["error"])
+                self.write(old_path, original)
+                self.commit()
+                result, data = self.proven_preflight(proof)
+                self.assertNotEqual(result.returncode, 0, data)
+                self.git("reset", "--hard", anchor)
+
+    def test_migration_proof_keeps_exact_retirement_binding(self):
+        proof, _ = self.new_retirement_after_migration()
+        result, data = self.proven_preflight(proof, self.ref + "=different evidence")
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn("evidence differs", data["error"])
+        self.git("update-ref", self.ref, self.git("rev-parse", "HEAD"))
+        result, data = self.proven_preflight(proof)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn("protected commit differs", data["error"])
+        self.git("update-ref", self.ref, self.sha)
+        missing_ref = "refs/recovery/missing-object"
+        missing_record = {
+            **self.record, "ref": missing_ref, "protected_commit": "f" * 40,
+        }
+        self.write("governance/retained/decisions/missing.json", missing_record)
+        self.commit()
+        # Even with a matching synthetic snapshot SHA, a missing object fails.
+        with self.assertRaisesRegex(audit.retirement_ledger.LedgerError, "resolve to a commit"):
+            audit.retirement_ledger.validate_ledger(
+                self.root, self.policy_path, {"refs": {missing_ref: "f" * 40}},
+                [(missing_ref, missing_record["evidence"])],
+                baseline=proof[1], baseline_policy=proof[3], migrations=[proof[5]],
+            )
+
+    def test_new_decision_in_migration_commit_cannot_be_backdated(self):
+        baseline = self.git("rev-parse", "HEAD")
+        migration, new_policy, _ = self.migrate()
+        added = {**self.record, "ref": "refs/recovery/smuggled"}
+        self.write("governance/retained/decisions/added.json", added)
+        self.git("add", "governance")
+        self.git("commit", "--amend", "--no-edit")
+        migration = self.git("rev-parse", "HEAD")
+        proof = (
+            "--ledger-baseline", baseline, "--ledger-baseline-policy", self.policy_path,
+            "--approve-ledger-migration", f"{migration}={self.policy_path},{new_policy}",
+        )
+        self.policy_path = new_policy
+        result, data = self.proven_preflight(proof)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn("retention holds", data["error"])
+
+    def test_successive_migrations_retain_old_and_previously_new_decisions(self):
+        proof, _ = self.new_retirement_after_migration()
+        # A renewed approval at the same path is also a migration.
+        policy = json.loads((self.root / self.policy_path).read_text())
+        self.write(self.policy_path, {**policy, "approved_on": "2026-10-04"})
+        self.commit()
+        second = self.git("rev-parse", "HEAD")
+        proof += ("--approve-ledger-migration",
+                  f"{second}={self.policy_path},{self.policy_path}")
+        result, data = self.proven_preflight(proof)
+        self.assertEqual(result.returncode, 0, data)
+        self.assertEqual(len(data["retirement_ledger"]["migration_provenance"]["approved_migrations"]), 2)
+        # Omitting the renewed approval cannot authorize the current policy.
+        result, data = self.proven_preflight(proof[:-2])
+        self.assertNotEqual(result.returncode, 0, data)
+
+    def test_provenance_must_end_at_selected_current_policy(self):
+        proof, _ = self.new_retirement_after_migration()
+        other = "governance/other/policy.json"
+        current = json.loads((self.root / self.policy_path).read_text())
+        self.write(other, current)
+        self.commit()
+        self.policy_path = other
+        result, data = self.proven_preflight(proof)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn("different policy", data["error"])
+
+    def test_migration_proof_still_requires_unchanged_committed_files(self):
+        proof, old_path = self.new_retirement_after_migration()
+        original = json.loads((self.root / old_path).read_text())
+        self.write(old_path, {**original, "evidence": "Dirty evidence."})
+        result, data = self.proven_preflight(proof)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn("committed unchanged", data["error"])
+
+    def test_migration_proof_flags_cannot_be_ignored_in_other_modes(self):
+        for args in (
+            ("--ledger-baseline-policy", self.policy_path),
+            ("--snapshot-recovery", str(self.root / "new-snapshot.json"),
+             "--ledger-baseline-policy", self.policy_path),
+            ("--verify-recovery", str(self.snapshot),
+             "--ledger-baseline-policy", self.policy_path),
+            ("--audit-retirement-history", self.policy_path,
+             "--ledger-baseline", "HEAD", "--ledger-baseline-policy", self.policy_path),
+        ):
+            result, data = self.cli(*args)
+            self.assertNotEqual(result.returncode, 0, data)
+            self.assertIn("requires ledger preflight", data["error"])
+
     def test_history_policy_approval_cannot_excuse_rewritten_records(self):
         baseline = self.git("rev-parse", "HEAD")
         _, new_policy, new_record = self.migrate()

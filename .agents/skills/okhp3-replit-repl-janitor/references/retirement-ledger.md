@@ -58,8 +58,10 @@ retirements whose refs are now absent. Use one unique record per exact ref;
 do not reuse retired ref names, rewrite old decisions, or delete records as
 cleanup. A changed storage location or format requires renewed owner approval.
 
-Decision dates use valid `YYYY-MM-DD` calendar dates and cannot predate the
-location/format approval. Object IDs must be full lowercase SHA-1 or SHA-256
+Decision dates use valid `YYYY-MM-DD` calendar dates. New decisions cannot
+predate the location/format approval; unchanged retained decisions can preserve
+their original dates with the explicit migration proof below.
+Object IDs must be full lowercase SHA-1 or SHA-256
 commit IDs. During a selected retirement, the protected commit must match the
 pre-removal snapshot and still resolve to a commit. Evidence must exactly
 match the explicit approval allowance. The approver label and evidence are
@@ -190,9 +192,47 @@ At each approved commit the audit switches to the new policy, reports
 remain substantively identical. Original decision dates are preserved even
 when the renewed location approval is later. Migration approval cannot
 authorize deletion, rewrite evidence, bypass unsafe JSON, or enable a format
-the validator does not support (currently only format 1). The current
-pre-removal preflight remains a separate check with its original chronology
-rules; this history audit does not authorize a new retirement or replace it.
+the validator does not support (currently only format 1). This history audit
+does not authorize a new retirement or replace pre-removal preflight.
+
+### Prove migrated decisions during a new retirement
+
+For current-HEAD preflight and post-removal verification, supply all three
+parts of owner-reviewed provenance: the trusted pre-migration baseline commit,
+the policy path at that baseline, and every exact migration allowance through
+HEAD. Do not substitute an unreviewed baseline or infer approvals from policy
+metadata. No new policy or decision fields are needed.
+
+```bash
+python3 .agents/skills/okhp3-replit-repl-janitor/scripts/audit-repo.py \
+  --root . \
+  --validate-retirement-ledger governance/retained/policy.json \
+  --ledger-baseline '<owner-selected pre-migration commit>' \
+  --ledger-baseline-policy governance/recovery-retirements/policy.json \
+  --approve-ledger-migration \
+  '<full migration commit ID>=governance/recovery-retirements/policy.json,governance/retained/policy.json' \
+  --approve-recovery-retirement '<exact new recovery ref>=<exact recorded evidence>'
+```
+
+For verification, replace `--validate-retirement-ledger` with
+`--verify-recovery '<snapshot path>' --retirement-ledger '<current policy path>'`
+and repeat the same provenance and exact retirement allowances. Renewed policy
+approvals at the same path use identical old/new paths. Repeat migration flags
+for successive moves; the baseline must precede all supplied migrations.
+
+Both modes run the full first-parent retention audit and require it to pass
+and end at the selected current policy. Only unchanged decisions present just
+before the latest approved migration may predate the current policy date.
+Decisions introduced during or after that migration still need dates on or
+after the renewed approval. Earlier additions must also satisfy the policy
+active when first recorded. Removal, any substantive rewrite (even restored
+later), missing history, partial proof, or incorrect allowances block the
+retirement. Without explicit proof, the original date check remains in force.
+Successful results include `migration_provenance` inside the validated ledger
+report, with baseline/head IDs, approved migrations, and checked-state count.
+The current files must still be committed unchanged, and each selected
+retirement must still match the exact ref, snapshot commit, live commit object,
+and approved evidence. Provenance is not retirement permission.
 
 Without an allowance, policy edits produce `unapproved-policy-change`;
 removing the old location produces `invalid-ledger`. Deleted records produce

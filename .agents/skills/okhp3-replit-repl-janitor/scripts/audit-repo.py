@@ -627,6 +627,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--ledger-baseline", metavar="COMMIT")
     parser.add_argument(
+        "--ledger-baseline-policy", metavar="POLICY",
+        help="policy at owner-selected baseline for migration proof in preflight/verification",
+    )
+    parser.add_argument(
         "--approve-ledger-migration", action="append", default=[],
         metavar="FULL_COMMIT=OLD_POLICY,NEW_POLICY",
     )
@@ -696,8 +700,15 @@ def main() -> int:
             raise AuditError("--retirement-ledger requires --verify-recovery")
         if args.approve_recovery_retirement and args.verify_recovery and not args.retirement_ledger:
             raise AuditError("recovery retirement requires --retirement-ledger")
-        if (args.ledger_baseline or args.approve_ledger_migration) and not args.audit_retirement_history:
-            raise AuditError("--ledger-baseline and --approve-ledger-migration require --audit-retirement-history")
+        migration_preflight = args.validate_retirement_ledger or (
+            args.verify_recovery and args.retirement_ledger
+        )
+        if args.ledger_baseline_policy and not migration_preflight:
+            raise AuditError("--ledger-baseline-policy requires ledger preflight or ledger verification")
+        if (args.ledger_baseline or args.approve_ledger_migration) and not (
+            args.audit_retirement_history or migration_preflight
+        ):
+            raise AuditError("--ledger-baseline and --approve-ledger-migration require --audit-retirement-history or ledger preflight/verification")
         if args.audit_retirement_history:
             if not args.ledger_baseline:
                 raise AuditError("--audit-retirement-history requires --ledger-baseline")
@@ -721,6 +732,9 @@ def main() -> int:
             result = retirement_ledger.validate_ledger(
                 root, args.validate_retirement_ledger,
                 recovery_guard.recovery_snapshot(root, run), approvals,
+                baseline=args.ledger_baseline,
+                baseline_policy=args.ledger_baseline_policy,
+                migrations=args.approve_ledger_migration,
             )
             print(json.dumps({"retirement_ledger": result}, indent=2))
             return 0
@@ -732,6 +746,9 @@ def main() -> int:
                     root, args.retirement_ledger, before,
                     [recovery_guard.parse_recovery_retirement(value)
                      for value in args.approve_recovery_retirement],
+                    baseline=args.ledger_baseline,
+                    baseline_policy=args.ledger_baseline_policy,
+                    migrations=args.approve_ledger_migration,
                 )
             result = recovery_guard.compare_recovery_snapshots(
                 before, recovery_guard.recovery_snapshot(root, run),

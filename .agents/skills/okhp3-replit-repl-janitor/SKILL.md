@@ -312,6 +312,12 @@ migrations need exact owner-reviewed `--approve-ledger-migration
 old decision fields. See `references/retirement-ledger.md` for scope,
 approval syntax, and failure reporting; do not infer migration approval
 from committed metadata or move the baseline to conceal a hold.
+When a later retirement's preflight encounters older migrated decisions, supply
+`--ledger-baseline`, `--ledger-baseline-policy`, and the exact
+`--approve-ledger-migration` allowances in preflight and verification. This
+reuses the passing retention history as provenance, not retirement permission;
+new decisions still must meet the active approval date. The reference includes
+the complete command and scope.
 
 ### 7. Verify and report
 
