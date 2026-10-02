@@ -596,6 +596,51 @@ class DecisionLedgerTests(unittest.TestCase):
             git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
         )
 
+    def test_archive_equivalence_reports_modified_shared_path_read_only(self) -> None:
+        root, _ = self.make_repo()
+        (root / "shared.txt").write_text("common version\n", encoding="utf-8")
+        git(root, "add", "shared.txt")
+        git(root, "commit", "-qm", "add shared path")
+        git(root, "branch", "modified-archive")
+
+        git(root, "checkout", "-q", "modified-archive")
+        (root / "shared.txt").write_text("archive version\n", encoding="utf-8")
+        git(root, "commit", "-qam", "modify shared path on archive")
+        archive_tip = git(root, "rev-parse", "HEAD")
+
+        git(root, "checkout", "-q", "main")
+        (root / "shared.txt").write_text("active version\n", encoding="utf-8")
+        git(root, "commit", "-qam", "modify shared path on active line")
+        active_tip = git(root, "rev-parse", "HEAD")
+
+        ledger = self.write_ledger(
+            root,
+            f"| `modified-archive` | **archive** | `{archive_tip}` | reviewed |",
+        )
+        refs_before = git(root, "for-each-ref", "--format=%(refname) %(objectname)")
+        worktree_before = git(root, "status", "--porcelain", "--untracked-files=all")
+
+        result = audit_repo.audit_archive_equivalents(root, ledger, "main")
+
+        archive = result["archives"][0]
+        self.assertEqual(result["active_line_tip_sha"], active_tip)
+        self.assertEqual(
+            archive["file_difference_direction"],
+            "active-line-to-archive-tip",
+        )
+        self.assertEqual(
+            archive["file_differences"],
+            [{"status": "M", "path": "shared.txt"}],
+        )
+        self.assertEqual(
+            refs_before,
+            git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+        )
+        self.assertEqual(
+            worktree_before,
+            git(root, "status", "--porcelain", "--untracked-files=all"),
+        )
+
     def test_nul_evidence_preserves_unusual_paths_through_json(self) -> None:
         paths = ["space name.txt", "tab\tname.txt", "line\nbreak.txt"]
         evidence = "".join(f"M\0{path}\0" for path in paths)

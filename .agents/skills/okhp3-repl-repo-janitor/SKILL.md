@@ -65,12 +65,14 @@ include patch-equivalent versus unrepresented commits, tree hashes, and
 name-status file differences. The JSON field `file_difference_direction` is
 `active-line-to-archive-tip`: **A** means a path is present at the archive tip
 but not on the active line, while **D** means it is present on the active line
-but not at the archive tip. Branch-decision rows accept only the retention
-labels **keep** and **archive**; unsupported labels are reported with their
-line and branch and fail the consistency gate. The ledger check also reports
-missing branches, tip-SHA drift, and stale ledger rows, while archive
-verification reports unrepresented or unverifiable archive work; either
-condition exits nonzero.
+but not at the archive tip. **M** means the same path exists on both sides but
+its contents differ; the archive-tip version differs from the active-line
+version, so the path is not unique to either side. Branch-decision rows accept
+only the retention labels **keep** and **archive**; unsupported labels are
+reported with their line and branch and fail the consistency gate. The ledger
+check also reports missing branches, tip-SHA drift, and stale ledger rows,
+while archive verification reports unrepresented or unverifiable archive work;
+either condition exits nonzero.
 By default, the audit selects `.agents/branch-decision-ledger.md` when that
 stable active-ledger path exists. Otherwise it selects the newest valid
 `.agents/branch-decision-ledger-YYYY-MM-DD.md` by ISO date. Pass
