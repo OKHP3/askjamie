@@ -93,8 +93,16 @@ python3 .agents/skills/okhp3-repl-repo-janitor/scripts/audit-repo.py \
 This focused, read-only check parses only the ledger file. It does not require
 the root to be a Git repository, run any Git command, refresh remotes, or use
 network access. It reports the same line-level malformed decision rows,
-unsupported decision labels, malformed exclusions, and duplicate exclusions
-as the full audit. It exits `0` for a clean ledger and `1` when findings or a
+unsupported decision labels, malformed exclusions, duplicate exclusions, and
+`malformed_archive_reconciliation_rows` as the full audit's `decision_ledger`.
+Archive reconciliation rows require exactly six cells: one backticked branch
+name, a full 40-character archive tip SHA, a full reviewed active tip SHA,
+**reconciled** or **superseded**, nonempty active-line evidence, and a nonempty
+rationale. SHAs may be plain or enclosed in one pair of backticks. Blank lines,
+table headers and separators, and introductory prose are not evidence rows.
+Invalid table-like rows report their line number, original content, and a
+repair reason; they are not used as supersession evidence and fail both checks.
+It exits `0` for a clean ledger and `1` when findings or a
 ledger-selection error are present. Omit `--decision-ledger` to use the same
 active-ledger discovery rules as the full audit.
 
