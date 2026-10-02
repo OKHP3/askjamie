@@ -1346,6 +1346,19 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
             timeout=120,
             env={**os.environ, "NODE_PATH": node_modules},
         )
+        # The runner records the browser request before the fixture server
+        # accepts its socket. Give those already-issued late requests a short,
+        # bounded chance to reach the handler before shutting the server down.
+        late_request_deadline = time.monotonic() + 2.0
+        while time.monotonic() < late_request_deadline:
+            with lock:
+                late_request_count = sum(
+                    phase == "start" and path == "/late-lazy.png"
+                    for phase, path, _at in events
+                )
+            if late_request_count >= 8:
+                break
+            time.sleep(0.01)
     finally:
         server.shutdown()
         server.server_close()
