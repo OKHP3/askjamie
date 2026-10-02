@@ -81,7 +81,12 @@ const RESULTS_DIR    = resolve(ROOT, 'assets/audit/responsive-qa');
 const RESULTS_FILE   = resolve(RESULTS_DIR, 'results.json');
 const SCREENSHOTS_DIR = resolve(RESULTS_DIR, 'screenshots');
 const BRANDGUARD_GEOMETRY_PATH = '/lens-system/okhp3-brandguard/';
-const BRANDGUARD_GEOMETRY_VIEWPORT = 'mobile-390';
+const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-360',
+  'mobile-390',
+  'mobile-430',
+]);
+const BRANDGUARD_FONT_GEOMETRY_VIEWPORT = 'mobile-390';
 const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
 const BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS = 15000;
 const BRANDGUARD_GEOMETRY_SELECTORS = [
@@ -660,7 +665,7 @@ async function runWithPlaywright() {
     const { vp, ctx } = worker;
     const page = await ctx.newPage();
     const checkBrandGuardFonts =
-      path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_GEOMETRY_VIEWPORT;
+      path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_FONT_GEOMETRY_VIEWPORT;
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
@@ -806,10 +811,10 @@ async function runWithPlaywright() {
       if (await transitionDismiss.isVisible()) await transitionDismiss.click();
 
       // Compare the critical shell with the live deferred theme on the supported
-      // narrow BrandGuard viewport. Do this before scrolling lazy images so the
+      // phone BrandGuard viewports. Do this before scrolling lazy images so the
       // two geometry samples cover only theme activation, not later page work.
       const heroThemeGeometry =
-        path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_GEOMETRY_VIEWPORT
+        path === BRANDGUARD_GEOMETRY_PATH && BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)
           ? await checkBrandGuardHeroGeometry(page)
           : null;
       const heroFontGeometry = checkBrandGuardFonts
@@ -1100,7 +1105,7 @@ async function staticAnalysis() {
     note: [
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 8 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
-      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-390.',
+      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-360, mobile-390, and mobile-430.',
       'BrandGuard hero geometry after deferred web fonts load is checked only in Playwright mode at mobile-390.',
       'Universe diagram shell geometry through Mermaid rendering is checked only in Playwright mode at mobile-390 and desktop-1280.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',

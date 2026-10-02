@@ -83,7 +83,12 @@ def test_capability_transition_geometry_drift_is_reported(tmp_path):
 def test_responsive_qa_measures_brandguard_mobile_theme_geometry():
     source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
 
-    assert "BRANDGUARD_GEOMETRY_VIEWPORT = 'mobile-390'" in source
+    assert "BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([" in source
+    assert "'mobile-360'" in source
+    assert "'mobile-390'" in source
+    assert "'mobile-430'" in source
+    assert "BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)" in source
+    assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORT = 'mobile-390'" in source
     assert "link[data-deferred-styles]" in source
     assert "BRANDGUARD HERO GEOMETRY SHIFT" in source
     assert "before=${JSON.stringify(beforeRect)}" in source
