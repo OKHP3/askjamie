@@ -135,6 +135,17 @@ retains an unknown-evidence hold. Run hosted inspection separately from
 `--check-delete`; combining those options is rejected before fetching or
 preparing deletion commands.
 
+Each hosted `git ls-remote` or `gh api` command has a **30-second timeout**.
+A timed-out remote probe is `inaccessible` with an unknown ref and a
+`hosted-remote-inaccessible` deletion hold. A timed-out GitHub request leaves
+its protection, deployment, or PR evidence `unknown` and retains the
+corresponding unknown-evidence hold. The reason states that the command timed
+out and gives the time limit. Partial output is discarded, never interpreted
+as a missing branch, empty history, or deletion approval. Other evidence
+lookups and requested provider/ref pairs still run; the limit is per command,
+not a total audit deadline (up to four hosted commands per present GitHub ref).
+This limit does not apply to local Git checks or the separate opt-in `--fetch`.
+
 ### 3. Classify every branch
 
 Every non-current, non-`main` branch belongs in exactly one bucket:
@@ -351,6 +362,7 @@ unblocked entries are not deletion approvals and are omitted from this plan.
 | Git command or fetch fails | Stop; show the failed command and stderr |
 | Detached HEAD | Audit may continue, but no branch deletion may be recommended until the active work is identified |
 | PR lookup unavailable | Put affected branches in `review`; never infer abandonment |
+| Hosted command times out | Preserve an inaccessible or unknown-evidence hold with a timeout reason; continue other requested checks, never approve deletion |
 | Unique unmerged commits | Preserve in `review` unless the owner explicitly abandons them |
 | Rename affects public URL | Require redirect or transition plan before execution |
 | Approval is broad or ambiguous | Ask for exact approved line items |

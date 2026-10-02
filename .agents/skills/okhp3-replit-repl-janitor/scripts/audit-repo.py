@@ -64,6 +64,7 @@ IGNORED_DIRS = {
 }
 KEBAB_OK = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REPLIT_BRANCH_PATTERNS = re.compile(r"^(subrepl-|replit-agent$|agent/)")
+HOSTED_COMMAND_TIMEOUT_SECONDS = 30
 
 
 class AuditError(RuntimeError):
@@ -172,7 +173,7 @@ def audit_branches(root: Path, base: str) -> tuple[list[dict[str, object]], str]
 
 
 def hosted_command(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    """Run a hosted read-only command without allowing interactive auth."""
+    """Bound a hosted read-only command without allowing interactive auth."""
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     ssh_command = env.get("GIT_SSH_COMMAND", "ssh").strip() or "ssh"
@@ -186,7 +187,7 @@ def hosted_command(args: list[str], cwd: Path) -> subprocess.CompletedProcess[st
     env["GIT_SSH_COMMAND"] = ssh_command
     return subprocess.run(
         args, cwd=cwd, capture_output=True, text=True,
-        stdin=subprocess.DEVNULL, env=env,
+        stdin=subprocess.DEVNULL, env=env, timeout=HOSTED_COMMAND_TIMEOUT_SECONDS,
     )
 
 
@@ -245,7 +246,10 @@ def gh_api_json(root: Path, endpoint: str) -> tuple[object | None, str | None]:
     """Read one GitHub API endpoint, returning an explicit failure reason."""
     if shutil.which("gh") is None:
         return None, "GitHub CLI (`gh`) is not installed"
-    result = hosted_command(["gh", "api", endpoint], root)
+    try:
+        result = hosted_command(["gh", "api", endpoint], root)
+    except subprocess.TimeoutExpired as exc:
+        return None, f"GitHub API request timed out after {exc.timeout} seconds"
     if result.returncode:
         detail = result.stderr.strip() or result.stdout.strip() or "no output"
         return None, f"GitHub API request failed ({result.returncode}): {detail}"
@@ -349,12 +353,16 @@ def audit_hosted_branches(root: Path, requested: Iterable[str]) -> dict[str, obj
             "remote": remote, "remote_url": remote_url,
         }
         probe = None
+        probe_error = None
         if remote_url is not None:
-            probe = hosted_command(
-                ["git", "ls-remote", "--heads", remote, entry["full_ref"]], root,
-            )
+            try:
+                probe = hosted_command(
+                    ["git", "ls-remote", "--heads", remote, entry["full_ref"]], root,
+                )
+            except subprocess.TimeoutExpired as exc:
+                probe_error = f"hosted remote lookup timed out after {exc.timeout} seconds"
         if probe is None or probe.returncode:
-            detail = (
+            detail = probe_error or (
                 f"configured remote is not available: {provider}" if probe is None
                 else probe.stderr.strip() or probe.stdout.strip() or "no output"
             )

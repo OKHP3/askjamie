@@ -18,6 +18,99 @@ SPEC.loader.exec_module(audit_repo)
 
 
 class AuditRepoTests(unittest.TestCase):
+    def test_hosted_commands_have_a_finite_timeout(self) -> None:
+        self.assertEqual(audit_repo.HOSTED_COMMAND_TIMEOUT_SECONDS, 30)
+        for args in (
+            ["git", "ls-remote", "--heads", "origin", "refs/heads/work"],
+            ["gh", "api", "repos/fixture/repo/branches/work"],
+        ):
+            with self.subTest(args=args), patch.object(audit_repo.subprocess, "run") as run:
+                audit_repo.hosted_command(args, Path("."))
+                self.assertEqual(run.call_args.kwargs["timeout"], 30)
+                self.assertEqual(run.call_args.kwargs["stdin"], subprocess.DEVNULL)
+
+    def test_remote_timeout_holds_and_continues_without_trusting_partial_output(self) -> None:
+        for partial_output in (None, b"", b"aaaaaaaa\trefs/heads/work\n"):
+            def command(args, **kwargs):
+                self.assertEqual(kwargs["timeout"], 30)
+                if args[3] == "stalled":
+                    raise subprocess.TimeoutExpired(args, 30, output=partial_output)
+                return subprocess.CompletedProcess(args, 0, "", "")
+
+            with self.subTest(partial_output=partial_output), patch.object(
+                audit_repo, "remote_url_for_provider",
+                side_effect=lambda _root, provider: (provider, "https://github.com/fixture/repo.git"),
+            ), patch.object(audit_repo.subprocess, "run", side_effect=command) as run, patch.object(
+                audit_repo, "github_hosted_evidence",
+            ) as evidence:
+                report = audit_repo.audit_hosted_branches(
+                    Path("."), ["stalled=work", "responsive=work"],
+                )
+            self.assertEqual(run.call_count, 2)
+            evidence.assert_not_called()
+            entry = report["entries"][0]
+            self.assertEqual(entry["classification"], "inaccessible")
+            self.assertEqual(entry["ref_status"], "unknown")
+            self.assertIn("timed out after 30 seconds", entry["reason"])
+            self.assertNotIn("tip", entry)
+            self.assertTrue(entry["deletion_blocked"])
+            self.assertEqual(entry["blocking_reasons"], ["hosted-remote-inaccessible"])
+            for key in ("protection", "deployments", "pull_requests"):
+                self.assertEqual(entry[key]["status"], "unknown")
+                self.assertNotIn("count", entry[key])
+            self.assertEqual(report["entries"][1]["classification"], "missing")
+            self.assertTrue(report["deletion_blocked"])
+            self.assertEqual(len(report["cleanup_plan"]["review"]), 2)
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
+    def test_github_timeouts_preserve_each_unknown_hold_and_continue(self) -> None:
+        keys = ("protection", "deployments", "pull_requests")
+        codes = (
+            "hosted-protection-unknown", "hosted-deployment-evidence-unknown",
+            "hosted-pull-request-evidence-unknown",
+        )
+        for timed_out in ((0,), (1,), (2,), (0, 1, 2)):
+            calls = []
+
+            def command(args, **kwargs):
+                self.assertEqual(kwargs["timeout"], 30)
+                if args[0] == "git":
+                    return subprocess.CompletedProcess(args, 0, f"{'a' * 40}\trefs/heads/work\n", "")
+                index = len(calls)
+                calls.append(args)
+                output = '{"protected": false}' if index == 0 else "[]"
+                if index in timed_out:
+                    # Even apparently complete output cannot be trusted after timeout.
+                    raise subprocess.TimeoutExpired(args, 30, output=output.encode())
+                return subprocess.CompletedProcess(args, 0, output, "")
+
+            with self.subTest(timed_out=timed_out), patch.object(
+                audit_repo, "remote_url_for_provider",
+                return_value=("origin", "https://github.com/fixture/repo.git"),
+            ), patch.object(audit_repo.shutil, "which", return_value="/fixture/gh"), patch.object(
+                audit_repo.subprocess, "run", side_effect=command,
+            ):
+                report = audit_repo.audit_hosted_branches(Path("."), ["origin=work"])
+            self.assertEqual(len(calls), 3)
+            entry = report["entries"][0]
+            self.assertEqual(entry["classification"], "present")
+            self.assertTrue(entry["deletion_blocked"])
+            self.assertEqual(entry["blocking_reasons"], sorted(codes[index] for index in timed_out))
+            for index, key in enumerate(keys):
+                if index in timed_out:
+                    self.assertEqual(entry[key]["status"], "unknown")
+                    self.assertIn("timed out after 30 seconds", entry[key]["reason"])
+                    self.assertNotIn("count", entry[key])
+                    self.assertNotIn("items", entry[key])
+                else:
+                    self.assertEqual(entry[key]["status"], "unprotected" if index == 0 else "available")
+            self.assertTrue(report["deletion_blocked"])
+            self.assertEqual(report["blocking_entries"], ["origin:work"])
+            self.assertEqual(report["cleanup_plan"]["review"][0]["blocking_reasons"], entry["blocking_reasons"])
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
     def test_hosted_command_forces_noninteractive_ssh_batch_mode(self) -> None:
         commands = (
             "ssh", "", "ssh -o BatchMode=no", "ssh -oBatchMode no",
