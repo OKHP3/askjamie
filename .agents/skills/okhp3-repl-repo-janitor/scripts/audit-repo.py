@@ -25,6 +25,9 @@ What it reports:
       UTF-8 paths remain JSON strings; paths containing invalid UTF-8 bytes
       use {"encoding": "base64", "data": "..."} with standard Base64 of the
       exact path bytes.
+      UTF-8 commit text remains a JSON string; commit text containing invalid
+      UTF-8 bytes uses the same Base64 object representation of the exact
+      text bytes.
   4. Naming violations: files/folders whose names break the kebab-case
      default (PascalCase, camelCase, spaces, uppercase extensions) outside
      the recognized structural exceptions (React components/hooks, root
@@ -184,18 +187,18 @@ def audit_branches(root: Path, base: str, *, refresh: bool = True):
     for b in branches:
         if not b:
             continue
-        last = sh(
-            ["git", "log", "-1", "--format=%ci|%an|%s", b], root
-        )
-        date, author, subject = (last.split("|", 2) + ["", "", ""])[:3]
+        last = _git_bytes_result(
+            root, "log", "-1", "--encoding=none", "--format=%ci|%an|%s", b
+        ).stdout.rstrip(b"\n")
+        date, author, subject = (last.split(b"|", 2) + [b"", b"", b""])[:3]
         ledger.append({
             "branch": b,
             "is_current": b == sh(["git", "branch", "--show-current"], root),
             "tip_sha": sh(["git", "rev-parse", b], root),
             "merged_into_base": b in merged,
-            "last_commit_date": date,
-            "last_commit_author": author,
-            "last_commit_subject": subject,
+            "last_commit_date": _decode_commit_text(date),
+            "last_commit_author": _decode_commit_text(author),
+            "last_commit_subject": _decode_commit_text(subject),
             "replit_generated_pattern": bool(REPLIT_BRANCH_PATTERNS.match(b)),
         })
     return ledger
@@ -561,29 +564,60 @@ def _verified_commit(root: Path, ref: str) -> str | None:
     return value if SHA_PATTERN.fullmatch(value) else None
 
 
-def _parse_commit_lines(output: str, *, patch_status: str | None = None):
-    commits: list[dict[str, str]] = []
-    for line in output.splitlines():
-        sha, separator, subject = line.partition("\t")
-        if separator and SHA_PATTERN.fullmatch(sha):
-            item = {"sha": sha, "subject": subject}
-            if patch_status is not None:
-                item["patch_status"] = patch_status
-            commits.append(item)
+def _decode_commit_text(value: bytes) -> str | dict[str, str]:
+    """Keep UTF-8 commit text readable and encode invalid bytes losslessly."""
+    try:
+        return value.decode("utf-8")
+    except UnicodeDecodeError:
+        return {
+            "encoding": "base64",
+            "data": base64.b64encode(value).decode("ascii"),
+        }
+
+
+def _as_bytes(output: str | bytes) -> bytes:
+    return (
+        output.encode("utf-8", errors="surrogateescape")
+        if isinstance(output, str)
+        else output
+    )
+
+
+def _parse_commit_lines(
+    output: str | bytes, *, patch_status: str | None = None
+) -> list[dict[str, object]]:
+    commits: list[dict[str, object]] = []
+    for line in _as_bytes(output).split(b"\n"):
+        sha, separator, subject = line.partition(b"\t")
+        if not separator:
+            continue
+        try:
+            sha_text = sha.decode("ascii")
+        except UnicodeDecodeError:
+            continue
+        if not SHA_PATTERN.fullmatch(sha_text):
+            continue
+        item: dict[str, object] = {
+            "sha": sha_text,
+            "subject": _decode_commit_text(subject),
+        }
+        if patch_status is not None:
+            item["patch_status"] = patch_status
+        commits.append(item)
     return commits
 
 
-def _parse_cherry_lines(output: str) -> list[dict[str, str]]:
-    commits: list[dict[str, str]] = []
-    for line in output.splitlines():
-        match = re.match(r"^([+-])\s+([0-9a-f]{7,40})\s?(.*)$", line)
+def _parse_cherry_lines(output: str | bytes) -> list[dict[str, object]]:
+    commits: list[dict[str, object]] = []
+    for line in _as_bytes(output).split(b"\n"):
+        match = re.match(rb"^([+-])\s+([0-9a-f]{7,40})\s?(.*)$", line)
         if not match:
             continue
         marker, abbreviated_sha, subject = match.groups()
-        status = "already-promoted" if marker == "-" else "unrepresented"
+        status = "already-promoted" if marker == b"-" else "unrepresented"
         commits.append({
-            "sha": abbreviated_sha,
-            "subject": subject,
+            "sha": abbreviated_sha.decode("ascii"),
+            "subject": _decode_commit_text(subject),
             "patch_status": status,
         })
     return commits
@@ -695,13 +729,21 @@ def audit_archive_equivalents(
             reports.append(report)
             continue
 
-        cherry = _git_result(root, "cherry", "-v", active_line, tip_sha)
+        cherry = _git_bytes_result(root, "cherry", "-v", active_line, tip_sha)
         archive_commits = _parse_cherry_lines(cherry.stdout)
-        active_only = _git_result(
-            root, "log", "--format=%H%x09%s", f"{tip_sha}..{active_line}"
+        active_only = _git_bytes_result(
+            root,
+            "log",
+            "--encoding=none",
+            "--format=%H%x09%s",
+            f"{tip_sha}..{active_line}",
         )
-        archive_only = _git_result(
-            root, "log", "--format=%H%x09%s", f"{active_line}..{tip_sha}"
+        archive_only = _git_bytes_result(
+            root,
+            "log",
+            "--encoding=none",
+            "--format=%H%x09%s",
+            f"{active_line}..{tip_sha}",
         )
         tree_result = _git_result(root, "rev-parse", f"{active_line}^{{tree}}")
         archive_tree_result = _git_result(root, "rev-parse", f"{tip_sha}^{{tree}}")

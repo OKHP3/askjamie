@@ -902,6 +902,128 @@ class DecisionLedgerTests(unittest.TestCase):
             git(root, "status", "--porcelain", "--untracked-files=all"),
         )
 
+    def test_cli_json_preserves_invalid_utf8_commit_text_without_mutation(
+        self,
+    ) -> None:
+        root, _ = self.make_repo()
+        git(root, "branch", "invalid-utf8-archive")
+        git(root, "checkout", "-q", "invalid-utf8-archive")
+        (root / "archive.txt").write_text("baseline\n", encoding="utf-8")
+        git(root, "add", "archive.txt")
+        git(root, "commit", "-qm", "archive café baseline")
+        baseline_tip = git(root, "rev-parse", "HEAD")
+
+        (root / "archive.txt").write_text("changed\n", encoding="utf-8")
+        git(root, "add", "archive.txt")
+        archive_tree = git(root, "write-tree")
+        git(root, "reset", "--hard", "-q", baseline_tip)
+        git(root, "checkout", "-q", "main")
+
+        invalid_author = b"Invalid-\xff-Author"
+        invalid_subject = b"archive caf\xc3\xa9 invalid-\xfe subject"
+        raw_commit = b"\n".join([
+            b"tree " + archive_tree.encode("ascii"),
+            b"parent " + baseline_tip.encode("ascii"),
+            b"author " + invalid_author
+            + b" <invalid@example.test> 1700000000 +0000",
+            b"committer Test Committer <test@example.test> 1700000000 +0000",
+            b"",
+            invalid_subject,
+            b"",
+            b"message body",
+            b"",
+        ])
+        invalid_tip = subprocess.run(
+            ["git", "hash-object", "-t", "commit", "-w", "--stdin"],
+            cwd=root,
+            input=raw_commit,
+            capture_output=True,
+            check=True,
+        ).stdout.decode("ascii").strip()
+        git(root, "update-ref", "refs/heads/invalid-utf8-archive", invalid_tip)
+        ledger = self.write_ledger(
+            root,
+            (
+                f"| `invalid-utf8-archive` | **archive** | "
+                f"`{invalid_tip}` | reviewed |"
+            ),
+        )
+        refs_before = git(root, "for-each-ref", "--format=%(refname) %(objectname)")
+        head_before = git(root, "rev-parse", "HEAD")
+        worktree_before = git(root, "status", "--porcelain", "--untracked-files=all")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--root",
+                str(root),
+                "--base",
+                "main",
+                "--decision-ledger",
+                str(ledger),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        branch = next(
+            item for item in report["branches"]
+            if item["branch"] == "invalid-utf8-archive"
+        )
+        main_branch = next(
+            item for item in report["branches"] if item["branch"] == "main"
+        )
+        self.assertEqual(main_branch["last_commit_author"], "Test User")
+        self.assertEqual(main_branch["last_commit_subject"], "initial")
+        self.assertEqual(
+            branch["last_commit_author"],
+            {
+                "encoding": "base64",
+                "data": base64.b64encode(invalid_author).decode("ascii"),
+            },
+        )
+        self.assertEqual(
+            branch["last_commit_subject"],
+            {
+                "encoding": "base64",
+                "data": base64.b64encode(invalid_subject).decode("ascii"),
+            },
+        )
+        archive = report["archive_equivalents"]["archives"][0]
+        invalid_subject_value = {
+            "encoding": "base64",
+            "data": base64.b64encode(invalid_subject).decode("ascii"),
+        }
+        for commit_list in (
+            archive["commit_differences"]["archive_commits"],
+            archive["commit_differences"]["archive_only_commits"],
+        ):
+            commit = next(item for item in commit_list if item["sha"] in (
+                invalid_tip,
+                invalid_tip[:7],
+            ))
+            self.assertEqual(commit["subject"], invalid_subject_value)
+        self.assertIn(
+            "archive café baseline",
+            [
+                item["subject"]
+                for item in archive["commit_differences"]["archive_only_commits"]
+            ],
+        )
+        self.assertEqual(
+            refs_before,
+            git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+        )
+        self.assertEqual(head_before, git(root, "rev-parse", "HEAD"))
+        self.assertEqual(
+            worktree_before,
+            git(root, "status", "--porcelain", "--untracked-files=all"),
+        )
+
     def test_cli_archive_statuses_use_selected_active_line_not_checkout(self) -> None:
         root, _ = self.make_repo()
 
@@ -1180,12 +1302,12 @@ class DecisionLedgerTests(unittest.TestCase):
     ) -> None:
         root, _ = self.make_repo()
         git(root, "branch", "archive")
-        original_git_result = audit_repo._git_result
+        original_git_result = audit_repo._git_bytes_result
 
         def fail_cherry(repo: Path, *args: str):
             if args[:2] == ("cherry", "-v"):
                 return subprocess.CompletedProcess(
-                    ["git", *args], 128, stdout="", stderr="comparison failed"
+                    ["git", *args], 128, stdout=b"", stderr=b"comparison failed"
                 )
             return original_git_result(repo, *args)
 
@@ -1194,7 +1316,9 @@ class DecisionLedgerTests(unittest.TestCase):
             f"| `archive` | **archive** | `{git(root, 'rev-parse', 'archive')}` | reviewed |",
         )
 
-        with patch.object(audit_repo, "_git_result", side_effect=fail_cherry):
+        with patch.object(
+            audit_repo, "_git_bytes_result", side_effect=fail_cherry
+        ):
             result = audit_repo.audit_archive_equivalents(root, ledger, "main")
 
         self.assertFalse(result["ok"])

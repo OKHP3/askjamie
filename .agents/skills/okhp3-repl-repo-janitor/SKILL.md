@@ -70,12 +70,14 @@ its contents differ; the archive-tip version differs from the active-line
 version, so the path is not unique to either side. In `file_differences`, a
 valid UTF-8 path is a readable JSON string. A path containing invalid UTF-8
 bytes is represented as `{"encoding":"base64","data":"..."}`, where `data` is
-standard Base64 of the exact path bytes. Branch-decision rows accept only the
-retention labels **keep** and **archive**; unsupported labels are
-reported with their line and branch and fail the consistency gate. The ledger
-check also reports missing branches, tip-SHA drift, and stale ledger rows,
-while archive verification reports unrepresented or unverifiable archive work;
-either condition exits nonzero.
+standard Base64 of the exact path bytes. Commit metadata and archive commit
+subjects use the same representation per text field: valid UTF-8 stays a
+readable string, while invalid UTF-8 is Base64 of the exact field bytes.
+Branch-decision rows accept only the retention labels **keep** and **archive**;
+unsupported labels are reported with their line and branch and fail the
+consistency gate. The ledger check also reports missing branches, tip-SHA
+drift, and stale ledger rows, while archive verification reports unrepresented
+or unverifiable archive work; either condition exits nonzero.
 By default, the audit selects `.agents/branch-decision-ledger.md` when that
 stable active-ledger path exists. Otherwise it selects the newest valid
 `.agents/branch-decision-ledger-YYYY-MM-DD.md` by ISO date. Pass
