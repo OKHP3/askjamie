@@ -592,6 +592,15 @@ def parse_args() -> argparse.Namespace:
         "--validate-retirement-ledger", metavar="POLICY",
         help="validate committed decision records before removal; never deletes",
     )
+    recovery_mode.add_argument(
+        "--audit-retirement-history", metavar="BASELINE_POLICY",
+        help="read-only retention audit from --ledger-baseline through HEAD",
+    )
+    parser.add_argument("--ledger-baseline", metavar="COMMIT")
+    parser.add_argument(
+        "--approve-ledger-migration", action="append", default=[],
+        metavar="FULL_COMMIT=OLD_POLICY,NEW_POLICY",
+    )
     parser.add_argument("--approve-local-deletion", action="append", default=[])
     parser.add_argument(
         "--approve-recovery-retirement", action="append", default=[],
@@ -644,6 +653,7 @@ def main() -> int:
         ensure_repository(root)
         recovery_mode = (
             args.snapshot_recovery or args.verify_recovery or args.validate_retirement_ledger
+            or args.audit_retirement_history
         )
         if recovery_mode and (args.fetch or args.check_delete or args.hosted_branches):
             raise AuditError("recovery modes cannot be combined with fetch, branch deletion checks, or hosted probes")
@@ -657,6 +667,17 @@ def main() -> int:
             raise AuditError("--retirement-ledger requires --verify-recovery")
         if args.approve_recovery_retirement and args.verify_recovery and not args.retirement_ledger:
             raise AuditError("recovery retirement requires --retirement-ledger")
+        if (args.ledger_baseline or args.approve_ledger_migration) and not args.audit_retirement_history:
+            raise AuditError("--ledger-baseline and --approve-ledger-migration require --audit-retirement-history")
+        if args.audit_retirement_history:
+            if not args.ledger_baseline:
+                raise AuditError("--audit-retirement-history requires --ledger-baseline")
+            result = retirement_ledger.audit_history(
+                root, args.audit_retirement_history, args.ledger_baseline,
+                args.approve_ledger_migration,
+            )
+            print(json.dumps({"retirement_history": result}, indent=2))
+            return 0 if result["passed"] else 1
         if args.snapshot_recovery:
             snapshot = recovery_guard.recovery_snapshot(root, run)
             path = Path(args.snapshot_recovery).resolve()

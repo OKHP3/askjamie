@@ -280,6 +280,18 @@ changes, stash changes, or loss of previously reachable objects still fail.
 Keep the ledger and verification evidence after cleanup; a JSON stdout report
 is not a replacement for the committed decision.
 
+During later cleanup, verify append-only retention from an owner-selected
+committed baseline with `--audit-retirement-history '<baseline policy path>'`
+and `--ledger-baseline '<baseline commit>'`. Require exit zero and
+`retirement_history.passed: true`. The read-only audit checks every first-parent
+state through HEAD, including intermediate deletions or rewrites later
+restored, without requiring retired refs or objects to exist. Policy/location
+migrations need exact owner-reviewed `--approve-ledger-migration
+'<full commit>=<old policy>,<new policy>'` allowances and must preserve all
+old decision fields. See `references/retirement-ledger.md` for scope,
+approval syntax, and failure reporting; do not infer migration approval
+from committed metadata or move the baseline to conceal a hold.
+
 ### 7. Verify and report
 
 After every approved batch:

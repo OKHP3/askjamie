@@ -287,6 +287,269 @@ class RetirementLedgerTests(unittest.TestCase):
         self.verify()
         self.assertEqual(before, self.git("show-ref"))
 
+    def history(self, baseline, *args):
+        return self.cli(
+            "--audit-retirement-history", self.policy_path,
+            "--ledger-baseline", baseline, *args,
+        )
+
+    def test_history_retains_old_records_without_ref_or_object_lookup(self):
+        self.git("update-ref", "-d", self.ref)
+        # History retention is independent of live object reachability.
+        self.record["protected_commit"] = "f" * 40
+        self.write(self.record_path, self.record)
+        self.commit()
+        baseline = self.git("rev-parse", "HEAD")
+        self.git("commit", "--allow-empty", "-m", "Later review")
+        before_refs = self.git("show-ref")
+        before_status = self.git("status", "--porcelain")
+        result, data = self.history(baseline)
+        self.assertEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["retained_record_count"], 1)
+        self.assertEqual(data["retirement_history"]["commits_checked"], 2)
+        self.assertEqual(before_refs, self.git("show-ref"))
+        self.assertEqual(before_status, self.git("status", "--porcelain"))
+
+    def test_history_catches_deleted_record_even_after_restoration(self):
+        baseline = self.git("rev-parse", "HEAD")
+        self.git("update-ref", "-d", self.ref)
+        (self.root / self.record_path).unlink()
+        self.commit()
+        deletion = self.git("rev-parse", "HEAD")
+        self.write(self.record_path, self.record)
+        self.commit()
+        result, data = self.history(baseline)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn(
+            {"commit": deletion, "ref": self.ref, "reason": "removed-record",
+             "record_file": self.record_path},
+            data["retirement_history"]["holds"],
+        )
+
+    def test_history_catches_each_substantive_field_rewrite(self):
+        baseline = self.git("rev-parse", "HEAD")
+        self.git("update-ref", "-d", self.ref)
+        changes = {
+            "evidence": "Different retained work.",
+            "protected_commit": "f" * 40,
+            "decision_date": "2026-10-03",
+            "approver": "another-owner",
+        }
+        for field, value in changes.items():
+            with self.subTest(field=field):
+                self.write(self.record_path, {**self.record, field: value})
+                self.commit()
+                changed_commit = self.git("rev-parse", "HEAD")
+                result, data = self.history(baseline)
+                self.assertNotEqual(result.returncode, 0, data)
+                self.assertIn(
+                    {"commit": changed_commit, "ref": self.ref,
+                     "reason": "rewritten-record", "changed_fields": [field]},
+                    data["retirement_history"]["holds"],
+                )
+                self.write(self.record_path, self.record)
+                self.commit()
+
+    def test_history_ignores_json_presentation_and_filename_changes(self):
+        baseline = self.git("rev-parse", "HEAD")
+        new_path = self.records_path + "/renamed.json"
+        self.git("mv", self.record_path, new_path)
+        (self.root / new_path).write_text(
+            json.dumps(dict(reversed(list(self.record.items()))), separators=(",", ":")),
+            encoding="utf-8",
+        )
+        self.commit()
+        result, data = self.history(baseline)
+        self.assertEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["holds"], [])
+
+    def test_history_tracks_records_added_after_baseline(self):
+        baseline = self.git("rev-parse", "HEAD")
+        second = {**self.record, "ref": "refs/recovery/older-work"}
+        second_path = self.records_path + "/second.json"
+        self.write(second_path, second)
+        self.commit()
+        result, data = self.history(baseline)
+        self.assertEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["added_record_count"], 1)
+        (self.root / second_path).unlink()
+        self.commit()
+        result, data = self.history(baseline)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["holds"][0]["ref"], second["ref"])
+
+    def migrate(self):
+        new_policy = "governance/retained/policy.json"
+        new_directory = "governance/retained/decisions"
+        new_record = new_directory + "/old.json"
+        self.git("rm", self.policy_path, self.record_path)
+        self.write(new_policy, {
+            **self.policy, "records_directory": new_directory,
+            "approved_on": "2026-10-03",
+        })
+        self.write(new_record, self.record)
+        self.commit()
+        migration = self.git("rev-parse", "HEAD")
+        return migration, new_policy, new_record
+
+    def test_history_accepts_exact_approved_location_migration(self):
+        baseline = self.git("rev-parse", "HEAD")
+        self.git("update-ref", "-d", self.ref)
+        migration, new_policy, _ = self.migrate()
+        result, data = self.history(baseline)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["holds"][0]["reason"], "invalid-ledger")
+        self.git("commit", "--allow-empty", "-m", "Later review")
+        result, data = self.history(
+            baseline, "--approve-ledger-migration",
+            f"{migration}={self.policy_path},{new_policy}",
+        )
+        self.assertEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["approved_migrations"], [{
+            "commit": migration, "from_policy": self.policy_path,
+            "to_policy": new_policy, "status": "owner-approved-policy-migration",
+        }])
+
+    def test_history_policy_approval_cannot_excuse_rewritten_records(self):
+        baseline = self.git("rev-parse", "HEAD")
+        _, new_policy, new_record = self.migrate()
+        self.write(new_record, {**self.record, "evidence": "Rewritten during migration."})
+        self.git("add", "governance")
+        self.git("commit", "--amend", "--no-edit")
+        migration = self.git("rev-parse", "HEAD")
+        result, data = self.history(
+            baseline, "--approve-ledger-migration",
+            f"{migration}={self.policy_path},{new_policy}",
+        )
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["holds"][0]["reason"], "rewritten-record")
+
+    def test_history_policy_edit_requires_exact_approval_even_at_same_path(self):
+        baseline = self.git("rev-parse", "HEAD")
+        self.write(self.policy_path, {**self.policy, "approved_by": "renewed-owner"})
+        self.commit()
+        migration = self.git("rev-parse", "HEAD")
+        result, data = self.history(baseline)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["holds"][0]["reason"], "unapproved-policy-change")
+        result, data = self.history(
+            baseline, "--approve-ledger-migration",
+            f"{migration}={self.policy_path},{self.policy_path}",
+        )
+        self.assertEqual(result.returncode, 0, data)
+
+    def test_history_missing_or_deleted_policy_and_invalid_json_fail(self):
+        baseline = self.git("rev-parse", "HEAD")
+        (self.root / self.policy_path).unlink()
+        self.commit()
+        result, data = self.history(baseline)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["holds"][0]["reason"], "invalid-ledger")
+        self.write(self.policy_path, self.policy)
+        (self.root / self.record_path).write_text(
+            '{"evidence":"token=synthetic-private-value"}', encoding="utf-8",
+        )
+        self.commit()
+        result, data = self.history(baseline)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("synthetic-private-value", result.stdout)
+
+    def test_history_baseline_is_explicit_valid_and_on_mainline(self):
+        result, data = self.cli("--audit-retirement-history", self.policy_path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--ledger-baseline", data["error"])
+        result, data = self.history("missing-baseline")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unavailable", data["error"])
+        self.git("checkout", "-b", "side")
+        self.git("commit", "--allow-empty", "-m", "Side history")
+        side = self.git("rev-parse", "HEAD")
+        self.git("checkout", "main")
+        result, data = self.history(side)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("first-parent", data["error"])
+        result, data = self.history(self.sha)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing", data["error"])
+
+    def test_history_reads_commits_not_dirty_checkout(self):
+        baseline = self.git("rev-parse", "HEAD")
+        self.write(self.record_path, {**self.record, "evidence": "Uncommitted edit."})
+        (self.root / self.policy_path).unlink()
+        before_status = self.git("status", "--porcelain")
+        result, data = self.history(baseline)
+        self.assertEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["commits_checked"], 1)
+        self.assertEqual(before_status, self.git("status", "--porcelain"))
+
+    def test_history_migration_allowances_fail_closed(self):
+        baseline = self.git("rev-parse", "HEAD")
+        self.git("commit", "--allow-empty", "-m", "No migration")
+        current = self.git("rev-parse", "HEAD")
+        for values in (
+            ["bad"],
+            [f"{baseline}={self.policy_path},{self.policy_path}"],
+            [f"{current}=governance/wrong.json,{self.policy_path}"],
+            [f"{current}={self.policy_path},{self.policy_path}"],
+            [f"{current}={self.policy_path},{self.policy_path}"] * 2,
+            [f"{current}={self.policy_path},../outside.json"],
+        ):
+            with self.subTest(values=values):
+                args = [item for value in values for item in ("--approve-ledger-migration", value)]
+                result, data = self.history(baseline, *args)
+                self.assertNotEqual(result.returncode, 0, data)
+                self.assertIn("error", data)
+
+    def test_history_cannot_fetch_or_prepare_deletion(self):
+        baseline = self.git("rev-parse", "HEAD")
+        for args in (("--fetch",), ("--check-delete",), ("--hosted-branch", "origin=work")):
+            result, data = self.history(baseline, *args)
+            self.assertNotEqual(result.returncode, 0, data)
+            self.assertIn("cannot be combined", data["error"])
+        result, data = self.cli("--ledger-baseline", baseline)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("require --audit-retirement-history", data["error"])
+
+    def test_history_merge_checks_integrated_state_not_unrelated_side_history(self):
+        baseline = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-b", "side", self.sha)
+        self.git("commit", "--allow-empty", "-m", "Pre-ledger side work")
+        self.git("checkout", "main")
+        self.git("merge", "--no-ff", "side", "-m", "Integrate side work")
+        result, data = self.history(baseline)
+        self.assertEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["commits_checked"], 2)
+
+    def test_history_migrated_baseline_keeps_older_decision_dates(self):
+        _, new_policy, _ = self.migrate()
+        baseline = self.git("rev-parse", "HEAD")
+        result, data = self.cli(
+            "--audit-retirement-history", new_policy, "--ledger-baseline", baseline,
+        )
+        self.assertEqual(result.returncode, 0, data)
+        self.assertEqual(data["retirement_history"]["retained_record_count"], 1)
+
+    def test_history_rejects_redirected_and_duplicate_historical_records(self):
+        baseline = self.git("rev-parse", "HEAD")
+        path = self.root / self.record_path
+        path.unlink()
+        try:
+            path.symlink_to("missing.json")
+        except OSError as exc:
+            if exc.errno in (1, 13) or getattr(exc, "winerror", None) == 1314:
+                self.skipTest("symlink creation requires unavailable privileges")
+            raise
+        self.commit()
+        result, data = self.history(baseline)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn("regular blob", data["retirement_history"]["holds"][0]["detail"])
+        path.unlink()
+        path.write_text('{"format":1,"format":1}', encoding="utf-8")
+        self.commit()
+        result, data = self.history(baseline)
+        self.assertNotEqual(result.returncode, 0, data)
+        self.assertIn("duplicate JSON", data["retirement_history"]["holds"][-1]["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()

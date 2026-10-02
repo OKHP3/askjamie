@@ -129,3 +129,75 @@ The guard does not authorize abandonment of reachable objects. Even an
 owner-approved retirement cannot pass if it loses objects previously reachable
 from refs. Preserve the work under another retained ref or verified base first.
 No prune, garbage collection, publication, or push is part of this procedure.
+
+## Later cleanup: audit retained history
+
+Before relying on earlier retirement decisions during later cleanup, ask the
+owner to select a committed baseline containing the approved policy and
+records. Use the policy path **at that baseline**, not an inferred checkout
+location. The audit reads Git blobs only, from that baseline through the HEAD
+commit captured at startup; dirty files are neither used nor changed.
+
+```bash
+python3 .agents/skills/okhp3-replit-repl-janitor/scripts/audit-repo.py \
+  --root . \
+  --audit-retirement-history governance/recovery-retirements/policy.json \
+  --ledger-baseline '<owner-selected commit>'
+```
+
+Require exit zero and `retirement_history.passed: true`. The JSON identifies
+the resolved baseline and head IDs, states checked, retained/additional record
+counts, approved migrations, and holds with the exact offending commit.
+Removal or any changed record field is a hold, even if a later commit restores
+it. New records become retention anchors when first seen, so their later
+removal or rewrite also fails. JSON whitespace, key order, and record filename
+changes are not substantive; the record is identified by its exact recovery
+ref and all decision fields must remain identical. Neither the retired ref nor
+its protected object needs to exist for this check.
+
+This is a **first-parent mainline audit**, including each merge's resulting
+tree, not an audit of every intermediate side-branch commit. The baseline must
+be on HEAD's first-parent chain; missing history, an absent baseline ledger,
+malformed records, duplicate fields/refs, unsupported formats, or redirected
+locations fail visibly. An empty decisions directory is not tracked by Git;
+zero current records are still compared with earlier retained records.
+Choose a baseline before the decisions of interest. The audit cannot prove
+retention before that baseline, detect rewritten Git history for which no
+trusted baseline remains, certify the truth of evidence, or authenticate
+human approval. Baseline records may predate a previously approved policy
+migration; new records must not predate the policy active when first seen.
+
+### Owner-approved policy or location migrations
+
+A changed policy (including approval metadata or records directory), or a
+new policy location, needs renewed owner approval. Record that approval
+through the normal owner-review channel, then supply an exact allowance:
+
+```text
+--approve-ledger-migration '<full migration commit ID>=<old policy path>,<new policy path>'
+```
+
+Repeat for each migration in chronological mainline order. For policy changes
+at the same location, use the same path on both sides. Use full lowercase
+SHA-1/SHA-256 commit IDs, not branch names. Paths cannot contain commas in
+this allowance syntax. Approvals for commits outside the selected interval,
+duplicate approvals, incorrect source paths, or allowances with no policy
+change are rejected. Merely committing `approved_by` metadata is not an
+independent migration allowance.
+
+At each approved commit the audit switches to the new policy, reports
+`owner-approved-policy-migration`, and still requires every older decision to
+remain substantively identical. Original decision dates are preserved even
+when the renewed location approval is later. Migration approval cannot
+authorize deletion, rewrite evidence, bypass unsafe JSON, or enable a format
+the validator does not support (currently only format 1). The current
+pre-removal preflight remains a separate check with its original chronology
+rules; this history audit does not authorize a new retirement or replace it.
+
+Without an allowance, policy edits produce `unapproved-policy-change`;
+removing the old location produces `invalid-ledger`. Deleted records produce
+`removed-record`; altered decision fields produce `rewritten-record` with
+field names, never the historical evidence text. Stop on any hold; do not
+change the baseline or invent migration approval to make the report pass.
+The history mode cannot be combined with fetching, hosted probes, snapshot
+verification, or branch deletion planning, and writes no files or refs.
