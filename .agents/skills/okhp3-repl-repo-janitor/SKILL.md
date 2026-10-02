@@ -67,8 +67,11 @@ name-status file differences. The JSON field `file_difference_direction` is
 but not on the active line, while **D** means it is present on the active line
 but not at the archive tip. **M** means the same path exists on both sides but
 its contents differ; the archive-tip version differs from the active-line
-version, so the path is not unique to either side. Branch-decision rows accept
-only the retention labels **keep** and **archive**; unsupported labels are
+version, so the path is not unique to either side. In `file_differences`, a
+valid UTF-8 path is a readable JSON string. A path containing invalid UTF-8
+bytes is represented as `{"encoding":"base64","data":"..."}`, where `data` is
+standard Base64 of the exact path bytes. Branch-decision rows accept only the
+retention labels **keep** and **archive**; unsupported labels are
 reported with their line and branch and fail the consistency gate. The ledger
 check also reports missing branches, tip-SHA drift, and stale ledger rows,
 while archive verification reports unrepresented or unverifiable archive work;

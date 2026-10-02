@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -710,6 +712,82 @@ class DecisionLedgerTests(unittest.TestCase):
             refs_before,
             git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
         )
+        self.assertEqual(
+            worktree_before,
+            git(root, "status", "--porcelain", "--untracked-files=all"),
+        )
+
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "Windows does not support filenames with undecodable byte sequences",
+    )
+    def test_cli_json_preserves_invalid_utf8_filename_without_mutation(
+        self,
+    ) -> None:
+        root, _ = self.make_repo()
+        git(root, "branch", "invalid-utf8-archive")
+        git(root, "checkout", "-q", "invalid-utf8-archive")
+        invalid_path_bytes = b"invalid-\xff-name.txt"
+        (root / os.fsdecode(invalid_path_bytes)).write_bytes(b"archive content\n")
+        (root / "readable-café.txt").write_text(
+            "ordinary UTF-8 path\n", encoding="utf-8"
+        )
+        git(root, "add", "--all")
+        git(root, "commit", "-qm", "add unusual archive paths")
+        archive_tip = git(root, "rev-parse", "HEAD")
+        git(root, "checkout", "-q", "main")
+        ledger = self.write_ledger(
+            root,
+            (
+                f"| `invalid-utf8-archive` | **archive** | "
+                f"`{archive_tip}` | reviewed |"
+            ),
+        )
+        refs_before = git(
+            root, "for-each-ref", "--format=%(refname) %(objectname)"
+        )
+        head_before = git(root, "rev-parse", "HEAD")
+        worktree_before = git(root, "status", "--porcelain", "--untracked-files=all")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--root",
+                str(root),
+                "--base",
+                "main",
+                "--decision-ledger",
+                str(ledger),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        differences = report["archive_equivalents"]["archives"][0][
+            "file_differences"
+        ]
+        self.assertEqual(
+            differences,
+            [
+                {
+                    "status": "A",
+                    "path": {
+                        "encoding": "base64",
+                        "data": base64.b64encode(invalid_path_bytes).decode("ascii"),
+                    },
+                },
+                {"status": "A", "path": "readable-café.txt"},
+            ],
+        )
+        self.assertEqual(
+            refs_before,
+            git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+        )
+        self.assertEqual(head_before, git(root, "rev-parse", "HEAD"))
         self.assertEqual(
             worktree_before,
             git(root, "status", "--porcelain", "--untracked-files=all"),

@@ -22,6 +22,9 @@ What it reports:
       at commit, tree, and file level, including patch promotion status.
       File moves are reported as deterministic add/delete pairs so both
       paths remain visible in the JSON evidence.
+      UTF-8 paths remain JSON strings; paths containing invalid UTF-8 bytes
+      use {"encoding": "base64", "data": "..."} with standard Base64 of the
+      exact path bytes.
   4. Naming violations: files/folders whose names break the kebab-case
      default (PascalCase, camelCase, spaces, uppercase extensions) outside
      the recognized structural exceptions (React components/hooks, root
@@ -34,6 +37,7 @@ This script only reads; it never deletes, renames, or force-pushes anything.
 Treat its output as evidence for a plan, not as an execution instruction.
 """
 import argparse
+import base64
 import json
 import os
 import re
@@ -513,6 +517,18 @@ def _git_result(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _git_bytes_result(
+    root: Path, *args: str
+) -> subprocess.CompletedProcess[bytes]:
+    """Run a Git command without decoding output that may contain file paths."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+
+
 def _verified_commit(root: Path, ref: str) -> str | None:
     """Return a full commit SHA when ref resolves to a commit, otherwise None."""
     result = _git_result(root, "rev-parse", "--verify", f"{ref}^{{commit}}")
@@ -550,21 +566,31 @@ def _parse_cherry_lines(output: str) -> list[dict[str, str]]:
     return commits
 
 
-def _parse_file_differences(output: str) -> list[dict[str, str]]:
+def _parse_file_differences(
+    output: str | bytes,
+) -> list[dict[str, object]]:
     """Parse NUL-delimited ``--no-renames`` name-status evidence.
 
     A move is intentionally retained as separate add/delete records rather
     than inferred as a rename. This preserves both paths exactly as Git
     reported them and avoids making similarity-based classifications part of
     the audit contract. NUL delimiters keep spaces, tabs, and newlines inside
-    a path from being mistaken for record boundaries.
+    a path from being mistaken for record boundaries. Valid UTF-8 paths remain
+    strings. Invalid UTF-8 paths use a JSON object with ``encoding`` set to
+    ``base64`` and ``data`` set to the standard Base64 encoding of the exact
+    path bytes.
     """
-    differences: list[dict[str, str]] = []
+    differences: list[dict[str, object]] = []
     if not output:
         return differences
 
-    fields = output.split("\0")
-    if fields[-1] == "":
+    raw_output = (
+        output.encode("utf-8", errors="surrogateescape")
+        if isinstance(output, str)
+        else output
+    )
+    fields = raw_output.split(b"\0")
+    if fields[-1] == b"":
         fields.pop()
     if len(fields) % 2:
         raise ValueError("incomplete NUL-delimited Git name-status evidence")
@@ -572,7 +598,17 @@ def _parse_file_differences(output: str) -> list[dict[str, str]]:
         status, path = fields[index:index + 2]
         if not status or not path:
             raise ValueError("empty status or path in Git name-status evidence")
-        differences.append({"status": status, "path": path})
+        try:
+            path_value: str | dict[str, str] = path.decode("utf-8")
+        except UnicodeDecodeError:
+            path_value = {
+                "encoding": "base64",
+                "data": base64.b64encode(path).decode("ascii"),
+            }
+        differences.append({
+            "status": status.decode("ascii"),
+            "path": path_value,
+        })
     return differences
 
 
@@ -645,7 +681,7 @@ def audit_archive_equivalents(
         archive_tree = archive_tree_result.stdout.strip()
         # Keep rename detection disabled so a moved file remains an explicit
         # add/delete pair and reviewers can see both the old and new paths.
-        file_diff = _git_result(
+        file_diff = _git_bytes_result(
             root,
             "diff",
             "--no-renames",
