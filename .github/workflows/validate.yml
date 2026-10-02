@@ -77,8 +77,16 @@ jobs:
       - name: Run link checker
         run: python3 scripts/check-links.py
 
+      - name: Verify lazy-image behavior on locked Playwright and Chromium
+        run: >-
+          python3 -m pytest -q
+          tests/test_release_checks.py::test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures
+
       - name: Run regression tests
-        run: python3 -m pytest
+        # The Playwright fixture already ran as a separate compatibility step.
+        run: >-
+          python3 -m pytest
+          -k "not responsive_qa_browser_fixture_isolates_pages_and_preserves_failures"
 
       - name: Verify committed search index is current
         run: python3 scripts/build-search-index.py --check

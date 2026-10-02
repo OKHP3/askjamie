@@ -689,7 +689,8 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     events = []
     state = {"active": 0, "max_active": 0, "page_active": 0, "page_max_active": 0}
     page_paths = {
-        "/lazy/", "/lazy-unobserved/", "/clean/", "/abort/", "/console-404/", "/timeout/"
+        "/lazy/", "/lazy-unobserved/", "/lazy-late/", "/clean/", "/abort/",
+        "/console-404/", "/timeout/"
     }
     lock = threading.Lock()
     png_header = b"\x89PNG\r\n\x1a\n"
@@ -724,6 +725,16 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
                         'const image = document.getElementById("unobserved-lazy"); '
                         'if (image?.getAttribute("src") === "/unobserved-lazy.png") '
                         'image.src = "data:image/png;base64,iVBORw0KGgo="; '
+                        '}, { once: true });</script>'
+                    ),
+                    "/lazy-late/": (
+                        '<div style="height:100000px"></div>'
+                        '<img id="late-lazy" src="/late-lazy.png" '
+                        'loading="lazy" width="10" height="10">'
+                        '<script>window.addEventListener("scroll", () => { '
+                        'const image = document.getElementById("late-lazy"); '
+                        'image.src = "data:image/png;base64,iVBORw0KGgo="; '
+                        'setTimeout(() => { image.src = "/late-lazy.png"; }, 5200); '
                         '}, { once: true });</script>'
                     ),
                     "/clean/": "",
@@ -770,6 +781,16 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
                 self._record("end", path)
                 return
 
+            if path == "/late-lazy.png":
+                self._record("start", path)
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(png_header)))
+                self.end_headers()
+                self.wfile.write(png_header)
+                self._record("end", path)
+                return
+
             if path == "/delayed.png":
                 self._record("start", path)
                 with lock:
@@ -802,7 +823,8 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     sitemap = (
         '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
         + "".join(f"<url><loc>https://askjamie.bot{path}</loc></url>" for path in (
-            "/lazy/", "/lazy-unobserved/", "/clean/", "/abort/", "/console-404/", "/timeout/"
+            "/lazy/", "/lazy-unobserved/", "/lazy-late/", "/clean/", "/abort/",
+            "/console-404/", "/timeout/"
         ))
         + "</urlset>"
     )
@@ -818,7 +840,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
             cwd=fixture_root,
             text=True,
             capture_output=True,
-            timeout=60,
+            timeout=120,
             env={**os.environ, "NODE_PATH": node_modules},
         )
     finally:
@@ -831,18 +853,23 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
             encoding="utf-8"
         )
     )
-    rows = {path: [row for row in report["results"] if path in row["url"]] for path in (
-        "/lazy/", "/lazy-unobserved/", "/clean/", "/abort/", "/console-404/", "/timeout/"
-    )}
+    rows = {
+        path: [row for row in report["results"] if path in row["url"]]
+        for path in (
+            "/lazy/", "/lazy-unobserved/", "/lazy-late/", "/clean/", "/abort/",
+            "/console-404/", "/timeout/"
+        )
+    }
 
     assert result.returncode == 1
-    assert report["total_checks"] == 48
+    assert report["mode"] == "playwright"
+    assert report["total_checks"] == 56
     assert all(row["pass"] for row in rows["/lazy/"])
     assert all(not row["warnings"] for row in rows["/lazy/"])
     assert all(row["pass"] for row in rows["/lazy-unobserved/"])
     assert all(
         any(
-            "lazy image request not observed" in warning
+            "lazy image request was never triggered" in warning
             and row["url"] in warning
             and "unobserved-lazy.png" in warning
             for warning in row["warnings"]
@@ -852,6 +879,22 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     assert not any(
         event[1] == "/unobserved-lazy.png" for event in events
     )
+    assert all(row["pass"] for row in rows["/lazy-late/"])
+    assert all(
+        any(
+            "lazy image request observed too late" in warning
+            and "expected within 5000ms" in warning
+            and row["url"] in warning
+            and "late-lazy.png" in warning
+            for warning in row["warnings"]
+        )
+        for row in rows["/lazy-late/"]
+    )
+    late_lazy_starts = [
+        event for event in events
+        if event[0] == "start" and event[1] == "/late-lazy.png"
+    ]
+    assert len(late_lazy_starts) == len(rows["/lazy-late/"]) == 8
     assert all(row["pass"] for row in rows["/clean/"])
     assert all(any("REQUEST FAILED" in error or "BROKEN IMG" in error for error in row["errors"])
                for row in rows["/abort/"])
