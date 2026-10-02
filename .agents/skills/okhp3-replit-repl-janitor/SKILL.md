@@ -361,11 +361,11 @@ unblocked entries are not deletion approvals and are omitted from this plan.
 
 - `scripts/audit-repo.py` — deterministic, no-fetch-by-default JSON audit of
   branches, naming violations, and nested detritus.
-- `scripts/recovery-guard.py` — read-only snapshot integrity and protected-state
+- `scripts/recovery-guard.py`: read-only snapshot integrity and protected-state
   comparison used by the audit.
-- `scripts/retirement-ledger.py` — validates committed owner-approved policy and
+- `scripts/retirement-ledger.py`: validates committed owner-approved policy and
   retirement records before the guard accepts retirement.
-- `references/retirement-ledger.md` — retained decision format, owner approval,
+- `references/retirement-ledger.md`: retained decision format, owner approval,
   redaction, and preflight/post-removal procedure.
 - `references/naming-conventions.md` — portable kebab-case policy and structural
   exceptions.
