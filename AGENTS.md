@@ -328,6 +328,13 @@ prepares `.scratch/pages-release/` and passes that exact commit-named artifact
 to a deploy job that depends on validation. The isolated deploy runner downloads
 that artifact into `dist-pages/`. `CNAME` declares `askjamie.bot`.
 
+After the Pages action succeeds, `scripts/check-deployed-pages.py` compares four
+served files with the exact downloaded artifact and checks three representative
+repository-only exclusions. JSON and Markdown evidence is retained outside the
+public artifact even on probe failure. This finite sample does not identify a
+remote revision or establish complete route, exclusion, behavior or performance
+coverage. A failed post-deployment probe does not undo the successful Pages action.
+
 `hosted-js-smoke.yml` and `public-gpt-links.yml` provide separate scheduled
 hosted and outbound checks with retained reports. Their presence does not
 prove the most recent run passed. `.replit` still declares `publicDir = "."`
