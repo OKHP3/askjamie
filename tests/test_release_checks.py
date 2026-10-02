@@ -527,7 +527,7 @@ def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without
     runner.write_text(
         """
 import { readFileSync } from "node:fs";
-import { createSummary, LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
+import { APPROVED_MEASUREMENT_STACK, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
 const baseline = { pages: {
@@ -535,13 +535,15 @@ const baseline = { pages: {
   brandguard: { performance: 88, lcpMs: 2000 },
   universe: { performance: 90, lcpMs: 2500 },
   search: { performance: 91, lcpMs: 3000 }
-} };
-const emit = (controlled) => {
+}, measurementStack: APPROVED_MEASUREMENT_STACK };
+const emit = (controlled, measurementStack) => {
   const summary = createSummary({
     date: "2099-01-02",
     preset: "mobile",
     controlled,
-    baseUrl: "https://fixture.invalid"
+    baseUrl: "https://fixture.invalid",
+    measurementStack,
+    baselineMeasurementStack: baseline.measurementStack
   });
   for (const [name, path] of Object.entries(LIGHTHOUSE_ROUTES)) {
     summary.pages[name] = summarizePage({
@@ -554,8 +556,22 @@ const emit = (controlled) => {
 };
 process.stdout.write(JSON.stringify({
   routes: LIGHTHOUSE_ROUTES,
-  normal: emit(false),
-  controlled: emit(true)
+  parsedChromiumVersion: parseChromiumVersion("Google Chrome for Testing 153.0.8010.12"),
+  normal: emit(false, baseline.measurementStack),
+  lighthouseUpgrade: emit(false, {
+    ...baseline.measurementStack,
+    lighthouseVersion: "13.5.0"
+  }),
+  chromiumUpgrade: emit(false, {
+    ...baseline.measurementStack,
+    chromiumVersion: "153.0.8010.12",
+    chromiumUserAgent: "HeadlessChrome/153.0.0.0"
+  }),
+  controlled: emit(true, {
+    lighthouseVersion: "13.5.0",
+    chromiumVersion: "153.0.8010.12",
+    chromiumUserAgent: "HeadlessChrome/153.0.0.0"
+  })
 }));
 """.strip()
         + "\n",
@@ -574,8 +590,25 @@ process.stdout.write(JSON.stringify({
     assert emitted["routes"] == expected_routes
 
     normal = emitted["normal"]
-    assert normal["schemaVersion"] == 2
+    assert emitted["parsedChromiumVersion"] == "153.0.8010.12"
+    assert normal["schemaVersion"] == 3
     assert normal["capturedAt"] == "2099-01-02"
+    assert normal["tool"] == "Lighthouse 12.8.2"
+    assert normal["measurementStack"] == {
+        "lighthouseVersion": "12.8.2",
+        "chromiumVersion": "148.0.7778.96",
+        "chromiumUserAgent": "HeadlessChrome/148.0.0.0",
+    }
+    assert normal["measurementStackReview"] == {
+        "baseline": {
+            "lighthouseVersion": "12.8.2",
+            "chromiumVersion": "148.0.7778.96",
+            "chromiumUserAgent": "HeadlessChrome/148.0.0.0",
+        },
+        "status": "not-required",
+        "changedComponents": [],
+        "action": "No Lighthouse or Chromium version change from the approved baseline.",
+    }
     assert normal["environment"] == "Local or supplied static server, mobile preset"
     assert normal["controls"] == {
         "thirdPartyFonts": "in flight",
@@ -583,7 +616,25 @@ process.stdout.write(JSON.stringify({
         "interpretation": "No third-party isolation applied.",
     }
 
+    lighthouse_upgrade = emitted["lighthouseUpgrade"]
+    assert lighthouse_upgrade["measurementStackReview"]["status"] == "required"
+    assert lighthouse_upgrade["measurementStackReview"]["changedComponents"] == [
+        "lighthouseVersion",
+    ]
+    chromium_upgrade = emitted["chromiumUpgrade"]
+    assert chromium_upgrade["measurementStackReview"]["status"] == "required"
+    assert chromium_upgrade["measurementStackReview"]["changedComponents"] == [
+        "chromiumVersion",
+    ]
+
     controlled = emitted["controlled"]
+    assert controlled["tool"] == "Lighthouse 13.5.0"
+    assert controlled["measurementStackReview"]["status"] == "required"
+    assert controlled["measurementStackReview"]["changedComponents"] == [
+        "lighthouseVersion",
+        "chromiumVersion",
+    ]
+    assert "Owner review is required" in controlled["measurementStackReview"]["action"]
     assert controlled["environment"] == "Local or supplied static server, controlled mobile preset"
     assert controlled["controls"] == {
         "thirdPartyFonts": "blocked",
@@ -598,7 +649,7 @@ process.stdout.write(JSON.stringify({
         "search": {"performance": 91, "lcpMs": 3000},
     }}
     for summary in (normal, controlled):
-        assert summary["schemaVersion"] == 2
+        assert summary["schemaVersion"] == 3
         assert summary["property"] == "https://fixture.invalid"
         assert summary["baseline"] == "assets/audit/lighthouse-baseline-2026-08-22.json"
         assert set(summary["pages"]) == set(expected_routes)

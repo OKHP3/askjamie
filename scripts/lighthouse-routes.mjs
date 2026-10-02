@@ -24,11 +24,50 @@ export const routes = Object.freeze({
 });
 export const LIGHTHOUSE_ROUTES = routes;
 
-export function createSummary({ date, preset, controlled, baseUrl }) {
+// The approved historical measurement stack is intentionally independent of
+// the ignored, regenerable files under assets/audit/.
+export const APPROVED_MEASUREMENT_STACK = Object.freeze({
+  lighthouseVersion: "12.8.2",
+  chromiumVersion: "148.0.7778.96",
+  chromiumUserAgent: "HeadlessChrome/148.0.0.0",
+});
+
+export function parseChromiumVersion(output) {
+  const match = String(output).match(/\b(\d+\.\d+\.\d+\.\d+)\b/);
+  if (!match) {
+    throw new Error(`Could not determine the Chromium version from: ${String(output).trim() || "(empty output)"}`);
+  }
+  return match[1];
+}
+
+export function createSummary({
+  date,
+  preset,
+  controlled,
+  baseUrl,
+  measurementStack,
+  baselineMeasurementStack,
+}) {
+  const versionFields = ["lighthouseVersion", "chromiumVersion"];
+  const baselineKnown = versionFields.every((field) => Boolean(baselineMeasurementStack?.[field]));
+  const changedComponents = baselineKnown
+    ? versionFields.filter((field) => measurementStack[field] !== baselineMeasurementStack[field])
+    : ["baseline measurement stack unavailable"];
+  const reviewRequired = changedComponents.length > 0;
+
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     capturedAt: date,
-    tool: "Lighthouse 12.8.2",
+    tool: `Lighthouse ${measurementStack.lighthouseVersion}`,
+    measurementStack,
+    measurementStackReview: {
+      baseline: baselineMeasurementStack ?? null,
+      status: reviewRequired ? "required" : "not-required",
+      changedComponents,
+      action: reviewRequired
+        ? "Owner review is required before interpreting or changing the BrandGuard lab budget."
+        : "No Lighthouse or Chromium version change from the approved baseline.",
+    },
     environment: controlled
       ? "Local or supplied static server, controlled mobile preset"
       : `Local or supplied static server, ${preset} preset`,
@@ -157,9 +196,16 @@ function main() {
     console.error("Chromium was not found. Set CHROME_PATH or install Playwright browsers.");
     process.exit(1);
   }
+  const chromiumVersion = parseChromiumVersion(execFileSync(chromePath, ["--version"], {
+    cwd: root,
+    encoding: "utf8",
+  }));
 
   mkdirSync(outputDir, { recursive: true });
-  const summary = createSummary({ date, preset, controlled, baseUrl });
+  let lighthouseVersion = null;
+  let chromiumUserAgent = null;
+  const baselineMeasurementStack = APPROVED_MEASUREMENT_STACK;
+  const pages = {};
 
   for (const [name, path] of Object.entries(routes)) {
     const reportPath = resolve(outputDir, `${name}.json`);
@@ -178,16 +224,60 @@ function main() {
     ], { cwd: root, stdio: "inherit", env: { ...process.env, CHROME_PATH: chromePath } });
 
     const report = JSON.parse(readFileSync(reportPath, "utf8"));
-    summary.pages[name] = summarizePage({
+    if (typeof report.lighthouseVersion !== "string" || !report.lighthouseVersion) {
+      throw new Error(`Lighthouse report for ${name} does not identify its Lighthouse version.`);
+    }
+    const reportBrowser = report.environment?.hostUserAgent || report.userAgent || "";
+    const browserMatch = reportBrowser.match(/(?:HeadlessChrome|Chrome)\/([\d.]+)/);
+    if (!browserMatch) {
+      throw new Error(`Lighthouse report for ${name} does not identify its Chromium version.`);
+    }
+    const reportChromiumMajor = browserMatch[1].split(".")[0];
+    if (reportChromiumMajor !== chromiumVersion.split(".")[0]) {
+      throw new Error(
+        `Lighthouse used Chromium ${browserMatch[1]}, but the selected binary reports ${chromiumVersion}.`,
+      );
+    }
+    if (lighthouseVersion && lighthouseVersion !== report.lighthouseVersion) {
+      throw new Error(`Lighthouse version changed during the route run (${lighthouseVersion} to ${report.lighthouseVersion}).`);
+    }
+    if (chromiumUserAgent && chromiumUserAgent !== browserMatch[0]) {
+      throw new Error(`Chromium user agent changed during the route run (${chromiumUserAgent} to ${browserMatch[0]}).`);
+    }
+    lighthouseVersion = report.lighthouseVersion;
+    chromiumUserAgent = browserMatch[0];
+    pages[name] = summarizePage({
       report,
       path,
       baselinePage: baseline.pages[name] || {},
     });
   }
 
+  const measurementStack = {
+    lighthouseVersion,
+    chromiumVersion,
+    chromiumUserAgent,
+  };
+  const summary = createSummary({
+    date,
+    preset,
+    controlled,
+    baseUrl,
+    measurementStack,
+    baselineMeasurementStack,
+  });
+  summary.pages = pages;
+
   const summaryPath = resolve(outputDir, "summary.json");
   writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
   console.log(`\nWrote ${summaryPath}`);
+  console.log(`Measurement stack: Lighthouse ${lighthouseVersion}; Chromium ${chromiumVersion}`);
+  if (summary.measurementStackReview.status === "required") {
+    console.warn(
+      `BRANDGUARD BUDGET REVIEW REQUIRED: ${summary.measurementStackReview.changedComponents.join(", ")} changed from the approved measurement baseline.`,
+    );
+    console.warn(summary.measurementStackReview.action);
+  }
   console.table(Object.fromEntries(Object.entries(summary.pages).map(([name, page]) => [
     name,
     { performance: page.performance, delta: page.deltaPerformance, lcpMs: page.lcpMs, deltaLcpMs: page.deltaLcpMs, cls: page.cls, tbtMs: page.tbtMs },
