@@ -16,12 +16,13 @@ import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export const routes = {
+export const routes = Object.freeze({
   homepage: "/",
   brandguard: "/lens-system/okhp3-brandguard/",
   universe: "/universe/",
   search: "/search/",
-};
+});
+export const LIGHTHOUSE_ROUTES = routes;
 
 export function createSummary({ date, preset, controlled, baseUrl }) {
   return {

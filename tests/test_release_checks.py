@@ -515,19 +515,20 @@ def test_lighthouse_routes_preserves_normal_output_contract():
 def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without_browser(tmp_path):
     fixture = ROOT / "tests/fixtures/lighthouse-summary-report.json"
     assert fixture.is_file()
+    expected_routes = {
+        "homepage": "/",
+        "brandguard": "/lens-system/okhp3-brandguard/",
+        "universe": "/universe/",
+        "search": "/search/",
+    }
     runner = tmp_path / "summary-fixture.mjs"
     runner.write_text(
         """
 import { readFileSync } from "node:fs";
-import { createSummary, routes, summarizePage } from "./scripts/lighthouse-routes.mjs";
+import { createSummary, LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
-const baselinePages = {
-  homepage: { performance: 80, lcpMs: 1000 },
-  brandguard: { performance: 88, lcpMs: 2000 },
-  universe: { performance: 90, lcpMs: 2500 },
-  search: { performance: 91, lcpMs: 3000 }
-};
+const baseline = JSON.parse(readFileSync("assets/audit/lighthouse-baseline-2026-08-22.json", "utf8"));
 const emit = (controlled) => {
   const summary = createSummary({
     date: "2099-01-02",
@@ -535,16 +536,20 @@ const emit = (controlled) => {
     controlled,
     baseUrl: "https://fixture.invalid"
   });
-  for (const [name, path] of Object.entries(routes)) {
+  for (const [name, path] of Object.entries(LIGHTHOUSE_ROUTES)) {
     summary.pages[name] = summarizePage({
       report,
       path,
-      baselinePage: baselinePages[name]
+      baselinePage: baseline.pages[name]
     });
   }
   return summary;
 };
-process.stdout.write(JSON.stringify({ routes, normal: emit(false), controlled: emit(true) }));
+process.stdout.write(JSON.stringify({
+  routes: LIGHTHOUSE_ROUTES,
+  normal: emit(false),
+  controlled: emit(true)
+}));
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -559,13 +564,7 @@ process.stdout.write(JSON.stringify({ routes, normal: emit(false), controlled: e
     )
     emitted = json.loads(result.stdout)
     assert not list((ROOT / "assets/audit").glob("lighthouse-2099-01-02*"))
-    expected_paths = {
-        "homepage": "/",
-        "brandguard": "/lens-system/okhp3-brandguard/",
-        "universe": "/universe/",
-        "search": "/search/",
-    }
-    assert emitted["routes"] == expected_paths
+    assert emitted["routes"] == expected_routes
 
     normal = emitted["normal"]
     assert normal["schemaVersion"] == 2
@@ -585,36 +584,30 @@ process.stdout.write(JSON.stringify({ routes, normal: emit(false), controlled: e
         "interpretation": "Controlled lab measurement only. Not field data.",
     }
 
-    expected_common_page_fields = {
-        "performance": 91,
-        "accessibility": 95,
-        "bestPractices": 88,
-        "seo": 93,
-        "lcpMs": 2345,
-        "cls": 0.012346,
-        "tbtMs": 17,
-        "fcpMs": 1234,
-        "speedIndexMs": 1790,
-        "lcpInvalidated": False,
-        "lcpElement": "div.askjamie-hero-copy > p.hero-tagline",
-    }
-    baselines = {
-        "homepage": {"performance": 80, "lcpMs": 1000},
-        "brandguard": {"performance": 88, "lcpMs": 2000},
-        "universe": {"performance": 90, "lcpMs": 2500},
-        "search": {"performance": 91, "lcpMs": 3000},
-    }
+    baseline = json.loads(
+        (ROOT / "assets/audit/lighthouse-baseline-2026-08-22.json").read_text(encoding="utf-8")
+    )
     for summary in (normal, controlled):
         assert summary["schemaVersion"] == 2
         assert summary["property"] == "https://fixture.invalid"
         assert summary["baseline"] == "assets/audit/lighthouse-baseline-2026-08-22.json"
-        assert set(summary["pages"]) == set(expected_paths)
-        for name, path in expected_paths.items():
+        assert set(summary["pages"]) == set(expected_routes)
+        for name, path in expected_routes.items():
             assert summary["pages"][name] == {
                 "path": path,
-                **expected_common_page_fields,
-                "deltaPerformance": 91 - baselines[name]["performance"],
-                "deltaLcpMs": 2345 - baselines[name]["lcpMs"],
+                "performance": 91,
+                "accessibility": 95,
+                "bestPractices": 88,
+                "seo": 93,
+                "lcpMs": 2345,
+                "cls": 0.012346,
+                "tbtMs": 17,
+                "fcpMs": 1234,
+                "speedIndexMs": 1790,
+                "lcpInvalidated": False,
+                "lcpElement": "div.askjamie-hero-copy > p.hero-tagline",
+                "deltaPerformance": 91 - baseline["pages"][name]["performance"],
+                "deltaLcpMs": 2345 - baseline["pages"][name]["lcpMs"],
             }
 
 
