@@ -1249,6 +1249,43 @@ process.stdout.write(formatUnavailableMetricsNotice({ brandguard: page }));
     )
 
 
+def test_lighthouse_cli_unavailable_metric_notice_can_show_sources_without_browser():
+    runner = """
+import { readFileSync } from "node:fs";
+import {
+  formatUnavailableMetricsNotice,
+  LIGHTHOUSE_ROUTES,
+  summarizePage,
+} from "./scripts/lighthouse-routes.mjs";
+
+const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-incomplete-report.json", "utf8"));
+const page = summarizePage({
+  report,
+  path: LIGHTHOUSE_ROUTES.brandguard,
+  baselinePage: { performance: 88, lcpMs: 2000 }
+});
+process.stdout.write(formatUnavailableMetricsNotice(
+  { brandguard: page },
+  { includeSources: true }
+));
+""".strip()
+
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", runner],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == (
+        "Unavailable Lighthouse metrics:\n"
+        "  /lens-system/okhp3-brandguard/: performance, tbtMs, lcpElement\n"
+        "    performance: categories.performance.score\n"
+        "    tbtMs: audits.total-blocking-time.numericValue\n"
+        "    lcpElement: audits.largest-contentful-paint-element.details.items[0].items[0].node.selector"
+    )
+
+
 def test_lighthouse_invalid_fixture_marks_present_invalid_metrics_unavailable_without_browser(tmp_path):
     fixture = ROOT / "tests/fixtures/lighthouse-summary-invalid-report.json"
     assert fixture.is_file()

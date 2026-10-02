@@ -13,6 +13,7 @@
  *   node scripts/lighthouse-routes.mjs --base-url=https://askjamie.bot
  *   node scripts/lighthouse-routes.mjs --preset=mobile --date=2026-10-01 --run-id=rerun-2
  *   node scripts/lighthouse-routes.mjs --preset=mobile --date=2026-10-01 --replace
+ *   node scripts/lighthouse-routes.mjs --show-unavailable-sources
  *
  * Existing dated output is preserved by default. Use --run-id to write to a
  * separate directory, or --replace to explicitly clear and reuse that output.
@@ -432,14 +433,32 @@ export function summarizePage({ report, path, baselinePage = {} }) {
   };
 }
 
-export function formatUnavailableMetricsNotice(pages) {
+export function formatUnavailableMetricsNotice(pages, { includeSources = false } = {}) {
   const affectedRoutes = Object.entries(pages ?? {}).flatMap(([name, page]) => {
+    const metrics = Array.isArray(page?.unavailableMetrics) ? page.unavailableMetrics : [];
     const fields = [...new Set(
-      (Array.isArray(page?.unavailableMetrics) ? page.unavailableMetrics : [])
+      metrics
         .map((metric) => metric?.field)
         .filter((field) => typeof field === "string" && field.length > 0),
     )];
-    return fields.length ? [`  ${page.path || name}: ${fields.join(", ")}`] : [];
+    if (fields.length === 0) return [];
+
+    const lines = [`  ${page.path || name}: ${fields.join(", ")}`];
+    if (includeSources) {
+      const sources = new Set();
+      for (const metric of metrics) {
+        if (
+          typeof metric?.field === "string"
+          && metric.field.length > 0
+          && typeof metric?.source === "string"
+          && metric.source.length > 0
+        ) {
+          sources.add(`${metric.field}: ${metric.source}`);
+        }
+      }
+      lines.push(...[...sources].map((source) => `    ${source}`));
+    }
+    return lines;
   });
   return affectedRoutes.length
     ? `Unavailable Lighthouse metrics:\n${affectedRoutes.join("\n")}`
@@ -557,6 +576,7 @@ function main() {
   }
   const replaceExisting = process.argv.includes("--replace");
   const controlled = process.argv.includes("--controlled");
+  const showUnavailableSources = process.argv.includes("--show-unavailable-sources");
   const brandguardSamplesArg = process.argv.find((arg) => arg.startsWith("--brandguard-samples="));
   const brandguardSamples = brandguardSamplesArg
     ? Number(brandguardSamplesArg.slice("--brandguard-samples=".length))
@@ -781,7 +801,9 @@ function main() {
     name,
     { performance: page.performance, delta: page.deltaPerformance, lcpMs: page.lcpMs, deltaLcpMs: page.deltaLcpMs, cls: page.cls, tbtMs: page.tbtMs },
   ])));
-  const unavailableMetricsNotice = formatUnavailableMetricsNotice(summary.pages);
+  const unavailableMetricsNotice = formatUnavailableMetricsNotice(summary.pages, {
+    includeSources: showUnavailableSources,
+  });
   if (unavailableMetricsNotice) console.warn(`\n${unavailableMetricsNotice}`);
   if (summary.brandguardRepeatSamples) {
     const unavailableBrandGuardSampleMetricsNotice =
