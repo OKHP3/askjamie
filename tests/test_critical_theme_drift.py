@@ -62,6 +62,26 @@ def test_brandguard_mobile_breadcrumb_matches_critical_geometry_fallback():
     assert drift._last_value(theme, label_selector, "min-width") == "15.25rem"
 
 
+def test_brandguard_breadcrumb_typography_and_vertical_rhythm_match():
+    selector = ".askjamie-main .askjamie-breadcrumb"
+    properties = {
+        "font-size": "0.95rem",
+        "line-height": "1.6",
+        "letter-spacing": "0.01em",
+        "margin-bottom": "0.75rem",
+    }
+    critical = drift.parse_rules(
+        (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
+    )
+    theme = drift.parse_rules(
+        (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+    )
+
+    for property_name, expected in properties.items():
+        assert drift._last_value(critical, selector, property_name) == expected
+        assert drift._last_value(theme, selector, property_name) == expected
+
+
 def test_brandguard_390px_font_tracking_keeps_fallback_line_counts():
     critical = drift.parse_rules(
         (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")

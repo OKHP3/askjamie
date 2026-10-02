@@ -177,6 +177,13 @@ CONTRACTS = (
         ("white-space",),
     ),
     Contract(
+        "breadcrumb typography and vertical rhythm",
+        ".askjamie-main .askjamie-breadcrumb",
+        (".askjamie-main .askjamie-breadcrumb",),
+        ("font-size", "line-height", "letter-spacing", "margin-bottom"),
+        ("font-size", "line-height", "letter-spacing", "margin-bottom"),
+    ),
+    Contract(
         "BrandGuard mobile breadcrumb width reservation",
         ".askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label",
         (".askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label",),

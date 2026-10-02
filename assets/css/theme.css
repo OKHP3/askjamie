@@ -7495,7 +7495,9 @@ html[data-theme="light"] .askjamie-main {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
   color: #3c8ea1; /* same teal accent */
   margin-bottom: 0.75rem;
 }
