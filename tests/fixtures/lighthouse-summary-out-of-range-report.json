@@ -1,0 +1,27 @@
+{
+  "categories": {
+    "performance": {"score": -0.01},
+    "accessibility": {"score": 1.01},
+    "best-practices": {"score": -1},
+    "seo": {"score": 2}
+  },
+  "audits": {
+    "largest-contentful-paint": {"numericValue": -1},
+    "cumulative-layout-shift": {"numericValue": -0.01},
+    "total-blocking-time": {"numericValue": -1},
+    "first-contentful-paint": {"numericValue": -100},
+    "speed-index": {"numericValue": -1},
+    "metrics": {"details": {"items": [{"lcpInvalidated": false}]}},
+    "largest-contentful-paint-element": {
+      "details": {
+        "items": [
+          {
+            "items": [
+              {"node": {"selector": "main"}}
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

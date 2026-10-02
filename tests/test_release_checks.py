@@ -1295,6 +1295,109 @@ process.stdout.write(JSON.stringify(summary));
     ]
 
 
+def test_lighthouse_out_of_range_values_are_unavailable_with_report_sources_without_browser(tmp_path):
+    fixture = ROOT / "tests/fixtures/lighthouse-summary-out-of-range-report.json"
+    assert fixture.is_file()
+    runner = tmp_path / "out-of-range-summary-fixture.mjs"
+    runner.write_text(
+        """
+import { readFileSync } from "node:fs";
+import { LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
+
+const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-out-of-range-report.json", "utf8"));
+const summary = summarizePage({
+  report,
+  path: LIGHTHOUSE_ROUTES.brandguard,
+  baselinePage: { performance: 88, lcpMs: 2000 }
+});
+process.stdout.write(JSON.stringify(summary));
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", runner.read_text(encoding="utf-8")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    summary = json.loads(result.stdout)
+    assert summary["path"] == "/lens-system/okhp3-brandguard/"
+    assert summary["performance"] is None
+    assert summary["accessibility"] is None
+    assert summary["bestPractices"] is None
+    assert summary["seo"] is None
+    assert summary["lcpMs"] is None
+    assert summary["cls"] is None
+    assert summary["tbtMs"] is None
+    assert summary["fcpMs"] is None
+    assert summary["speedIndexMs"] is None
+    assert summary["deltaPerformance"] is None
+    assert summary["deltaLcpMs"] is None
+    assert summary["unavailableMetrics"] == [
+        {"field": "performance", "source": "categories.performance.score"},
+        {"field": "accessibility", "source": "categories.accessibility.score"},
+        {"field": "bestPractices", "source": "categories.best-practices.score"},
+        {"field": "seo", "source": "categories.seo.score"},
+        {"field": "lcpMs", "source": "audits.largest-contentful-paint.numericValue"},
+        {"field": "cls", "source": "audits.cumulative-layout-shift.numericValue"},
+        {"field": "tbtMs", "source": "audits.total-blocking-time.numericValue"},
+        {"field": "fcpMs", "source": "audits.first-contentful-paint.numericValue"},
+        {"field": "speedIndexMs", "source": "audits.speed-index.numericValue"},
+    ]
+
+
+def test_lighthouse_numeric_ranges_keep_zero_and_cls_above_one_valid_without_browser():
+    runner = """
+import { LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
+
+const summary = summarizePage({
+  path: LIGHTHOUSE_ROUTES.brandguard,
+  report: {
+    categories: {
+      performance: { score: 0 },
+      accessibility: { score: 1 },
+      "best-practices": { score: 0 },
+      seo: { score: 1 }
+    },
+    audits: {
+      "largest-contentful-paint": { numericValue: 0 },
+      "cumulative-layout-shift": { numericValue: 1.5 },
+      "total-blocking-time": { numericValue: 0 },
+      "first-contentful-paint": { numericValue: 0 },
+      "speed-index": { numericValue: 0 },
+      "largest-contentful-paint-element": {
+        details: { items: [{ items: [{ node: { selector: "main" } }] }] }
+      }
+    }
+  }
+});
+process.stdout.write(JSON.stringify(summary));
+""".strip()
+
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", runner],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    summary = json.loads(result.stdout)
+    assert summary["path"] == "/lens-system/okhp3-brandguard/"
+    assert summary["performance"] == 0
+    assert summary["accessibility"] == 100
+    assert summary["bestPractices"] == 0
+    assert summary["seo"] == 100
+    assert summary["lcpMs"] == 0
+    assert summary["cls"] == 1.5
+    assert summary["tbtMs"] == 0
+    assert summary["fcpMs"] == 0
+    assert summary["speedIndexMs"] == 0
+    assert summary["unavailableMetrics"] == []
+
+
 def test_lighthouse_non_finite_metrics_are_unavailable_without_browser():
     runner = """
 import {

@@ -358,12 +358,27 @@ export function summarizeReferenceApproval(approval) {
   };
 }
 
+// Lighthouse reports category scores in [0, 1], or null when they are unscored.
+const SUMMARY_CATEGORY_SCORE_RANGE = { min: 0, max: 1 };
+
+// These audit numericValues are optional, nonnegative measurements. CLS has no
+// upper bound: its accumulated layout-shift score can legitimately exceed 1.
+const SUMMARY_AUDIT_NUMERIC_VALUE_RANGES = {
+  "largest-contentful-paint": { min: 0, max: Number.POSITIVE_INFINITY },
+  "cumulative-layout-shift": { min: 0, max: Number.POSITIVE_INFINITY },
+  "total-blocking-time": { min: 0, max: Number.POSITIVE_INFINITY },
+  "first-contentful-paint": { min: 0, max: Number.POSITIVE_INFINITY },
+  "speed-index": { min: 0, max: Number.POSITIVE_INFINITY },
+};
+
 export function summarizePage({ report, path, baselinePage = {} }) {
   const audits = report.audits ?? {};
   const unavailableMetrics = [];
+  const isWithinRange = (value, { min, max }) =>
+    typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
   const metric = (id, field) => {
     const value = audits[id]?.numericValue;
-    if (typeof value !== "number" || !Number.isFinite(value)) {
+    if (!isWithinRange(value, SUMMARY_AUDIT_NUMERIC_VALUE_RANGES[id])) {
       unavailableMetrics.push({ field, source: `audits.${id}.numericValue` });
       return null;
     }
@@ -371,7 +386,7 @@ export function summarizePage({ report, path, baselinePage = {} }) {
   };
   const categoryScore = (id, field) => {
     const value = report.categories?.[id]?.score;
-    if (typeof value !== "number" || !Number.isFinite(value)) {
+    if (!isWithinRange(value, SUMMARY_CATEGORY_SCORE_RANGE)) {
       unavailableMetrics.push({ field, source: `categories.${id}.score` });
       return null;
     }
