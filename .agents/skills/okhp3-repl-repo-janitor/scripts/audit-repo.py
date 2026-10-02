@@ -512,18 +512,28 @@ def _parse_cherry_lines(output: str) -> list[dict[str, str]]:
 
 
 def _parse_file_differences(output: str) -> list[dict[str, str]]:
-    """Parse deterministic ``--no-renames`` name-status evidence.
+    """Parse NUL-delimited ``--no-renames`` name-status evidence.
 
     A move is intentionally retained as separate add/delete records rather
     than inferred as a rename. This preserves both paths exactly as Git
     reported them and avoids making similarity-based classifications part of
-    the audit contract.
+    the audit contract. NUL delimiters keep spaces, tabs, and newlines inside
+    a path from being mistaken for record boundaries.
     """
     differences: list[dict[str, str]] = []
-    for line in output.splitlines():
-        status, separator, path = line.partition("\t")
-        if separator and path:
-            differences.append({"status": status, "path": path})
+    if not output:
+        return differences
+
+    fields = output.split("\0")
+    if fields[-1] == "":
+        fields.pop()
+    if len(fields) % 2:
+        raise ValueError("incomplete NUL-delimited Git name-status evidence")
+    for index in range(0, len(fields), 2):
+        status, path = fields[index:index + 2]
+        if not status or not path:
+            raise ValueError("empty status or path in Git name-status evidence")
+        differences.append({"status": status, "path": path})
     return differences
 
 
@@ -601,6 +611,7 @@ def audit_archive_equivalents(
             "diff",
             "--no-renames",
             "--name-status",
+            "-z",
             active_line,
             tip_sha,
         )

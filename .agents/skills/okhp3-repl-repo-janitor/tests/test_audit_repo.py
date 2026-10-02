@@ -462,6 +462,70 @@ class DecisionLedgerTests(unittest.TestCase):
             git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
         )
 
+    def test_cli_json_preserves_filenames_with_spaces_tabs_and_newlines(
+        self,
+    ) -> None:
+        root, _ = self.make_repo()
+        (root / "space name.txt").write_text("before\n", encoding="utf-8")
+        (root / "tab\tname.txt").write_text("before\n", encoding="utf-8")
+        git(root, "add", "--", "space name.txt", "tab\tname.txt")
+        git(root, "commit", "-qm", "add whitespace paths")
+        git(root, "branch", "unusual-paths-archive")
+        git(root, "checkout", "-q", "unusual-paths-archive")
+        (root / "space name.txt").unlink()
+        (root / "tab\tname.txt").write_text("after\n", encoding="utf-8")
+        (root / "line\nbreak.txt").write_text("added\n", encoding="utf-8")
+        git(root, "add", "--all")
+        git(root, "commit", "-qm", "add paths with whitespace")
+        archive_tip = git(root, "rev-parse", "HEAD")
+        git(root, "checkout", "-q", "main")
+        ledger = self.write_ledger(
+            root,
+            (
+                f"| `unusual-paths-archive` | **archive** | "
+                f"`{archive_tip}` | reviewed |"
+            ),
+        )
+        refs_before = git(
+            root, "for-each-ref", "--format=%(refname) %(objectname)"
+        )
+        worktree_before = git(root, "status", "--porcelain", "--untracked-files=all")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--root",
+                str(root),
+                "--base",
+                "main",
+                "--decision-ledger",
+                str(ledger),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        report = json.loads(result.stdout)
+        self.assertEqual(
+            report["archive_equivalents"]["archives"][0]["file_differences"],
+            [
+                {"status": "A", "path": "line\nbreak.txt"},
+                {"status": "D", "path": "space name.txt"},
+                {"status": "M", "path": "tab\tname.txt"},
+            ],
+        )
+        self.assertEqual(
+            refs_before,
+            git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+        )
+        self.assertEqual(
+            worktree_before,
+            git(root, "status", "--porcelain", "--untracked-files=all"),
+        )
+
     def test_archive_equivalence_accepts_exact_tip_supersession_evidence(self) -> None:
         root, _ = self.make_repo()
         git(root, "branch", "superseded-archive")
