@@ -10,9 +10,11 @@ This is a repeatable lab baseline, not field data. Network conditions, browser
 versions, Google Fonts responses, analytics responses, and CPU load can change
 the results. The report records a historical capture. The current site
 intentionally uses Google Fonts and unconditional page-shell GA4.
-The raw Lighthouse reports are in
-`assets/audit/lighthouse-baseline-2026-08-22/`. The compact machine-readable
-summary is `assets/audit/lighthouse-baseline-2026-08-22.json`.
+The mobile raw Lighthouse reports are in
+`assets/audit/lighthouse-baseline-2026-08-22/`. The compact mobile summary is
+`assets/audit/lighthouse-baseline-2026-08-22.json`. Desktop trend comparisons
+use the separate reference at
+`assets/docs/performance-baseline-desktop-2026-09-07.json`.
 
 ## Measurement-stack review gate
 
@@ -28,13 +30,11 @@ browser user agent reported by Lighthouse. These reference values are kept
 with the runner so the review gate does not depend on ignored, regenerable
 files under `assets/audit/`.
 
-Every dated summary compares those versions with the historical stack. If
-either version changes, the summary marks `measurementStackReview.status` as
-`required`, names the changed component, and directs the owner to review
-BrandGuard budget comparability before interpreting results or changing the
-approved budget. A tool upgrade alone does not approve a budget change. Keep
-the historical reference intact unless an owner approves a new comparison
-baseline.
+Every mobile summary compares those versions with the historical mobile stack.
+Desktop summaries compare only with the separate desktop reference. If either
+version changes, `measurementStackReview.status` becomes `required` and names
+the changed component. A tool upgrade alone does not approve a budget change.
+Keep each reference separate; changing one must not silently change the other.
 
 ## Run-condition review gate
 
@@ -53,13 +53,32 @@ quiet thresholds. The effective locale is `en-US`. Storage reset is enabled
 Each dated summary records these settings from every raw report, including
 repeated BrandGuard samples; a missing setting is marked unavailable.
 
-Each report's effective settings are compared with the approved historical
-conditions. Controlled runs are checked against their explicit blocked-URL
-profile; normal runs are checked for no blocked-URL patterns. A difference or
-missing setting marks `runConditionsReview.status` as `required` and names the
-changed setting. Collection timing, locale, and storage changes are included
-in this gate. It is separate from `measurementStackReview`, so tool-version
-changes and condition changes remain independently visible.
+Each mobile report's effective settings are compared with the approved
+historical mobile conditions. Controlled runs are checked against their
+explicit blocked-URL profile; normal runs are checked for no blocked-URL
+patterns. A difference or missing setting marks `runConditionsReview.status`
+as `required` and names the changed setting. Collection timing, locale, and
+storage changes are included in this gate. It is separate from
+`measurementStackReview`, so tool-version changes and condition changes remain
+independently visible.
+
+## Desktop comparison reference
+
+Desktop runs use
+`assets/docs/performance-baseline-desktop-2026-09-07.json`, built from the
+four raw desktop reports captured on 2026-09-07. It stores the desktop
+measurements, exact effective settings, and measurement-stack versions
+separately from the approved mobile reference. Desktop summaries compare
+desktop measurements and run conditions only with this desktop reference; a
+desktop run does not inherit the mobile form factor, throttling, or emulation
+settings.
+
+The desktop capture is a historical comparison candidate, not an approved
+reference: the project has no recorded owner approval for it. Summaries expose
+`referenceApproval.status: "not-recorded"` and mark deltas as exploratory.
+Do not change that status to `"owner-approved"` unless the approval record,
+approver, and approval date are recorded in the desktop reference JSON. This
+approval metadata does not affect the mobile comparison or its review gate.
 
 Normal and controlled mobile runs are separate conditions in the summary.
 Controlled runs continue to block third-party fonts and analytics as an

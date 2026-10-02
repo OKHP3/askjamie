@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "referenceType": "desktop",
+  "label": "Historical desktop comparison reference; owner approval not recorded",
+  "capturedAt": "2026-09-07",
+  "tool": "Lighthouse 12.8.2",
+  "measurementStack": {
+    "lighthouseVersion": "12.8.2",
+    "chromiumVersion": "148.0.7778.96",
+    "chromiumUserAgent": "HeadlessChrome/148.0.0.0"
+  },
+  "measurementStackReferenceNote": "Captured from the 2026-09-07 desktop raw reports. Chromium 148.0.7778.96 appears in the reports' Chromium client-hint metadata; the browser user agent identifies major version 148.",
+  "runConditions": {
+    "formFactor": "desktop",
+    "throttlingMethod": "simulate",
+    "throttling": {
+      "rttMs": 40,
+      "throughputKbps": 10240,
+      "requestLatencyMs": 0,
+      "downloadThroughputKbps": 0,
+      "uploadThroughputKbps": 0,
+      "cpuSlowdownMultiplier": 1
+    },
+    "screenEmulation": {
+      "mobile": false,
+      "width": 1350,
+      "height": 940,
+      "deviceScaleFactor": 1,
+      "disabled": false
+    },
+    "emulatedUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+    "blockedUrlPatterns": null,
+    "collectionTiming": {
+      "maxWaitForFcp": 30000,
+      "maxWaitForLoad": 45000,
+      "pauseAfterFcpMs": 1000,
+      "pauseAfterLoadMs": 1000,
+      "networkQuietThresholdMs": 1000,
+      "cpuQuietThresholdMs": 1000
+    },
+    "locale": "en-US",
+    "storage": {
+      "disableStorageReset": false,
+      "clearStorageTypes": [
+        "file_systems",
+        "shader_cache",
+        "service_workers",
+        "cache_storage"
+      ]
+    }
+  },
+  "environment": "Local or supplied static server, desktop preset",
+  "property": "http://127.0.0.1:5000",
+  "sourceRun": "assets/audit/lighthouse-2026-09-07-task118-desktop/",
+  "approval": {
+    "status": "not-recorded",
+    "approvedAt": null,
+    "approvedBy": null,
+    "approvalRecord": null
+  },
+  "pages": {
+    "homepage": {
+      "path": "/",
+      "performance": 88,
+      "accessibility": 96,
+      "bestPractices": 100,
+      "seo": 100,
+      "lcpMs": 1686,
+      "cls": 0.067939,
+      "tbtMs": 177,
+      "fcpMs": 564,
+      "speedIndexMs": 564,
+      "lcpInvalidated": false,
+      "lcpElement": "div.askjamie-hero-grid > div.askjamie-hero-visual > picture > img.askjamie-avatar"
+    },
+    "brandguard": {
+      "path": "/lens-system/okhp3-brandguard/",
+      "performance": 99,
+      "accessibility": 96,
+      "bestPractices": 100,
+      "seo": 100,
+      "lcpMs": 729,
+      "cls": 0.044265,
+      "tbtMs": 9,
+      "fcpMs": 569,
+      "speedIndexMs": 569,
+      "lcpInvalidated": false,
+      "lcpElement": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title"
+    },
+    "universe": {
+      "path": "/universe/",
+      "performance": 99,
+      "accessibility": 100,
+      "bestPractices": 100,
+      "seo": 100,
+      "lcpMs": 728,
+      "cls": 0.056094,
+      "tbtMs": 2,
+      "fcpMs": 587,
+      "speedIndexMs": 644,
+      "lcpInvalidated": false,
+      "lcpElement": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > h1#hero-title"
+    },
+    "search": {
+      "path": "/search/",
+      "performance": 96,
+      "accessibility": 100,
+      "bestPractices": 100,
+      "seo": 100,
+      "lcpMs": 1284,
+      "cls": 0.060982,
+      "tbtMs": 0,
+      "fcpMs": 524,
+      "speedIndexMs": 524,
+      "lcpInvalidated": false,
+      "lcpElement": "main#main > div.container > section.search-hero > p.search-hero-lede"
+    }
+  }
+}

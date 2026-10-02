@@ -543,6 +543,290 @@ def test_lighthouse_routes_preserves_normal_output_contract():
     assert "path," in source
 
 
+def test_lighthouse_desktop_reference_is_independent_and_not_mislabelled_approved(tmp_path):
+    reference_path = ROOT / "assets/docs/performance-baseline-desktop-2026-09-07.json"
+    desktop_baseline = json.loads(reference_path.read_text(encoding="utf-8"))
+    assert desktop_baseline["referenceType"] == "desktop"
+    assert desktop_baseline["runConditions"]["formFactor"] == "desktop"
+    assert desktop_baseline["measurementStack"]["lighthouseVersion"] == "12.8.2"
+    assert desktop_baseline["pages"]["brandguard"]["performance"] == 99
+    assert desktop_baseline["approval"]["status"] == "not-recorded"
+    assert desktop_baseline["approval"]["approvedAt"] is None
+    assert desktop_baseline["approval"]["approvedBy"] is None
+    assert desktop_baseline["approval"]["approvalRecord"] is None
+
+    runner = tmp_path / "desktop-reference-fixture.mjs"
+    runner.write_text(
+        """
+import { readFileSync } from "node:fs";
+import {
+  HISTORICAL_REFERENCE_MEASUREMENT_STACK,
+  HISTORICAL_REFERENCE_RUN_CONDITIONS,
+  createSummary,
+  getLighthouseReference,
+  summarizePage,
+  summarizeReferenceApproval,
+  summarizeRunConditions
+} from "./scripts/lighthouse-routes.mjs";
+
+const desktopBaseline = JSON.parse(readFileSync(
+  "assets/docs/performance-baseline-desktop-2026-09-07.json",
+  "utf8"
+));
+const fixture = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
+const desktopReference = getLighthouseReference("desktop", desktopBaseline);
+const mobileReference = getLighthouseReference("mobile", desktopBaseline);
+const desktopReports = Object.fromEntries(
+  ["homepage", "brandguard", "universe", "search"].map(name => [
+    `${name}.json`,
+    desktopBaseline.runConditions
+  ])
+);
+const desktopSummary = createSummary({
+  date: "2099-01-02",
+  preset: "desktop",
+  controlled: false,
+  baseUrl: "https://fixture.invalid",
+  measurementStack: desktopBaseline.measurementStack,
+  baselineMeasurementStack: desktopReference.measurementStack,
+  runConditionsReports: desktopReports,
+  baselineRunConditions: desktopReference.runConditions,
+  baselinePath: desktopReference.path,
+  measurementStackReferenceNote: desktopReference.measurementStackReferenceNote,
+  referenceApproval: desktopReference.approval
+});
+desktopSummary.pages.brandguard = summarizePage({
+  report: fixture,
+  path: "/lens-system/okhp3-brandguard/",
+  baselinePage: desktopBaseline.pages.brandguard
+});
+const upgradedStack = createSummary({
+  date: "2099-01-02",
+  preset: "desktop",
+  controlled: false,
+  baseUrl: "https://fixture.invalid",
+  measurementStack: { ...desktopBaseline.measurementStack, lighthouseVersion: "13.5.0" },
+  baselineMeasurementStack: desktopReference.measurementStack,
+  runConditionsReports: desktopReports,
+  baselineRunConditions: desktopReference.runConditions,
+  baselinePath: desktopReference.path,
+  referenceApproval: desktopReference.approval
+});
+const chromiumUpgrade = createSummary({
+  date: "2099-01-02",
+  preset: "desktop",
+  controlled: false,
+  baseUrl: "https://fixture.invalid",
+  measurementStack: { ...desktopBaseline.measurementStack, chromiumVersion: "149.0.0.0" },
+  baselineMeasurementStack: desktopReference.measurementStack,
+  runConditionsReports: desktopReports,
+  baselineRunConditions: desktopReference.runConditions,
+  baselinePath: desktopReference.path,
+  referenceApproval: desktopReference.approval
+});
+const changedConditions = createSummary({
+  date: "2099-01-02",
+  preset: "desktop",
+  controlled: false,
+  baseUrl: "https://fixture.invalid",
+  measurementStack: desktopBaseline.measurementStack,
+  baselineMeasurementStack: desktopReference.measurementStack,
+  runConditionsReports: { "homepage.json": summarizeRunConditions(fixture) },
+  baselineRunConditions: desktopReference.runConditions,
+  baselinePath: desktopReference.path,
+  referenceApproval: desktopReference.approval
+});
+const mobileSummary = createSummary({
+  date: "2099-01-02",
+  preset: "mobile",
+  controlled: false,
+  baseUrl: "https://fixture.invalid",
+  measurementStack: HISTORICAL_REFERENCE_MEASUREMENT_STACK,
+  baselineMeasurementStack: mobileReference.measurementStack,
+  runConditionsReports: { "homepage.json": summarizeRunConditions(fixture) },
+  baselineRunConditions: HISTORICAL_REFERENCE_RUN_CONDITIONS,
+  baselinePath: mobileReference.path
+});
+let incompleteApprovalError = "";
+try {
+  summarizeReferenceApproval({ status: "owner-approved" });
+} catch (error) {
+  incompleteApprovalError = error.message;
+}
+const recordedApproval = summarizeReferenceApproval({
+  status: "owner-approved",
+  approvedAt: "2026-10-02",
+  approvedBy: "site owner",
+  approvalRecord: "docs/desktop-reference-approval.md"
+});
+let mobileConditionsRejected = "";
+try {
+  getLighthouseReference("desktop", {
+    ...desktopBaseline,
+    runConditions: HISTORICAL_REFERENCE_RUN_CONDITIONS
+  });
+} catch (error) {
+  mobileConditionsRejected = error.message;
+}
+process.stdout.write(JSON.stringify({
+  desktopReference,
+  mobileReference,
+  desktopSummary,
+  upgradedStack,
+  chromiumUpgrade,
+  changedConditions,
+  mobileSummary,
+  incompleteApprovalError,
+  recordedApproval,
+  mobileConditionsRejected
+}));
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", runner.read_text(encoding="utf-8")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    emitted = json.loads(result.stdout)
+    desktop_summary = emitted["desktopSummary"]
+    assert emitted["desktopReference"]["path"] == (
+        "assets/docs/performance-baseline-desktop-2026-09-07.json"
+    )
+    assert emitted["desktopReference"]["runConditions"]["formFactor"] == "desktop"
+    assert emitted["mobileReference"]["path"] == (
+        "assets/audit/lighthouse-baseline-2026-08-22.json"
+    )
+    assert emitted["mobileReference"]["runConditions"]["formFactor"] == "mobile"
+    assert desktop_summary["baseline"] == emitted["desktopReference"]["path"]
+    assert desktop_summary["measurementStackReview"]["status"] == "not-required"
+    assert desktop_summary["runConditionsReview"]["status"] == "not-required"
+    assert desktop_summary["runConditionsReview"]["baseline"]["formFactor"] == "desktop"
+    assert desktop_summary["referenceApproval"] == {
+        "status": "not-recorded",
+        "ownerApproved": False,
+        "action": "No owner approval is recorded for this reference; treat desktop trend deltas as exploratory.",
+    }
+    assert desktop_summary["pages"]["brandguard"]["deltaPerformance"] == -8
+    assert desktop_summary["pages"]["brandguard"]["deltaLcpMs"] == 1616
+    assert emitted["upgradedStack"]["measurementStackReview"]["status"] == "required"
+    assert emitted["upgradedStack"]["measurementStackReview"]["changedComponents"] == [
+        "lighthouseVersion"
+    ]
+    assert emitted["chromiumUpgrade"]["measurementStackReview"]["status"] == "required"
+    assert emitted["chromiumUpgrade"]["measurementStackReview"]["changedComponents"] == [
+        "chromiumVersion"
+    ]
+    assert emitted["changedConditions"]["runConditionsReview"]["status"] == "required"
+    assert "formFactor" in emitted["changedConditions"]["runConditionsReview"]["changedComponents"]
+    assert emitted["mobileSummary"]["baseline"] == emitted["mobileReference"]["path"]
+    assert emitted["mobileSummary"]["measurementStackReview"]["status"] == "not-required"
+    assert emitted["mobileSummary"]["runConditionsReview"]["status"] == "not-required"
+    assert "referenceApproval" not in emitted["mobileSummary"]
+    assert "approvedAt, approvedBy, approvalRecord" in emitted["incompleteApprovalError"]
+    assert emitted["recordedApproval"]["status"] == "owner-approved"
+    assert emitted["recordedApproval"]["ownerApproved"] is True
+    assert "must record desktop run conditions" in emitted["mobileConditionsRejected"]
+
+
+def test_lighthouse_cli_desktop_run_uses_the_desktop_reference(tmp_path):
+    if os.name == "nt":
+        pytest.skip("POSIX fake executables require shebang support unavailable on Windows")
+    node_bin = shutil.which("node")
+    if not node_bin:
+        pytest.skip("Node.js is unavailable")
+
+    root = tmp_path
+    (root / "scripts").mkdir()
+    shutil.copy2(ROOT / "scripts/lighthouse-routes.mjs", root / "scripts/lighthouse-routes.mjs")
+    (root / "tests/fixtures").mkdir(parents=True)
+    shutil.copy2(
+        ROOT / "tests/fixtures/lighthouse-summary-report.json",
+        root / "tests/fixtures/lighthouse-summary-report.json",
+    )
+    (root / "assets/docs").mkdir(parents=True)
+    shutil.copy2(
+        ROOT / "assets/docs/performance-baseline-desktop-2026-09-07.json",
+        root / "assets/docs/performance-baseline-desktop-2026-09-07.json",
+    )
+    (root / "assets/audit").mkdir(parents=True)
+    lighthouse_dir = root / "node_modules/.bin"
+    lighthouse_dir.mkdir(parents=True)
+    fake_lighthouse = lighthouse_dir / "lighthouse"
+    fake_lighthouse.write_text(
+        """#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+const reportPath = args.find((arg) => arg.startsWith("--output-path=")).slice("--output-path=".length);
+const report = JSON.parse(fs.readFileSync(
+  path.join(process.cwd(), "tests/fixtures/lighthouse-summary-report.json"),
+  "utf8"
+));
+const reference = JSON.parse(fs.readFileSync(
+  path.join(process.cwd(), "assets/docs/performance-baseline-desktop-2026-09-07.json"),
+  "utf8"
+));
+const conditions = reference.runConditions;
+report.lighthouseVersion = "12.8.2";
+report.userAgent = "Mozilla/5.0 HeadlessChrome/148.0.0.0";
+report.environment = { hostUserAgent: "Mozilla/5.0 HeadlessChrome/148.0.0.0" };
+report.configSettings = {
+  formFactor: conditions.formFactor,
+  throttlingMethod: conditions.throttlingMethod,
+  throttling: conditions.throttling,
+  screenEmulation: conditions.screenEmulation,
+  emulatedUserAgent: conditions.emulatedUserAgent,
+  blockedUrlPatterns: conditions.blockedUrlPatterns,
+  ...conditions.collectionTiming,
+  locale: conditions.locale,
+  disableStorageReset: conditions.storage.disableStorageReset,
+  clearStorageTypes: conditions.storage.clearStorageTypes
+};
+fs.writeFileSync(reportPath, JSON.stringify(report));
+""",
+        encoding="utf-8",
+    )
+    fake_lighthouse.chmod(0o755)
+    fake_chrome = root / "fake-chrome"
+    fake_chrome.write_text(
+        "#!/bin/sh\nprintf '%s\\n' 'Chromium 148.0.7778.96'\n",
+        encoding="utf-8",
+    )
+    fake_chrome.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            node_bin,
+            "scripts/lighthouse-routes.mjs",
+            "--preset=desktop",
+            "--date=2099-01-02",
+            "--run-id=desktop-reference",
+        ],
+        cwd=root,
+        env={**os.environ, "CHROME_PATH": str(fake_chrome)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    summary_path = (
+        root
+        / "assets/audit/lighthouse-2099-01-02-desktop-reference/summary.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["baseline"] == "assets/docs/performance-baseline-desktop-2026-09-07.json"
+    assert summary["measurementStackReview"]["status"] == "not-required"
+    assert summary["runConditionsReview"]["status"] == "not-required"
+    assert summary["runConditionsReview"]["baseline"]["formFactor"] == "desktop"
+    assert summary["referenceApproval"]["status"] == "not-recorded"
+    assert summary["pages"]["brandguard"]["deltaPerformance"] == -8
+    assert summary["pages"]["brandguard"]["deltaLcpMs"] == 1616
+    assert "DESKTOP REFERENCE NOT OWNER-APPROVED" in result.stderr
+
+
 def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without_browser(tmp_path):
     fixture = ROOT / "tests/fixtures/lighthouse-summary-report.json"
     assert fixture.is_file()

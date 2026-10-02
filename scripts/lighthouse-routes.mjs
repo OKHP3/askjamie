@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Run the same Lighthouse pass against the four public routes and compare the
- * compact results with the committed 2026-08-22 baseline.
+ * compact results with the matching mobile or desktop reference.
  *
  * The static server is intentionally kept separate so this command can be
  * used against the Replit preview, a local server, or a hosted preview:
@@ -38,9 +38,9 @@ export const CONTROLLED_BLOCKED_URL_PATTERNS = Object.freeze([
   "https://*.google-analytics.com/*",
 ]);
 
-// Historical references are independent of the ignored, regenerable files
-// under assets/audit/. Historical reports establish Chromium major 148; the
-// exact patch build below is inferred from Playwright 1.60.0 metadata, not
+// Historical mobile reference is independent of the ignored, regenerable
+// files under assets/audit/. Historical reports establish Chromium major 148;
+// the exact patch build below is inferred from Playwright 1.60.0 metadata, not
 // independently confirmed or owner-approved.
 export const HISTORICAL_REFERENCE_MEASUREMENT_STACK = Object.freeze({
   lighthouseVersion: "12.8.2",
@@ -90,6 +90,50 @@ export const HISTORICAL_REFERENCE_RUN_CONDITIONS = Object.freeze({
     ]),
   }),
 });
+
+export const DESKTOP_REFERENCE_PATH = "assets/docs/performance-baseline-desktop-2026-09-07.json";
+export const MOBILE_REFERENCE_PATH = "assets/audit/lighthouse-baseline-2026-08-22.json";
+
+export function getLighthouseReference(preset, baseline) {
+  if (preset === "mobile") {
+    return {
+      path: MOBILE_REFERENCE_PATH,
+      measurementStack: HISTORICAL_REFERENCE_MEASUREMENT_STACK,
+      runConditions: HISTORICAL_REFERENCE_RUN_CONDITIONS,
+      measurementStackReferenceNote: undefined,
+      approval: null,
+    };
+  }
+  if (preset !== "desktop") {
+    throw new Error(`Unsupported Lighthouse preset: ${preset}. Use desktop or mobile.`);
+  }
+  const missingStackFields = ["lighthouseVersion", "chromiumVersion"]
+    .filter((field) => typeof baseline?.measurementStack?.[field] !== "string");
+  if (missingStackFields.length > 0) {
+    throw new Error(
+      `Desktop Lighthouse reference is missing measurement-stack fields: ${missingStackFields.join(", ")}.`,
+    );
+  }
+  if (baseline?.runConditions?.formFactor !== "desktop") {
+    throw new Error("Desktop Lighthouse reference must record desktop run conditions.");
+  }
+  const missingRouteMeasurements = Object.keys(routes).filter((name) => (
+    !Number.isFinite(baseline?.pages?.[name]?.performance)
+    || !Number.isFinite(baseline?.pages?.[name]?.lcpMs)
+  ));
+  if (missingRouteMeasurements.length > 0) {
+    throw new Error(
+      `Desktop Lighthouse reference is missing performance or LCP measurements for: ${missingRouteMeasurements.join(", ")}.`,
+    );
+  }
+  return {
+    path: DESKTOP_REFERENCE_PATH,
+    measurementStack: baseline.measurementStack,
+    runConditions: baseline.runConditions,
+    measurementStackReferenceNote: baseline.measurementStackReferenceNote,
+    approval: baseline.approval ?? null,
+  };
+}
 
 export function summarizeRunConditions(report) {
   const settings = report.configSettings ?? {};
@@ -186,6 +230,7 @@ export function createRunConditionsReview(
     changedReports.flatMap(({ changedComponents: changed }) => changed),
   )].sort();
   const reviewRequired = entries.length === 0 || changedComponents.length > 0;
+  const desktopReference = baselineRunConditions?.formFactor === "desktop";
 
   return {
     baseline: baselineRunConditions,
@@ -194,8 +239,12 @@ export function createRunConditionsReview(
     changedComponents: entries.length === 0 ? ["run conditions unavailable"] : changedComponents,
     changedReports,
     action: reviewRequired
-      ? "Owner review is required before interpreting or changing the BrandGuard lab budget because Lighthouse collection, locale, storage, emulation, or throttling settings differ from or are missing in the historical reference."
-      : "No Lighthouse run-condition change from the historical reference.",
+      ? desktopReference
+        ? "Owner review is required before interpreting desktop trends because Lighthouse collection, locale, storage, emulation, or throttling settings differ from or are missing in the desktop reference."
+        : "Owner review is required before interpreting or changing the BrandGuard lab budget because Lighthouse collection, locale, storage, emulation, or throttling settings differ from or are missing in the historical reference."
+      : desktopReference
+        ? "No Lighthouse run-condition change from the desktop reference."
+        : "No Lighthouse run-condition change from the historical reference.",
   };
 }
 
@@ -216,6 +265,9 @@ export function createSummary({
   baselineMeasurementStack,
   runConditionsReports = {},
   baselineRunConditions = HISTORICAL_REFERENCE_RUN_CONDITIONS,
+  baselinePath = MOBILE_REFERENCE_PATH,
+  measurementStackReferenceNote = "Historical reference only. The exact Chromium 148.0.7778.96 build is inferred from Playwright metadata; historical reports establish major version 148, not an independently owner-approved exact build.",
+  referenceApproval = null,
 }) {
   const versionFields = ["lighthouseVersion", "chromiumVersion"];
   const baselineKnown = versionFields.every((field) => Boolean(baselineMeasurementStack?.[field]));
@@ -231,12 +283,16 @@ export function createSummary({
     measurementStack,
     measurementStackReview: {
       baseline: baselineMeasurementStack ?? null,
-      referenceNote: "Historical reference only. The exact Chromium 148.0.7778.96 build is inferred from Playwright metadata; historical reports establish major version 148, not an independently owner-approved exact build.",
+      referenceNote: measurementStackReferenceNote,
       status: reviewRequired ? "required" : "not-required",
       changedComponents,
       action: reviewRequired
-        ? "Owner review is required before interpreting or changing the BrandGuard lab budget."
-        : "No Lighthouse or Chromium version change from the historical reference measurement stack.",
+        ? preset === "desktop"
+          ? "Owner review is required before interpreting desktop trends."
+          : "Owner review is required before interpreting or changing the BrandGuard lab budget."
+        : preset === "desktop"
+          ? "No Lighthouse or Chromium version change from the desktop reference measurement stack."
+          : "No Lighthouse or Chromium version change from the historical reference measurement stack.",
     },
     runConditions: {
       condition: controlled ? "controlled" : "normal",
@@ -250,7 +306,10 @@ export function createSummary({
       ? "Local or supplied static server, controlled mobile preset"
       : `Local or supplied static server, ${preset} preset`,
     property: baseUrl,
-    baseline: "assets/audit/lighthouse-baseline-2026-08-22.json",
+    baseline: baselinePath,
+    ...(referenceApproval === null ? {} : {
+      referenceApproval: summarizeReferenceApproval(referenceApproval),
+    }),
     controls: controlled
       ? {
           thirdPartyFonts: "blocked",
@@ -263,6 +322,39 @@ export function createSummary({
           interpretation: "No third-party isolation applied.",
         },
     pages: {},
+  };
+}
+
+export function summarizeReferenceApproval(approval) {
+  const status = approval?.status ?? "not-recorded";
+  if (!["not-recorded", "owner-approved"].includes(status)) {
+    throw new Error(`Unsupported Lighthouse reference approval status: ${status}.`);
+  }
+  if (status === "not-recorded") {
+    return {
+      status,
+      ownerApproved: false,
+      action: "No owner approval is recorded for this reference; treat desktop trend deltas as exploratory.",
+    };
+  }
+
+  const approvalRecord = {
+    approvedAt: approval.approvedAt,
+    approvedBy: approval.approvedBy,
+    approvalRecord: approval.approvalRecord,
+  };
+  const missingFields = Object.entries(approvalRecord)
+    .filter(([, value]) => typeof value !== "string" || value.trim().length === 0)
+    .map(([field]) => field);
+  if (missingFields.length > 0) {
+    throw new Error(
+      `Owner-approved Lighthouse reference is missing recorded approval fields: ${missingFields.join(", ")}.`,
+    );
+  }
+  return {
+    status,
+    ownerApproved: true,
+    ...approvalRecord,
   };
 }
 
@@ -391,7 +483,6 @@ export function summarizeBrandGuardSamples(samples, { controlled }) {
 
 function main() {
   const root = resolve(import.meta.dirname, "..");
-  const baselinePath = resolve(root, "assets/audit/lighthouse-baseline-2026-08-22.json");
   const defaultBaseUrl = process.env.LIGHTHOUSE_BASE_URL || "http://127.0.0.1:5000";
   const baseUrlArg = process.argv.find((arg) => arg.startsWith("--base-url="));
   const baseUrl = (baseUrlArg ? baseUrlArg.slice("--base-url=".length) : defaultBaseUrl).replace(/\/+$/, "");
@@ -401,6 +492,10 @@ function main() {
     console.error(`Unsupported Lighthouse preset: ${preset}. Use desktop or mobile.`);
     process.exit(1);
   }
+  const baselineReferencePath = preset === "desktop"
+    ? DESKTOP_REFERENCE_PATH
+    : MOBILE_REFERENCE_PATH;
+  const baselinePath = resolve(root, baselineReferencePath);
   const dateArg = process.argv.find((arg) => arg.startsWith("--date="));
   const date = dateArg ? dateArg.slice("--date=".length) : new Date().toISOString().slice(0, 10);
   const parsedDate = new Date(`${date}T00:00:00.000Z`);
@@ -451,6 +546,7 @@ function main() {
     process.exit(1);
   }
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+  const reference = getLighthouseReference(preset, baseline);
   const lighthouseBin = resolve(root, "node_modules/.bin/lighthouse");
   const chromePath = process.env.CHROME_PATH || (() => {
     try {
@@ -490,7 +586,6 @@ function main() {
   }
   let lighthouseVersion = null;
   let chromiumUserAgent = null;
-  const baselineMeasurementStack = HISTORICAL_REFERENCE_MEASUREMENT_STACK;
   const pages = {};
   const runConditionsReports = {};
 
@@ -605,8 +700,12 @@ function main() {
     controlled,
     baseUrl,
     measurementStack,
-    baselineMeasurementStack,
+    baselineMeasurementStack: reference.measurementStack,
     runConditionsReports,
+    baselineRunConditions: reference.runConditions,
+    baselinePath: reference.path,
+    measurementStackReferenceNote: reference.measurementStackReferenceNote,
+    referenceApproval: reference.approval,
   });
   summary.pages = pages;
   if (brandguardSamples > 1) {
@@ -634,6 +733,9 @@ function main() {
       `BRANDGUARD RUN-CONDITION REVIEW REQUIRED: ${summary.runConditionsReview.changedComponents.join(", ")} changed from the historical reference.`,
     );
     console.warn(summary.runConditionsReview.action);
+  }
+  if (summary.referenceApproval?.ownerApproved === false) {
+    console.warn(`DESKTOP REFERENCE NOT OWNER-APPROVED: ${summary.referenceApproval.action}`);
   }
   console.table(Object.fromEntries(Object.entries(summary.pages).map(([name, page]) => [
     name,
