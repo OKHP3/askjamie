@@ -124,6 +124,13 @@ gh pr view <number> --json state,mergeStateStatus,reviewDecision,statusCheckRoll
 Do not infer "no PR" from a failed network call. Record the lookup as unknown
 and place the branch in `review`.
 
+For read-only hosted evidence and cleanup holds, pass each exact remote/branch
+pair with `--hosted-branch origin=feature/example` (repeat as needed).
+`--hosted-ref` is an alias; `PROVIDER:BRANCH` is also accepted. The audit probes
+the remote ref without fetching or pruning. For GitHub remotes it reads
+protection, deployment, and PR evidence through an installed, authenticated
+`gh` CLI; unavailable evidence remains an explicit hold.
+
 ### 3. Classify every branch
 
 Every non-current, non-`main` branch belongs in exactly one bucket:
@@ -242,6 +249,48 @@ Return:
   read-only;
 - post-change audit, Git status, and workflow validation results when execution
   was authorized.
+
+When hosted branches are requested, JSON includes
+`hosted_lifecycle.cleanup_plan` with `keep`, `merge`, `delete`, and `review`
+arrays. Each held item retains its exact `provider` and `ref`, and includes:
+
+- `blocking_reasons`: the sorted, deduplicated stable machine reason codes.
+  Tooling must use these codes, not explanation text.
+- `blocking_reason_explanations`: an array in the same order, with one
+  `reason_code` and concise reviewer-facing `explanation` for each hold.
+  Present the explanation alongside its code; do not replace or hide codes.
+
+For example:
+
+```json
+{
+  "provider": "origin",
+  "ref": "feature/example",
+  "blocking_reasons": ["hosted-ref-protected"],
+  "blocking_reason_explanations": [{
+    "reason_code": "hosted-ref-protected",
+    "explanation": "The hosted branch is protected; keep it."
+  }]
+}
+```
+
+| Stable reason code | Reviewer meaning | Bucket |
+|---|---|---|
+| `hosted-remote-inaccessible` | Remote access failed; check access | `review` |
+| `hosted-ref-missing` | Branch was not found; confirm its location | `review` |
+| `hosted-ref-protected` | Branch is protected | `keep` |
+| `hosted-ref-has-deployments` | Deployment records exist; review their use | `keep` |
+| `hosted-open-pull-request` | An open PR still depends on this branch | `keep` |
+| `hosted-closed-unmerged-pull-request` | A closed PR was not merged; review its work | `review` |
+| `hosted-protection-unknown` | Protection could not be confirmed | `review` |
+| `hosted-deployment-evidence-unknown` | Deployment evidence is unavailable | `review` |
+| `hosted-pull-request-evidence-unknown` | PR evidence is unavailable | `review` |
+| `hosted-evidence-unknown` | A blocked item supplied no reason; review source evidence | `review` |
+
+Unknown future codes are preserved with an explicit unrecognized-hold
+explanation. Mixed holds use `keep` if any reason requires retention, while
+still explaining every reason. Hosted holds never populate `merge` or `delete`;
+unblocked entries are not deletion approvals and are omitted from this plan.
 
 ---
 
