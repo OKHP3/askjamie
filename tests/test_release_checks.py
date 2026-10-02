@@ -875,6 +875,50 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
         text=True,
     )
     assert normal_run.returncode == 0, normal_run.stderr
+    normal_dir = audit_dir / "lighthouse-2099-02-03-mobile"
+    original_evidence = {
+        path.name: path.read_bytes()
+        for path in normal_dir.iterdir()
+    }
+    repeated_run = subprocess.run(
+        common_args,
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert repeated_run.returncode != 0
+    assert "Refusing to overwrite it" in repeated_run.stderr
+    assert "--run-id=<identifier>" in repeated_run.stderr
+    assert "--replace" in repeated_run.stderr
+    assert {
+        path.name: path.read_bytes()
+        for path in normal_dir.iterdir()
+    } == original_evidence
+
+    identified_run = subprocess.run(
+        [*common_args, "--run-id=rerun-2"],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert identified_run.returncode == 0, identified_run.stderr
+    identified_dir = audit_dir / "lighthouse-2099-02-03-mobile-rerun-2"
+    assert (identified_dir / "summary.json").is_file()
+
+    (normal_dir / "stale-evidence.json").write_text("stale", encoding="utf-8")
+    replacement_run = subprocess.run(
+        [*common_args, "--replace"],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert replacement_run.returncode == 0, replacement_run.stderr
+    assert not (normal_dir / "stale-evidence.json").exists()
+    assert (normal_dir / "summary.json").is_file()
+
     controlled_run = subprocess.run(
         [*common_args, "--controlled"],
         cwd=root,
@@ -884,7 +928,6 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
     )
     assert controlled_run.returncode == 0, controlled_run.stderr
 
-    normal_dir = audit_dir / "lighthouse-2099-02-03-mobile"
     controlled_dir = audit_dir / "lighthouse-2099-02-03-mobile-controlled"
     normal = json.loads((normal_dir / "summary.json").read_text(encoding="utf-8"))
     controlled = json.loads((controlled_dir / "summary.json").read_text(encoding="utf-8"))
