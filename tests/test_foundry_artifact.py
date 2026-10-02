@@ -75,11 +75,35 @@ class FoundryArtifactTests(unittest.TestCase):
   </body>
 </html>
 """,
+            "lens-system/okhp3-brandguard/index.html": """<!doctype html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"utf-8\">
+    <meta http-equiv=\"Content-Security-Policy\" content=\"placeholder\" />
+    <link rel=\"stylesheet\" href=\"/assets/css/critical-hero.css\">
+    <link rel=\"stylesheet\" href=\"/assets/css/theme.css\">
+  </head>
+  <body><h1>BrandGuard</h1></body>
+</html>
+""",
+            "universe/index.html": """<!doctype html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"utf-8\">
+    <meta http-equiv=\"Content-Security-Policy\" content=\"placeholder\" />
+    <link rel=\"stylesheet\" href=\"/assets/css/critical-hero.css\">
+    <link rel=\"stylesheet\" href=\"/assets/css/theme.css\">
+  </head>
+  <body><h1>Universe</h1></body>
+</html>
+""",
         }
 
         self.assets = {
             "assets/css/theme.css": "body { color: #2e2b29; }\n",
-            "assets/css/critical-hero.css": ".hero { display: grid; }\n",
+            "assets/css/critical-hero.css": (
+                ROOT / "assets/css/critical-hero.css"
+            ).read_text(encoding="utf-8"),
             "assets/js/app.js": "console.log('app');\n",
             "assets/js/mermaid-init.js": "console.log('mermaid');\n",
             "assets/js/universe-map.js": "console.log('universe');\n",
@@ -93,7 +117,12 @@ class FoundryArtifactTests(unittest.TestCase):
         for relative, content in self.assets.items():
             _write(self.site_root / relative, content)
 
-        self.pages_list = [self.site_root / "index.html", self.site_root / "found-ry/index.html"]
+        self.pages_list = [
+            self.site_root / "index.html",
+            self.site_root / "found-ry/index.html",
+            self.site_root / "lens-system/okhp3-brandguard/index.html",
+            self.site_root / "universe/index.html",
+        ]
 
     def test_foundry_fixture_covers_shared_asset_inventory(self):
         self.assertEqual(
@@ -125,6 +154,11 @@ class FoundryArtifactTests(unittest.TestCase):
         self.assertTrue((output / "assets/js/deferred-fonts.js").is_file())
         self.assertTrue((output / "assets/js/askjamie-analytics.js").is_file())
         self.assertTrue((output / "assets/js/analytics-loader.js").is_file())
+        critical_hero = self.site_root / "assets/css/critical-hero.css"
+        artifact_critical_hero = output / "assets/css/critical-hero.css"
+        critical_hero_fingerprint = cache_bust.file_hash(critical_hero)
+        self.assertTrue(artifact_critical_hero.is_file())
+        self.assertEqual(artifact_critical_hero.read_bytes(), critical_hero.read_bytes())
 
         foundry_html = foundry_page.read_text(encoding="utf-8")
         self.assertIn(
@@ -149,6 +183,18 @@ class FoundryArtifactTests(unittest.TestCase):
             csp.meta_policy(foundry_page),
             csp.meta_policy(self.site_root / "found-ry/index.html"),
         )
+        for route in (
+            "lens-system/okhp3-brandguard/index.html",
+            "universe/index.html",
+        ):
+            route_page = output / route
+            self.assertTrue(route_page.is_file(), route)
+            route_html = route_page.read_text(encoding="utf-8")
+            self.assertIn(
+                f"/assets/css/critical-hero.css?v={critical_hero_fingerprint}",
+                route_html,
+                route,
+            )
         self.assertGreaterEqual(manifest["files"], 5)
         self.assertEqual(
             manifest["root_files"], sorted(prepare_pages_artifact.PUBLIC_ROOT_FILES)
