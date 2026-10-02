@@ -1459,6 +1459,18 @@ async function runWithPlaywright() {
         r.errors.forEach(e => console.log(`         → ${e}`));
       });
     }
+    const warningViewports = new Map();
+    for (const row of vpResults) {
+      for (const warning of row.warnings ?? []) {
+        const viewports = warningViewports.get(warning) ?? [];
+        if (!viewports.includes(row.viewport)) viewports.push(row.viewport);
+        warningViewports.set(warning, viewports);
+      }
+    }
+    for (const [warning, viewports] of warningViewports) {
+      console.log(`  WARN  ${path} (${viewports.join(', ')})`);
+      console.log(`         → ${warning}`);
+    }
     process.stdout.write(`  done  ${path}\n`);
 
     for (const row of vpResults) {

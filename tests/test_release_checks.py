@@ -1394,6 +1394,12 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
         )
         for row in rows["/lazy-unobserved/"]
     )
+    assert "WARN  /lazy-unobserved/" in result.stdout
+    assert any(
+        row["pass"] and warning in result.stdout
+        for row in rows["/lazy-unobserved/"]
+        for warning in row["warnings"]
+    )
     assert not any(
         event[1] == "/unobserved-lazy.png" for event in events
     )
