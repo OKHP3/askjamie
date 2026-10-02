@@ -515,14 +515,25 @@ def test_lighthouse_routes_preserves_normal_output_contract():
 def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without_browser(tmp_path):
     fixture = ROOT / "tests/fixtures/lighthouse-summary-report.json"
     assert fixture.is_file()
+    expected_routes = {
+        "homepage": "/",
+        "brandguard": "/lens-system/okhp3-brandguard/",
+        "universe": "/universe/",
+        "search": "/search/",
+    }
     runner = tmp_path / "summary-fixture.mjs"
     runner.write_text(
         """
 import { readFileSync } from "node:fs";
-import { createSummary, summarizePage } from "./scripts/lighthouse-routes.mjs";
+import { createSummary, LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
-const page = { performance: 88, lcpMs: 2000 };
+const baseline = { pages: {
+  homepage: { performance: 80, lcpMs: 1000 },
+  brandguard: { performance: 88, lcpMs: 2000 },
+  universe: { performance: 90, lcpMs: 2500 },
+  search: { performance: 91, lcpMs: 3000 }
+} };
 const emit = (controlled) => {
   const summary = createSummary({
     date: "2099-01-02",
@@ -530,14 +541,20 @@ const emit = (controlled) => {
     controlled,
     baseUrl: "https://fixture.invalid"
   });
-  summary.pages.brandguard = summarizePage({
-    report,
-    path: "/lens-system/okhp3-brandguard/",
-    baselinePage: page
-  });
+  for (const [name, path] of Object.entries(LIGHTHOUSE_ROUTES)) {
+    summary.pages[name] = summarizePage({
+      report,
+      path,
+      baselinePage: baseline.pages[name]
+    });
+  }
   return summary;
 };
-process.stdout.write(JSON.stringify({ normal: emit(false), controlled: emit(true) }));
+process.stdout.write(JSON.stringify({
+  routes: LIGHTHOUSE_ROUTES,
+  normal: emit(false),
+  controlled: emit(true)
+}));
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -552,6 +569,7 @@ process.stdout.write(JSON.stringify({ normal: emit(false), controlled: emit(true
     )
     emitted = json.loads(result.stdout)
     assert not list((ROOT / "assets/audit").glob("lighthouse-2099-01-02*"))
+    assert emitted["routes"] == expected_routes
 
     normal = emitted["normal"]
     assert normal["schemaVersion"] == 2
@@ -571,26 +589,34 @@ process.stdout.write(JSON.stringify({ normal: emit(false), controlled: emit(true
         "interpretation": "Controlled lab measurement only. Not field data.",
     }
 
+    baseline = {"pages": {
+        "homepage": {"performance": 80, "lcpMs": 1000},
+        "brandguard": {"performance": 88, "lcpMs": 2000},
+        "universe": {"performance": 90, "lcpMs": 2500},
+        "search": {"performance": 91, "lcpMs": 3000},
+    }}
     for summary in (normal, controlled):
         assert summary["schemaVersion"] == 2
         assert summary["property"] == "https://fixture.invalid"
         assert summary["baseline"] == "assets/audit/lighthouse-baseline-2026-08-22.json"
-        assert summary["pages"]["brandguard"] == {
-            "path": "/lens-system/okhp3-brandguard/",
-            "performance": 91,
-            "accessibility": 95,
-            "bestPractices": 88,
-            "seo": 93,
-            "lcpMs": 2345,
-            "cls": 0.012346,
-            "tbtMs": 17,
-            "fcpMs": 1234,
-            "speedIndexMs": 1790,
-            "lcpInvalidated": False,
-            "lcpElement": "div.askjamie-hero-copy > p.hero-tagline",
-            "deltaPerformance": 3,
-            "deltaLcpMs": 345,
-        }
+        assert set(summary["pages"]) == set(expected_routes)
+        for name, path in expected_routes.items():
+            assert summary["pages"][name] == {
+                "path": path,
+                "performance": 91,
+                "accessibility": 95,
+                "bestPractices": 88,
+                "seo": 93,
+                "lcpMs": 2345,
+                "cls": 0.012346,
+                "tbtMs": 17,
+                "fcpMs": 1234,
+                "speedIndexMs": 1790,
+                "lcpInvalidated": False,
+                "lcpElement": "div.askjamie-hero-copy > p.hero-tagline",
+                "deltaPerformance": 91 - baseline["pages"][name]["performance"],
+                "deltaLcpMs": 2345 - baseline["pages"][name]["lcpMs"],
+            }
 
 
 def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp_path):

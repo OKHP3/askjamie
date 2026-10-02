@@ -58,6 +58,38 @@ def test_check_is_read_only_and_detects_asset_drift(tmp_path, monkeypatch):
     assert page.read_bytes() == generated
 
 
+def test_missing_asset_reports_release_check_before_hashing_or_writing(
+    tmp_path, monkeypatch, capsys
+):
+    missing_asset = cache.ASSETS[0]
+    for asset in cache.ASSETS[1:]:
+        path = tmp_path / asset
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"content\n")
+    page = tmp_path / "index.html"
+    page.write_text('<script src="/assets/js/app.js"></script>', encoding="utf-8")
+    original = page.read_bytes()
+    monkeypatch.setattr(cache, "ROOT", tmp_path)
+    monkeypatch.setattr(cache, "iter_html_files", lambda root: iter([page]))
+
+    def hashing_must_not_start(path):
+        raise AssertionError("assets must be validated before hashing")
+
+    monkeypatch.setattr(cache, "file_hash", hashing_must_not_start)
+    assert cache.main(["--check"]) == 1
+
+    captured = capsys.readouterr()
+    assert (
+        f"ERROR: Missing shared asset required by the release fingerprint check: "
+        f"{missing_asset}" in captured.err
+    )
+    assert (
+        "Affected release check: python3 scripts/cache-bust.py --check"
+        in captured.err
+    )
+    assert page.read_bytes() == original
+
+
 def test_canonical_inventory_excludes_generated_pages_includes_templates():
     pages = [p.relative_to(ROOT).as_posix() for p in cache.iter_html_files(ROOT)]
     assert 'index.html' in pages
