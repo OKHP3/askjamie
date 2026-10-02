@@ -149,6 +149,16 @@ not a total audit deadline (remote and protection probes plus all deployment
 and PR history pages for each present GitHub ref).
 This limit does not apply to local Git checks or the separate opt-in `--fetch`.
 
+If a hosted process cannot start (`OSError`, including a missing executable or
+permission denied), the same holds apply: a remote probe is `inaccessible` with
+an unknown ref, while the affected GitHub API evidence stays `unknown`. The
+reason states that the command could not start and includes the operating-system
+error. This also covers `gh` disappearing after its availability check. Failed
+history pages discard partial evidence rather than report empty or complete
+history. Later evidence lookups and provider/ref pairs still run, with no deletion
+approval. Local Git precondition and opt-in fetch failures still stop the audit
+visibly; they are not converted into hosted holds.
+
 ### 3. Classify every branch
 
 Every non-current, non-`main` branch belongs in exactly one bucket:
@@ -374,10 +384,11 @@ unblocked entries are not deletion approvals and are omitted from this plan.
 | Condition | Result |
 |---|---|
 | Base ref missing | Stop; ask which verified base ref to use |
-| Git command or fetch fails | Stop; show the failed command and stderr |
+| Local Git command or opt-in fetch fails | Stop; show the failure |
 | Detached HEAD | Audit may continue, but no branch deletion may be recommended until the active work is identified |
 | PR lookup unavailable | Put affected branches in `review`; never infer abandonment |
 | Hosted command times out | Preserve an inaccessible or unknown-evidence hold with a timeout reason; continue other requested checks, never approve deletion |
+| Hosted command cannot start | Preserve an inaccessible or unknown-evidence hold with the operating-system error; continue other lookups and provider/ref pairs, never approve deletion |
 | Unique unmerged commits | Preserve in `review` unless the owner explicitly abandons them |
 | Rename affects public URL | Require redirect or transition plan before execution |
 | Approval is broad or ambiguous | Ask for exact approved line items |

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import subprocess
 import sys
@@ -18,6 +19,116 @@ SPEC.loader.exec_module(audit_repo)
 
 
 class AuditRepoTests(unittest.TestCase):
+    def test_remote_start_failures_hold_and_continue_each_provider_ref(self) -> None:
+        requested = ["origin=work", "mirror=work", "origin=later"]
+        for failure in (
+            FileNotFoundError(2, "No such file or directory", "git"),
+            PermissionError(13, "Permission denied", "git"),
+            OSError(8, "Exec format error", "git"),
+        ):
+            calls = []
+
+            def command(args, **kwargs):
+                calls.append(args)
+                if len(calls) == 1:
+                    raise failure
+                return subprocess.CompletedProcess(args, 0, f"{'a' * 40}\t{args[-1]}\n", "")
+
+            with self.subTest(failure=type(failure).__name__), patch.object(
+                audit_repo, "remote_url_for_provider",
+                side_effect=lambda _root, provider: (provider, "https://github.com/fixture/repo.git"),
+            ), patch.object(audit_repo.subprocess, "run", side_effect=command), patch.object(
+                audit_repo, "github_hosted_evidence", return_value={
+                    "protection": {"status": "unprotected"},
+                    "deployments": {"status": "available", "count": 0, "items": []},
+                    "pull_requests": {"status": "available", "count": 0, "items": []},
+                },
+            ) as evidence:
+                report = audit_repo.audit_hosted_branches(Path("."), requested)
+            self.assertEqual([(args[3], args[-1]) for args in calls], [
+                ("origin", "refs/heads/work"), ("mirror", "refs/heads/work"),
+                ("origin", "refs/heads/later"),
+            ])
+            self.assertEqual(evidence.call_count, 2)
+            entry = report["entries"][0]
+            self.assertEqual(entry["classification"], "inaccessible")
+            self.assertEqual(entry["ref_status"], "unknown")
+            self.assertIn("command could not start", entry["reason"])
+            self.assertIn(str(failure), entry["reason"])
+            self.assertNotIn("tip", entry)
+            for key in ("protection", "deployments", "pull_requests"):
+                self.assertEqual(entry[key]["status"], "unknown")
+                self.assertNotIn("count", entry[key])
+                self.assertNotIn("items", entry[key])
+            for later in report["entries"][1:]:
+                self.assertEqual(later["classification"], "present")
+                self.assertFalse(later["deletion_blocked"])
+            self.assertEqual(report["blocking_entries"], ["origin:work"])
+            self.assert_single_hosted_hold(report, "hosted-remote-inaccessible", "review")
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
+    def test_api_start_failures_preserve_holds_and_continue_lookups_and_pairs(self) -> None:
+        keys = ("protection", "deployments", "pull_requests")
+        codes = (
+            "hosted-protection-unknown", "hosted-deployment-evidence-unknown",
+            "hosted-pull-request-evidence-unknown",
+        )
+        for failure in (
+            FileNotFoundError(2, "No such file or directory", "gh"),
+            PermissionError(13, "Permission denied", "gh"),
+            OSError(8, "Exec format error", "gh"),
+        ):
+            for failed in ((0,), (1,), (2,), (0, 1, 2)):
+                calls = []
+
+                def command(args, **kwargs):
+                    if args[0] == "git":
+                        return subprocess.CompletedProcess(args, 0, f"{'a' * 40}\t{args[-1]}\n", "")
+                    index = len(calls)
+                    calls.append(args[2])
+                    if index in failed:
+                        raise failure
+                    output = '{"protected": false}' if index % 3 == 0 else "[]"
+                    return subprocess.CompletedProcess(args, 0, output, "")
+
+                with self.subTest(failure=type(failure).__name__, failed=failed), patch.object(
+                    audit_repo, "remote_url_for_provider",
+                    side_effect=lambda _root, provider: (provider, "https://github.com/fixture/repo.git"),
+                ), patch.object(audit_repo.shutil, "which", return_value="/fixture/gh"), patch.object(
+                    audit_repo.subprocess, "run", side_effect=command,
+                ):
+                    report = audit_repo.audit_hosted_branches(
+                        Path("."), ["origin=work", "mirror=work", "origin=later"],
+                    )
+                self.assertEqual(len(calls), 9)
+                self.assertEqual(calls[:3], calls[3:6])
+                self.assertIn("/branches/later", calls[6])
+                self.assertIn("deployments?ref=later", calls[7])
+                self.assertIn("pulls?state=all&head=fixture%3Alater", calls[8])
+                entry = report["entries"][0]
+                self.assertEqual(entry["classification"], "present")
+                self.assertTrue(entry["deletion_blocked"])
+                self.assertEqual(entry["blocking_reasons"], sorted(codes[index] for index in failed))
+                for index, key in enumerate(keys):
+                    if index in failed:
+                        self.assertEqual(entry[key]["status"], "unknown")
+                        self.assertIn("command could not start", entry[key]["reason"])
+                        self.assertIn(str(failure), entry[key]["reason"])
+                        self.assertNotIn("count", entry[key])
+                        self.assertNotIn("items", entry[key])
+                    else:
+                        self.assertEqual(entry[key]["status"], "unprotected" if index == 0 else "available")
+                for later in report["entries"][1:]:
+                    self.assertEqual(later["classification"], "present")
+                    self.assertFalse(later["deletion_blocked"])
+                self.assertTrue(report["deletion_blocked"])
+                self.assertEqual(report["blocking_entries"], ["origin:work"])
+                self.assertEqual(len(report["cleanup_plan"]["review"]), 1)
+                self.assertEqual(report["cleanup_plan"]["review"][0]["blocking_reasons"], entry["blocking_reasons"])
+                self.assertEqual(report["cleanup_plan"]["delete"], [])
+                self.assertEqual(report["cleanup_plan"]["merge"], [])
+
     def test_hosted_commands_have_a_finite_timeout(self) -> None:
         self.assertEqual(audit_repo.HOSTED_COMMAND_TIMEOUT_SECONDS, 30)
         for args in (
@@ -242,6 +353,8 @@ class AuditRepoTests(unittest.TestCase):
         failures = (
             (subprocess.CompletedProcess([], 1, "", "rate limited"), "request failed"),
             (subprocess.TimeoutExpired(["gh", "api"], 30, output=b"[]"), "timed out"),
+            (FileNotFoundError(2, "No such file or directory", "gh"), "command could not start"),
+            (PermissionError(13, "Permission denied", "gh"), "command could not start"),
             ("not JSON", "invalid JSON"),
             ({"message": "unexpected object"}, "not a list"),
             ([None], "invalid records"),
@@ -537,6 +650,20 @@ class AuditRepoTests(unittest.TestCase):
             subprocess.run(["git", "init", "-q", str(root)], check=True)
             with self.assertRaises(audit_repo.AuditError):
                 audit_repo.ensure_base(root, "origin/main")
+
+    def test_local_git_start_failure_still_aborts_main_visibly(self) -> None:
+        failure = FileNotFoundError(2, "No such file or directory", "git")
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            sys, "argv", [str(SCRIPT), "--root", directory, "--hosted-branch", "origin=work"],
+        ), patch.object(audit_repo.subprocess, "run", side_effect=failure) as run, patch.object(
+            audit_repo, "audit_hosted_branches",
+        ) as hosted, patch("sys.stdout", new_callable=io.StringIO) as output:
+            status = audit_repo.main()
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue())["error"], str(failure))
+        self.assertNotIn("hosted_lifecycle", json.loads(output.getvalue()))
+        self.assertEqual(run.call_args.args[0], ["git", "rev-parse", "--is-inside-work-tree"])
+        hosted.assert_not_called()
 
     @staticmethod
     def _git(root: Path, *args: str) -> str:

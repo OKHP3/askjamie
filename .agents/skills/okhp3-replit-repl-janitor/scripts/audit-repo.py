@@ -250,6 +250,8 @@ def gh_api_json(root: Path, endpoint: str) -> tuple[object | None, str | None]:
         result = hosted_command(["gh", "api", endpoint], root)
     except subprocess.TimeoutExpired as exc:
         return None, f"GitHub API request timed out after {exc.timeout} seconds"
+    except OSError as exc:
+        return None, f"GitHub API command could not start: {exc}"
     if result.returncode:
         detail = result.stderr.strip() or result.stdout.strip() or "no output"
         return None, f"GitHub API request failed ({result.returncode}): {detail}"
@@ -375,6 +377,8 @@ def audit_hosted_branches(root: Path, requested: Iterable[str]) -> dict[str, obj
                 )
             except subprocess.TimeoutExpired as exc:
                 probe_error = f"hosted remote lookup timed out after {exc.timeout} seconds"
+            except OSError as exc:
+                probe_error = f"hosted remote command could not start: {exc}"
         if probe is None or probe.returncode:
             detail = probe_error or (
                 f"configured remote is not available: {provider}" if probe is None
