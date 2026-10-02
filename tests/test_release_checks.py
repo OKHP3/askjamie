@@ -632,7 +632,7 @@ import { readFileSync } from "node:fs";
 import { LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-incomplete-report.json", "utf8"));
-const baseline = JSON.parse(readFileSync("assets/audit/lighthouse-baseline-2026-08-22.json", "utf8"));
+const baseline = { pages: { brandguard: { performance: 88, lcpMs: 2000 } } };
 const summary = summarizePage({
   report,
   path: LIGHTHOUSE_ROUTES.brandguard,

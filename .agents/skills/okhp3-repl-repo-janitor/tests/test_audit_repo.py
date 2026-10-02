@@ -596,6 +596,16 @@ class DecisionLedgerTests(unittest.TestCase):
             git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
         )
 
+    def test_nul_evidence_preserves_unusual_paths_through_json(self) -> None:
+        paths = ["space name.txt", "tab\tname.txt", "line\nbreak.txt"]
+        evidence = "".join(f"M\0{path}\0" for path in paths)
+        records = audit_repo._parse_file_differences(evidence)
+        self.assertEqual(
+            json.loads(json.dumps(records)),
+            [{"status": "M", "path": path} for path in paths],
+        )
+
+    @unittest.skipIf(sys.platform == "win32", "Windows rejects tab and newline filenames")
     def test_cli_json_preserves_filenames_with_spaces_tabs_and_newlines(
         self,
     ) -> None:
