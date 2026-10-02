@@ -287,6 +287,20 @@ export function summarizePage({ report, path, baselinePage = {} }) {
   };
 }
 
+export function formatUnavailableMetricsNotice(pages) {
+  const affectedRoutes = Object.entries(pages ?? {}).flatMap(([name, page]) => {
+    const fields = [...new Set(
+      (Array.isArray(page?.unavailableMetrics) ? page.unavailableMetrics : [])
+        .map((metric) => metric?.field)
+        .filter((field) => typeof field === "string" && field.length > 0),
+    )];
+    return fields.length ? [`  ${page.path || name}: ${fields.join(", ")}`] : [];
+  });
+  return affectedRoutes.length
+    ? `Unavailable Lighthouse metrics:\n${affectedRoutes.join("\n")}`
+    : "";
+}
+
 export function summarizeBrandGuardSamples(samples, { controlled }) {
   if (!Array.isArray(samples) || samples.length === 0) {
     throw new Error("At least one BrandGuard sample is required.");
@@ -587,6 +601,8 @@ function main() {
     name,
     { performance: page.performance, delta: page.deltaPerformance, lcpMs: page.lcpMs, deltaLcpMs: page.deltaLcpMs, cls: page.cls, tbtMs: page.tbtMs },
   ])));
+  const unavailableMetricsNotice = formatUnavailableMetricsNotice(summary.pages);
+  if (unavailableMetricsNotice) console.warn(`\n${unavailableMetricsNotice}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
