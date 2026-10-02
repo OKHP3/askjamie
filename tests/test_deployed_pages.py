@@ -325,4 +325,3 @@ def test_report_destination_cannot_be_published(fixture):
         probe.main(["--artifact-root", str(fixture.root), "--expected-source-revision", SHA,
                     "--runner-revision", SHA, "--expected-artifact-name", "pages-site-" + SHA,
                     "--report", str(fixture.root / "report.json")])
-
