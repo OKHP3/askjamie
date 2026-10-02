@@ -310,7 +310,19 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
       mermaidRequestSeen,
     ]);
 
-    if (themeActive) await waitForTwoFrames();
+    if (themeActive) {
+      await waitForTwoFrames();
+      // The desktop hero has a finite scroll reveal that changes its transform.
+      // Let that existing animation finish before isolating Mermaid's layout.
+      // Keep the Mermaid import blocked throughout this baseline preparation.
+      await page.evaluate(async () => {
+        const hero = document.querySelector('.askjamie-hero--universe');
+        const reveals = (hero?.getAnimations({ subtree: true }) ?? [])
+          .filter(animation => animation.animationName === 'scroll-reveal-in');
+        await Promise.all(reveals.map(animation => animation.finished.catch(() => {})));
+      });
+      await waitForTwoFrames();
+    }
     before = await capture();
     if (!themeActive) {
       errors.push(

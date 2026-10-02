@@ -530,7 +530,12 @@ import { readFileSync } from "node:fs";
 import { createSummary, LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
-const baseline = JSON.parse(readFileSync("assets/audit/lighthouse-baseline-2026-08-22.json", "utf8"));
+const baseline = { pages: {
+  homepage: { performance: 80, lcpMs: 1000 },
+  brandguard: { performance: 88, lcpMs: 2000 },
+  universe: { performance: 90, lcpMs: 2500 },
+  search: { performance: 91, lcpMs: 3000 }
+} };
 const emit = (controlled) => {
   const summary = createSummary({
     date: "2099-01-02",
@@ -586,9 +591,12 @@ process.stdout.write(JSON.stringify({
         "interpretation": "Controlled lab measurement only. Not field data.",
     }
 
-    baseline = json.loads(
-        (ROOT / "assets/audit/lighthouse-baseline-2026-08-22.json").read_text(encoding="utf-8")
-    )
+    baseline = {"pages": {
+        "homepage": {"performance": 80, "lcpMs": 1000},
+        "brandguard": {"performance": 88, "lcpMs": 2000},
+        "universe": {"performance": 90, "lcpMs": 2500},
+        "search": {"performance": 91, "lcpMs": 3000},
+    }}
     for summary in (normal, controlled):
         assert summary["schemaVersion"] == 2
         assert summary["property"] == "https://fixture.invalid"
