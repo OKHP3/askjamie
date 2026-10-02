@@ -814,6 +814,52 @@ process.stdout.write(JSON.stringify(summary));
     ]
 
 
+def test_lighthouse_invalid_fixture_marks_present_invalid_metrics_unavailable_without_browser(tmp_path):
+    fixture = ROOT / "tests/fixtures/lighthouse-summary-invalid-report.json"
+    assert fixture.is_file()
+    runner = tmp_path / "invalid-summary-fixture.mjs"
+    runner.write_text(
+        """
+import { readFileSync } from "node:fs";
+import { LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
+
+const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-invalid-report.json", "utf8"));
+const baselinePage = { performance: 88, lcpMs: 2000 };
+const summary = summarizePage({
+  report,
+  path: LIGHTHOUSE_ROUTES.brandguard,
+  baselinePage
+});
+process.stdout.write(JSON.stringify(summary));
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", runner.read_text(encoding="utf-8")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    summary = json.loads(result.stdout)
+    assert summary["path"] == "/lens-system/okhp3-brandguard/"
+    assert summary["performance"] is None
+    assert summary["accessibility"] is None
+    assert summary["deltaPerformance"] is None
+    assert summary["lcpMs"] is None
+    assert summary["cls"] is None
+    assert summary["tbtMs"] is None
+    assert summary["unavailableMetrics"] == [
+        {"field": "performance", "source": "categories.performance.score"},
+        {"field": "accessibility", "source": "categories.accessibility.score"},
+        {"field": "lcpMs", "source": "audits.largest-contentful-paint.numericValue"},
+        {"field": "cls", "source": "audits.cumulative-layout-shift.numericValue"},
+        {"field": "tbtMs", "source": "audits.total-blocking-time.numericValue"},
+    ]
+
+
 def test_lighthouse_brandguard_repeat_summary_keeps_conditions_and_missing_values_separate(tmp_path):
     runner = tmp_path / "repeat-summary-fixture.mjs"
     runner.write_text(
