@@ -2060,16 +2060,41 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
             if late_request_count >= 8:
                 break
             time.sleep(0.01)
+
+        report = json.loads(
+            (fixture_root / "assets/audit/responsive-qa/results.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        (fixture_root / "sitemap.xml").write_text(
+            '<?xml version="1.0"?><urlset '
+            'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            '<url><loc>https://askjamie.bot/lazy-unobserved/</loc></url>'
+            "</urlset>",
+            encoding="utf-8",
+        )
+        warning_only_result = subprocess.run(
+            [
+                node_bin,
+                "scripts/responsive-qa.mjs",
+                f"--base=http://127.0.0.1:{server.server_address[1]}",
+            ],
+            cwd=fixture_root,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            env={**os.environ, "NODE_PATH": node_modules},
+        )
+        warning_only_report = json.loads(
+            (fixture_root / "assets/audit/responsive-qa/results.json").read_text(
+                encoding="utf-8"
+            )
+        )
     finally:
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=2)
 
-    report = json.loads(
-        (fixture_root / "assets/audit/responsive-qa/results.json").read_text(
-            encoding="utf-8"
-        )
-    )
     rows = {
         path: [row for row in report["results"] if path in row["url"]]
         for path in (
@@ -2079,6 +2104,11 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     }
 
     assert result.returncode == 1
+    assert warning_only_result.returncode == 0, warning_only_result.stdout
+    assert warning_only_report["failing_checks"] == 0
+    assert warning_only_report["results"]
+    assert all(row["pass"] and not row["errors"] for row in warning_only_report["results"])
+    assert any(row["warnings"] for row in warning_only_report["results"])
     assert report["mode"] == "playwright"
     runtime = re.search(
         r"^Browser runtime: Playwright (\d+\.\d+\.\d+); Chromium (\d+(?:\.\d+){2,})$",
