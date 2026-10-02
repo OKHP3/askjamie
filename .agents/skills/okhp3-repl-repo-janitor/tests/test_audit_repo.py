@@ -932,46 +932,59 @@ class DecisionLedgerTests(unittest.TestCase):
             root, "for-each-ref", "--format=%(refname) %(objectname)"
         )
         self.assertEqual(git(root, "branch", "--show-current"), "checkout-only-line")
-        self.assertNotEqual(git(root, "rev-parse", "HEAD"), active_tip)
+        checkout_tip = git(root, "rev-parse", "HEAD")
+        self.assertNotEqual(checkout_tip, active_tip)
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(SCRIPT),
-                "--root",
-                str(root),
-                "--base",
-                "main",
-                "--decision-ledger",
-                str(ledger),
-                "--active-line",
-                "main",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        for active_line in ("main", active_tip):
+            with self.subTest(active_line=active_line):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(SCRIPT),
+                        "--root",
+                        str(root),
+                        "--base",
+                        "main",
+                        "--decision-ledger",
+                        str(ledger),
+                        "--active-line",
+                        active_line,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
 
-        report = json.loads(result.stdout)
-        archive = report["archive_equivalents"]["archives"][0]
-        self.assertEqual(report["archive_equivalents"]["active_line"], "main")
-        self.assertEqual(
-            report["archive_equivalents"]["active_line_tip_sha"], active_tip
-        )
-        self.assertEqual(
-            archive["file_difference_direction"], "active-line-to-archive-tip"
-        )
-        self.assertCountEqual(
-            [
-                (difference["status"], difference["path"])
-                for difference in archive["file_differences"]
-            ],
-            [("D", "active-only.txt"), ("A", "archive-only.txt")],
-        )
-        self.assertEqual(
-            refs_before,
-            git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
-        )
+                report = json.loads(result.stdout)
+                archive = report["archive_equivalents"]["archives"][0]
+                self.assertEqual(
+                    report["archive_equivalents"]["active_line"], active_line
+                )
+                self.assertEqual(
+                    report["archive_equivalents"]["active_line_tip_sha"],
+                    active_tip,
+                )
+                self.assertEqual(archive["tip_sha"], archive_tip)
+                self.assertEqual(archive["branch_tip_sha"], archive_tip)
+                self.assertEqual(
+                    archive["file_difference_direction"],
+                    "active-line-to-archive-tip",
+                )
+                self.assertCountEqual(
+                    [
+                        (difference["status"], difference["path"])
+                        for difference in archive["file_differences"]
+                    ],
+                    [("D", "active-only.txt"), ("A", "archive-only.txt")],
+                )
+                self.assertEqual(
+                    refs_before,
+                    git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+                )
+                self.assertEqual(
+                    git(root, "branch", "--show-current"), "checkout-only-line"
+                )
+                self.assertEqual(git(root, "rev-parse", "HEAD"), checkout_tip)
 
     def test_archive_equivalence_accepts_exact_tip_supersession_evidence(self) -> None:
         root, _ = self.make_repo()
