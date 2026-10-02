@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -90,6 +91,18 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
+    missing_assets = [asset for asset in ASSETS if not (ROOT / asset).is_file()]
+    if missing_assets:
+        for asset in missing_assets:
+            print(
+                f"ERROR: Missing shared asset required by the release fingerprint check: {asset}",
+                file=sys.stderr,
+            )
+        print(
+            "  Affected release check: python3 scripts/cache-bust.py --check",
+            file=sys.stderr,
+        )
+        return 1
     hashes = {asset: file_hash(ROOT / asset) for asset in ASSETS}
     changed = 0
     pages = list(iter_html_files(ROOT))
