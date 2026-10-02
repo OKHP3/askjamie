@@ -187,7 +187,13 @@ class PagesArtifactSafetyTests(unittest.TestCase):
         self.assertIn("--output .scratch/pages-release", workflow)
         self.assertIn("path: .scratch/pages-release", upload)
         self.assertIn("include-hidden-files: true", upload)
-        self.assertEqual(workflow.count("include-hidden-files: true"), 1)
+        pages_upload = workflow.split("- name: Upload site artifact", 1)[1].split(
+            "- name: Deploy to GitHub Pages", 1
+        )[0]
+        self.assertIn("path: 'dist-pages'", pages_upload)
+        self.assertEqual(upload.count("include-hidden-files: true"), 1)
+        self.assertEqual(pages_upload.count("include-hidden-files: true"), 1)
+        self.assertEqual(workflow.count("include-hidden-files: true"), 2)
 
 
 if __name__ == "__main__":
