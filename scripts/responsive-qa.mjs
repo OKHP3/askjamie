@@ -8,6 +8,7 @@
  *   - No JS console errors
  *   - All images loaded (no broken img src)
  *   - CSS and JS assets load (no 404 on critical resources)
+ *   - BrandGuard hero geometry stays stable when its deferred theme activates
  *
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
@@ -75,6 +76,154 @@ const PUBLIC_PATHS = loadPublicPaths();
 const RESULTS_DIR    = resolve(ROOT, 'assets/audit/responsive-qa');
 const RESULTS_FILE   = resolve(RESULTS_DIR, 'results.json');
 const SCREENSHOTS_DIR = resolve(RESULTS_DIR, 'screenshots');
+const BRANDGUARD_GEOMETRY_PATH = '/lens-system/okhp3-brandguard/';
+const BRANDGUARD_GEOMETRY_VIEWPORT = 'mobile-390';
+const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
+const BRANDGUARD_GEOMETRY_SELECTORS = [
+  '.askjamie-brandguard-page .askjamie-breadcrumb',
+  '.askjamie-brandguard-page .askjamie-hero-copy h1',
+  '.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle',
+  '.askjamie-brandguard-page .askjamie-hero-copy .hero-tagline',
+];
+const BRANDGUARD_LOGO_SELECTOR =
+  '.askjamie-brandguard-page .askjamie-logo--crumb img';
+
+async function checkBrandGuardHeroGeometry(page) {
+  const errors = [];
+  const capture = () => page.evaluate((selectors) => {
+    const geometry = {};
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) {
+        geometry[selector] = null;
+        continue;
+      }
+      const rect = element.getBoundingClientRect();
+      const round = value => Math.round(value * 100) / 100;
+      geometry[selector] = Object.fromEntries(
+        ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left']
+          .map(property => [property, round(rect[property])])
+      );
+    }
+    const themeLink = document.querySelector('link[data-deferred-styles]');
+    return {
+      themeMedia: themeLink?.media ?? null,
+      themeHref: themeLink?.href ?? null,
+      geometry,
+    };
+  }, BRANDGUARD_GEOMETRY_SELECTORS);
+
+  const logoSettled = await page.waitForFunction((selector) => {
+    const image = document.querySelector(selector);
+    return !image || image.complete;
+  }, BRANDGUARD_LOGO_SELECTOR, { timeout: 5000 }).then(() => true, () => false);
+  const before = await capture();
+  if (!logoSettled) {
+    errors.push(
+      `BRANDGUARD HERO GEOMETRY UNSTABLE: ${BRANDGUARD_LOGO_SELECTOR} did not finish loading; ` +
+      `measured before=${JSON.stringify(before.geometry)}; after=not-measured`
+    );
+  }
+  if (before.themeMedia !== 'not all') {
+    errors.push(
+      `BRANDGUARD HERO GEOMETRY BASELINE UNAVAILABLE: link[data-deferred-styles] ` +
+      `media=${JSON.stringify(before.themeMedia)} before capture; ` +
+      `measured before=${JSON.stringify(before.geometry)}; after=not-measured`
+    );
+    return {
+      errors,
+      evidence: {
+        threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+        deferred_theme: { href: before.themeHref, media_before: before.themeMedia },
+        before: before.geometry,
+        after: null,
+        shifts: [],
+      },
+    };
+  }
+
+  try {
+    await page.waitForFunction(() => {
+      const themeLink = document.querySelector('link[data-deferred-styles]');
+      return themeLink?.media === 'all' && Boolean(themeLink.sheet);
+    }, undefined, { timeout: 15000 });
+    await page.evaluate(() =>
+      new Promise(resolve => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      ))
+    );
+  } catch {
+    const after = await capture();
+    errors.push(
+      `BRANDGUARD HERO GEOMETRY THEME NOT ACTIVATED: link[data-deferred-styles] ` +
+      `media=${JSON.stringify(after.themeMedia)} after 15000ms; ` +
+      `measured before=${JSON.stringify(before.geometry)}; ` +
+      `after=${JSON.stringify(after.geometry)}`
+    );
+    return {
+      errors,
+      evidence: {
+        threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+        deferred_theme: {
+          href: before.themeHref,
+          media_before: before.themeMedia,
+          media_after: after.themeMedia,
+        },
+        before: before.geometry,
+        after: after.geometry,
+        shifts: [],
+      },
+    };
+  }
+
+  const after = await capture();
+  const shifts = [];
+  for (const selector of BRANDGUARD_GEOMETRY_SELECTORS) {
+    const beforeRect = before.geometry[selector];
+    const afterRect = after.geometry[selector];
+    if (!beforeRect || !afterRect) {
+      errors.push(
+        `BRANDGUARD HERO GEOMETRY MISSING: ${selector}; ` +
+        `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+      );
+      continue;
+    }
+
+    const delta = Object.fromEntries(
+      ['x', 'y', 'width', 'height'].map(property => [
+        property,
+        Math.round((afterRect[property] - beforeRect[property]) * 100) / 100,
+      ])
+    );
+    const changedProperties = Object.keys(delta).filter(
+      property => Math.abs(delta[property]) > BRANDGUARD_GEOMETRY_TOLERANCE_PX
+    );
+    if (changedProperties.length > 0) {
+      shifts.push({ selector, before: beforeRect, after: afterRect, delta, changed_properties: changedProperties });
+      errors.push(
+        `BRANDGUARD HERO GEOMETRY SHIFT: ${selector} changed ` +
+        `${changedProperties.map(property => `${property}=${delta[property]}px`).join(', ')} ` +
+        `with ${BRANDGUARD_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+        `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+      );
+    }
+  }
+
+  return {
+    errors,
+    evidence: {
+      threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+      deferred_theme: {
+        href: before.themeHref,
+        media_before: before.themeMedia,
+        media_after: after.themeMedia,
+      },
+      before: before.geometry,
+      after: after.geometry,
+      shifts,
+    },
+  };
+}
 
 // ── MODE A: Playwright ────────────────────────────────────────────────────────
 
@@ -190,6 +339,15 @@ async function runWithPlaywright() {
       // Dedicated transition tests cover the open dialog at narrow widths.
       const transitionDismiss = page.locator('[data-transition-dialog][open] [data-transition-dismiss]');
       if (await transitionDismiss.isVisible()) await transitionDismiss.click();
+
+      // Compare the critical shell with the live deferred theme on the supported
+      // narrow BrandGuard viewport. Do this before scrolling lazy images so the
+      // two geometry samples cover only theme activation, not later page work.
+      const heroThemeGeometry =
+        path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_GEOMETRY_VIEWPORT
+          ? await checkBrandGuardHeroGeometry(page)
+          : null;
+
       // Lazy loading is viewport-driven. Scroll each lazy image into view so
       // every runtime observes the same request opportunity before the page
       // is inspected and closed. The wait is only for request start: lazy
@@ -229,6 +387,7 @@ async function runWithPlaywright() {
         ![...blockedExternal].some(blocked => blocked === src)
       );
       const errors = [
+        ...(heroThemeGeometry?.errors ?? []),
         ...(overflow ? [`OVERFLOW: scrollWidth > ${vp.width}px`] : []),
         ...consoleErrors.slice(0, 5).map(e => 'CONSOLE: ' + e),
         ...requestFailures.slice(0, 5).map(r =>
@@ -244,7 +403,10 @@ async function runWithPlaywright() {
       }
 
       const row = { url, viewport: vp.name, width: vp.width, height: vp.height,
-                    mode: 'playwright', pass: errors.length === 0, errors, warnings };
+                    mode: 'playwright', pass: errors.length === 0, errors, warnings,
+                    ...(heroThemeGeometry
+                      ? { hero_theme_geometry: heroThemeGeometry.evidence }
+                      : {}) };
       if (!row.pass) {
         const ssFile = `${path.replace(/\//g, '_')}_${vp.name}.png`;
         await page.screenshot({ path: resolve(SCREENSHOTS_DIR, ssFile) });
@@ -423,6 +585,7 @@ async function staticAnalysis() {
     note: [
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 8 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
+      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-390.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
     base_url: BASE_URL,

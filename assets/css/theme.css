@@ -7571,6 +7571,18 @@ html[data-theme="light"] .askjamie-main {
   height: auto;
 }
 
+/* The BrandGuard critical shell keeps its crumb logo compact on mobile.
+   Reassert that exception after the shared hero-logo rule above. */
+@media (max-width: 899px) {
+  .askjamie-brandguard-page .askjamie-logo--crumb {
+    margin-bottom: 0;
+  }
+
+  .askjamie-brandguard-page .askjamie-logo--crumb img {
+    max-width: 7.5rem;
+  }
+}
+
 /* ===================================================================== */
 /* AskJamie – Mermaid layout + mid‑century teal skin                     */
 /* ===================================================================== */
