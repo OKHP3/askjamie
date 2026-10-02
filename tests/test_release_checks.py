@@ -794,6 +794,8 @@ process.stdout.write(JSON.stringify({
 
 
 def test_lighthouse_route_runner_captures_repeat_brandguard_samples_by_condition(tmp_path):
+    if os.name == "nt":
+        pytest.skip("POSIX fake executables require shebang support unavailable on Windows")
     node_bin = shutil.which("node")
     if not node_bin:
         pytest.skip("Node.js is unavailable")
