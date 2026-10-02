@@ -74,6 +74,9 @@ jobs:
       - name: Verify shared asset fingerprints and deferred loading
         run: python3 scripts/cache-bust.py --check
 
+      - name: Verify visual capture and responsive avatar contracts
+        run: node --test tests/test_capture_visual_baseline.mjs
+
       - name: Run link checker
         run: python3 scripts/check-links.py
 

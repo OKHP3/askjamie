@@ -44,8 +44,8 @@ test("capture destination safety rejects repository roots and committed baseline
     outputDir: "/tmp/askjamie-captures",
     reportFile: "/tmp/askjamie-captures/capture-readiness.json",
   });
-  assert.equal(safe.outputDir, "/tmp/askjamie-captures");
-  assert.equal(safe.reportFile, "/tmp/askjamie-captures/capture-readiness.json");
+  assert.equal(safe.outputDir, path.resolve("/tmp/askjamie-captures"));
+  assert.equal(safe.reportFile, path.resolve("/tmp/askjamie-captures/capture-readiness.json"));
 });
 
 test("capture readiness flags incomplete images, failed requests, and timeout conditions", () => {
@@ -97,47 +97,25 @@ test("image scale ratio highlights a large source used in a small rendered box",
   assert.equal(estimateImageScaleRatio({ naturalWidth: 0, renderedWidth: 40 }), null);
 });
 
-test("public logo blocks use the nav-only 80px avatar asset", () => {
+test("public logo blocks use small density-aware avatar assets", () => {
   const repoRoot = fileURLToPath(new URL("..", import.meta.url));
   const files = execFileSync(
-    "rg",
-    [
-      "--files",
-      "-g",
-      "*.html",
-      ".",
-    ],
+    "git",
+    ["ls-files", "*.html"],
     { cwd: repoRoot, encoding: "utf8" }
   )
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((file) => file.replace(/^\.\//, ""))
-    .filter((file) => {
-      return [
-        "assets/templates/",
-        "about/",
-        "contact/",
-        "how-askjamie-works/",
-        "legal/",
-        "lens-system/",
-        "search/",
-        "universe/",
-        "index.html",
-      ].some((prefix) => file === prefix || file.startsWith(prefix));
-    });
+    .map((file) => file.trim().replaceAll("\\", "/"))
+    .filter((file) => !file.startsWith("assets/templates/") && !file.startsWith("dist-pages/"));
 
   assert.ok(files.length > 0);
   for (const relative of files) {
     const file = path.join(repoRoot, relative);
-    if (!fs.existsSync(file)) {
-      continue;
-    }
     const text = fs.readFileSync(file, "utf8");
     const match = text.match(/<div class="logo">[\s\S]*?<\/div>/);
-    if (!match) {
-      continue;
-    }
+    assert.ok(match, `missing public header logo in ${relative}`);
     assert.doesNotMatch(
       match[0],
       /askjamie-avatar-tall-left-square-1024\.png/,
@@ -145,8 +123,15 @@ test("public logo blocks use the nav-only 80px avatar asset", () => {
     );
     assert.match(
       match[0],
-      /askjamie-avatar-tall-left-square-80\.png/,
-      `nav logo does not use the nav-only avatar in ${relative}`
+      /src="\/assets\/img\/askjamie-header-avatar-40\.png"/,
+      `nav logo does not use the small fallback in ${relative}`
     );
+    for (const [size, density] of [[40, 1], [80, 2], [120, 3]]) {
+      assert.match(match[0], new RegExp(`askjamie-header-avatar-${size}\\.png ${density}x`),
+        `missing ${density}x source in ${relative}`);
+      const image = fs.readFileSync(path.join(repoRoot, `assets/img/askjamie-header-avatar-${size}.png`));
+      assert.equal(image.readUInt32BE(16), size, `wrong PNG width for ${density}x source`);
+      assert.equal(image.readUInt32BE(20), size, `wrong PNG height for ${density}x source`);
+    }
   }
 });
