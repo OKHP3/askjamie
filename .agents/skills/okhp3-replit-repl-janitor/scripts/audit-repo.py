@@ -11,6 +11,7 @@ freshly read tip.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -20,6 +21,20 @@ import sys
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import quote, urlparse
+
+
+def load_helper(name: str):
+    spec = importlib.util.spec_from_file_location(
+        name, Path(__file__).with_name(name + ".py"),
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+recovery_guard = load_helper("recovery-guard")
+retirement_ledger = load_helper("retirement-ledger")
 
 
 ROOT_GOVERNANCE_FILES = {
@@ -539,6 +554,22 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".")
     parser.add_argument("--base", default="origin/main")
+    recovery_mode = parser.add_mutually_exclusive_group()
+    recovery_mode.add_argument("--snapshot-recovery", metavar="PATH")
+    recovery_mode.add_argument("--verify-recovery", metavar="PATH")
+    recovery_mode.add_argument(
+        "--validate-retirement-ledger", metavar="POLICY",
+        help="validate committed decision records before removal; never deletes",
+    )
+    parser.add_argument("--approve-local-deletion", action="append", default=[])
+    parser.add_argument(
+        "--approve-recovery-retirement", action="append", default=[],
+        metavar="REF=EVIDENCE",
+    )
+    parser.add_argument(
+        "--retirement-ledger", metavar="POLICY",
+        help="owner-approved committed policy; required for recovery retirement verification",
+    )
     parser.add_argument(
         "--check-delete",
         action="store_true",
@@ -575,6 +606,58 @@ def main() -> int:
     root = Path(args.root).resolve()
     try:
         ensure_repository(root)
+        recovery_mode = (
+            args.snapshot_recovery or args.verify_recovery or args.validate_retirement_ledger
+        )
+        if recovery_mode and (args.fetch or args.check_delete or args.hosted_branches):
+            raise AuditError("recovery modes cannot be combined with fetch, branch deletion checks, or hosted probes")
+        if args.approve_local_deletion and not args.verify_recovery:
+            raise AuditError("--approve-local-deletion requires --verify-recovery")
+        if args.approve_recovery_retirement and not (
+            args.verify_recovery or args.validate_retirement_ledger
+        ):
+            raise AuditError("--approve-recovery-retirement requires recovery verification or ledger preflight")
+        if args.retirement_ledger and not args.verify_recovery:
+            raise AuditError("--retirement-ledger requires --verify-recovery")
+        if args.approve_recovery_retirement and args.verify_recovery and not args.retirement_ledger:
+            raise AuditError("recovery retirement requires --retirement-ledger")
+        if args.snapshot_recovery:
+            snapshot = recovery_guard.recovery_snapshot(root, run)
+            path = Path(args.snapshot_recovery).resolve()
+            recovery_guard.write_recovery_snapshot(path, snapshot)
+            print(json.dumps({"snapshot_file": str(path), "recovery_snapshot": snapshot}, indent=2))
+            return 0
+        if args.validate_retirement_ledger:
+            approvals = [
+                recovery_guard.parse_recovery_retirement(value)
+                for value in args.approve_recovery_retirement
+            ]
+            result = retirement_ledger.validate_ledger(
+                root, args.validate_retirement_ledger,
+                recovery_guard.recovery_snapshot(root, run), approvals,
+            )
+            print(json.dumps({"retirement_ledger": result}, indent=2))
+            return 0
+        if args.verify_recovery:
+            before = recovery_guard.read_recovery_snapshot(Path(args.verify_recovery).resolve())
+            ledger_result = None
+            if args.retirement_ledger:
+                ledger_result = retirement_ledger.validate_ledger(
+                    root, args.retirement_ledger, before,
+                    [recovery_guard.parse_recovery_retirement(value)
+                     for value in args.approve_recovery_retirement],
+                )
+            result = recovery_guard.compare_recovery_snapshots(
+                before, recovery_guard.recovery_snapshot(root, run),
+                args.approve_local_deletion, args.approve_recovery_retirement,
+            )
+            if ledger_result is not None:
+                result["retirement_ledger"] = ledger_result
+            print(json.dumps({
+                "snapshot_file": str(Path(args.verify_recovery).resolve()),
+                "recovery_guard": result,
+            }, indent=2))
+            return 0 if result["passed"] else 1
         if args.fetch:
             run(["git", "fetch", "--all"], root)
         if args.check_delete:
@@ -608,7 +691,7 @@ def main() -> int:
             report["hosted_lifecycle"] = audit_hosted_branches(root, args.hosted_branches)
         print(json.dumps(report, indent=2))
         return 0
-    except (AuditError, OSError) as exc:
+    except (AuditError, OSError, recovery_guard.RecoveryError, retirement_ledger.LedgerError) as exc:
         print(json.dumps({"error": str(exc), "root": str(root)}))
         return 1
 
