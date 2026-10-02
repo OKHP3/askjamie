@@ -447,6 +447,10 @@ class DecisionLedgerTests(unittest.TestCase):
         archive = result["archives"][0]
         self.assertEqual(result["active_line_tip_sha"], active_tip)
         self.assertEqual(
+            archive["file_difference_direction"],
+            "active-line-to-archive-tip",
+        )
+        self.assertEqual(
             archive["file_differences"],
             [
                 {"status": "D", "path": "new-name.txt"},

@@ -62,7 +62,10 @@ decision ledger, and whether each named archive tip is represented on the
 active line. Use `--active-line <branch-or-ref>` when the checked-out branch is
 not the active line; otherwise the current branch is used. Archive reports
 include patch-equivalent versus unrepresented commits, tree hashes, and
-name-status file differences. Branch-decision rows accept only the retention
+name-status file differences. The JSON field `file_difference_direction` is
+`active-line-to-archive-tip`: **A** means a path is present at the archive tip
+but not on the active line, while **D** means it is present on the active line
+but not at the archive tip. Branch-decision rows accept only the retention
 labels **keep** and **archive**; unsupported labels are reported with their
 line and branch and fail the consistency gate. The ledger check also reports
 missing branches, tip-SHA drift, and stale ledger rows, while archive

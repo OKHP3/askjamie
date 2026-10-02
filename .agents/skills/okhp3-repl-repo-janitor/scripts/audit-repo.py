@@ -556,6 +556,7 @@ def audit_archive_equivalents(
             "branch": branch,
             "tip_sha": tip_sha,
             "branch_tip_sha": branch_tip,
+            "file_difference_direction": "active-line-to-archive-tip",
         }
         if not SHA_PATTERN.fullmatch(tip_sha):
             report.update({
