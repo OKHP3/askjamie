@@ -1887,7 +1887,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     state = {"active": 0, "max_active": 0, "page_active": 0, "page_max_active": 0}
     page_paths = {
         "/lazy/", "/lazy-unobserved/", "/lazy-late/", "/clean/", "/abort/",
-        "/console-404/", "/timeout/"
+        "/console-404/", "/timeout/", "/third-party-warning/"
     }
     lock = threading.Lock()
     png_header = b"\x89PNG\r\n\x1a\n"
@@ -1942,6 +1942,10 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
                     "/abort/": '<img src="/aborted.png" width="10" height="10">',
                     "/console-404/": '<script>console.error("fixture console failure")</script><img src="/missing.png" width="10" height="10">',
                     "/timeout/": '<img src="/delayed.png" width="10" height="10">',
+                    "/third-party-warning/": (
+                        '<img src="https://www.googletagmanager.com/fixture.png" '
+                        'width="10" height="10">'
+                    ),
                 }[path]
                 payload = (
                     '<!doctype html><html><head><meta name="viewport" '
@@ -2028,7 +2032,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
         '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
         + "".join(f"<url><loc>https://askjamie.bot{path}</loc></url>" for path in (
             "/lazy/", "/lazy-unobserved/", "/lazy-late/", "/clean/", "/abort/",
-            "/console-404/", "/timeout/"
+            "/console-404/", "/timeout/", "/third-party-warning/"
         ))
         + "</urlset>"
     )
@@ -2099,7 +2103,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
         path: [row for row in report["results"] if path in row["url"]]
         for path in (
             "/lazy/", "/lazy-unobserved/", "/lazy-late/", "/clean/", "/abort/",
-            "/console-404/", "/timeout/"
+            "/console-404/", "/timeout/", "/third-party-warning/"
         )
     }
 
@@ -2117,7 +2121,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     )
     assert runtime, result.stdout
     print(runtime.group(0))
-    assert report["total_checks"] == 56
+    assert report["total_checks"] == 64
     lazy_failures = [row for row in rows["/lazy/"] if not row["pass"]]
     assert not lazy_failures, json.dumps(lazy_failures, indent=2)
     lazy_warnings = [row for row in rows["/lazy/"] if row["warnings"]]
@@ -2165,6 +2169,14 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
                for row in rows["/console-404/"])
     assert all(any("BROKEN IMG" in error or "REQUEST FAILED" in error for error in row["errors"])
                for row in rows["/timeout/"])
+    assert all(row["pass"] and not row["errors"] for row in rows["/third-party-warning/"])
+    third_party_warning = "blocked third-party resources: https://www.googletagmanager.com/fixture.png"
+    assert all(
+        any(third_party_warning in warning for warning in row["warnings"])
+        for row in rows["/third-party-warning/"]
+    )
+    assert "WARN  /third-party-warning/" in result.stdout
+    assert third_party_warning in result.stdout
     assert state["page_max_active"] <= 4
     lazy_starts = [event for event in events if event[0] == "start" and event[1] == "/slow-lazy.png"]
     assert len(lazy_starts) == len(rows["/lazy/"]) == 8
