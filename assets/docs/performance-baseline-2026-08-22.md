@@ -14,6 +14,26 @@ The raw Lighthouse reports are in
 `assets/audit/lighthouse-baseline-2026-08-22/`. The compact machine-readable
 summary is `assets/audit/lighthouse-baseline-2026-08-22.json`.
 
+## Measurement-stack review gate
+
+The approved historical comparison stack is Lighthouse **12.8.2** with
+Playwright-managed Chromium **148.0.7778.96**. The route runner records the
+effective Lighthouse version from each raw report and the exact version of the
+Chromium binary it launches in each dated `summary.json`, alongside the
+browser user agent reported by Lighthouse. The exact Chromium build is from
+the Playwright 1.60.0 browser metadata; the historical Lighthouse report
+records its corresponding `HeadlessChrome/148.0.0.0` user agent. The approved
+comparison values are kept with the runner so the review gate does not depend
+on ignored, regenerable files under `assets/audit/`.
+
+Every dated summary compares those versions with the historical stack. If
+either version changes, the summary marks `measurementStackReview.status` as
+`required`, names the changed component, and directs the owner to review
+BrandGuard budget comparability before interpreting results or changing the
+approved budget. A tool upgrade alone does not approve a budget change. Keep
+the historical baseline intact unless an owner approves a new comparison
+baseline.
+
 ## Lighthouse summary
 
 | Page | Performance | Accessibility | Best practices | SEO | LCP | CLS | Max potential FID | TBT |
