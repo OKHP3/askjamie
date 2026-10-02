@@ -128,32 +128,148 @@ class AuditRepoTests(unittest.TestCase):
                 self.assertNotIn("batchmode=no", normalized)
                 self.assertIn("batchmode=yes", normalized)
 
-    def test_hosted_pull_request_page_limit_retains_unknown_history_hold(self) -> None:
-        for count in (99, 100, 101):
-            with self.subTest(count=count), patch.object(
-                audit_repo, "gh_api_json", side_effect=[
-                    ({"protected": False}, None),
-                    ([], None),
-                    ([{"state": "closed", "merged_at": "2099-01-01"}] * count, None),
-                ]
-            ):
-                evidence = audit_repo.github_hosted_evidence(
-                    Path("."), "https://github.com/fixture/repo.git", "feature/work"
+    def hosted_pages_fixture(self, deployment_pages, pr_pages):
+        """Exercise the real JSON adapter and hold projection without network access."""
+        deployment_endpoint = "repos/fixture/repo/deployments?ref=feature%2Fwork"
+        pr_endpoint = "repos/fixture/repo/pulls?state=all&head=fixture%3Afeature%2Fwork"
+        fixtures = {"repos/fixture/repo/branches/feature%2Fwork": {"protected": False}}
+        for endpoint, pages in ((deployment_endpoint, deployment_pages), (pr_endpoint, pr_pages)):
+            fixtures.update({
+                f"{endpoint}&per_page=100&page={page}": data
+                for page, data in enumerate(pages, 1)
+            })
+        calls = []
+
+        def command(args, _root):
+            if args[0] == "git":
+                return subprocess.CompletedProcess(
+                    args, 0, f"{'a' * 40}\trefs/heads/feature/work\n", "",
                 )
-            expected = "unknown" if count >= 100 else "available"
-            self.assertEqual(evidence["pull_requests"]["status"], expected)
-            with patch.object(audit_repo, "remote_url_for_provider", return_value=(
-                "origin", "https://github.com/fixture/repo.git"
-            )), patch.object(audit_repo, "hosted_command", return_value=(
-                subprocess.CompletedProcess([], 0, f"{'a' * 40}\trefs/heads/feature/work\n", "")
-            )), patch.object(audit_repo, "github_hosted_evidence", return_value=evidence):
-                report = audit_repo.audit_hosted_branches(Path("."), ["origin=feature/work"])
-            self.assertEqual(report["deletion_blocked"], count >= 100)
-            self.assertEqual(report["cleanup_plan"]["delete"], [])
-            if count >= 100:
-                self.assertEqual(report["entries"][0]["blocking_reasons"], [
-                    "hosted-pull-request-evidence-unknown"
-                ])
+            self.assertEqual(args[:2], ["gh", "api"])
+            endpoint = args[2]
+            calls.append(endpoint)
+            self.assertIn(endpoint, fixtures, "unexpected or unfiltered pagination request")
+            data = fixtures[endpoint]
+            if isinstance(data, Exception):
+                raise data
+            if isinstance(data, subprocess.CompletedProcess):
+                return data
+            return subprocess.CompletedProcess(
+                args, 0, data if isinstance(data, str) else json.dumps(data), "",
+            )
+
+        with patch.object(audit_repo, "remote_url_for_provider", return_value=(
+            "origin", "https://github.com/fixture/repo.git",
+        )), patch.object(audit_repo.shutil, "which", return_value="/fixture/gh"), patch.object(
+            audit_repo, "hosted_command", side_effect=command,
+        ):
+            report = audit_repo.audit_hosted_branches(Path("."), ["origin=feature/work"])
+        self.assertEqual(calls, list(fixtures))
+        self.assertEqual(report["cleanup_plan"]["delete"], [])
+        self.assertEqual(report["cleanup_plan"]["merge"], [])
+        return report
+
+    def assert_single_hosted_hold(self, report, code, bucket):
+        self.assertTrue(report["deletion_blocked"])
+        self.assertTrue(report["entries"][0]["deletion_blocked"])
+        self.assertEqual(report["entries"][0]["blocking_reasons"], [code])
+        item = report["cleanup_plan"][bucket][0]
+        self.assertEqual(item["blocking_reasons"], [code])
+        self.assertEqual(item["blocking_reason_explanations"], [{
+            "reason_code": code,
+            "explanation": audit_repo.HOSTED_HOLD_EXPLANATIONS[code],
+        }])
+        other_bucket = "keep" if bucket == "review" else "review"
+        self.assertEqual(report["cleanup_plan"][other_bucket], [])
+
+    def test_later_pr_pages_preserve_open_and_closed_unmerged_holds(self) -> None:
+        merged = [{"number": n, "state": "closed", "merged_at": "2099-01-01"}
+                  for n in range(1, 201)]
+        for state, code, bucket in (
+            ("open", "hosted-open-pull-request", "keep"),
+            ("closed", "hosted-closed-unmerged-pull-request", "review"),
+        ):
+            for page in (2, 3):
+                with self.subTest(state=state, page=page):
+                    later_pr = {"number": 201, "state": state, "merged_at": None}
+                    pages = [merged[:100]]
+                    if page == 3:
+                        pages.append(merged[100:])
+                    pages.append([later_pr])
+                    report = self.hosted_pages_fixture([[]], pages)
+                    evidence = report["entries"][0]["pull_requests"]
+                    self.assertEqual(evidence["status"], "available")
+                    self.assertEqual(evidence["count"], 100 * (page - 1) + 1)
+                    self.assertEqual(evidence["items"], sum(pages, []))
+                    self.assert_single_hosted_hold(report, code, bucket)
+
+    def test_pr_history_completes_only_after_short_or_empty_page(self) -> None:
+        for count in (0, 99, 100, 101, 200):
+            with self.subTest(count=count):
+                items = [{"number": n, "state": "closed", "merged_at": "2099-01-01"}
+                         for n in range(count)]
+                pages = [items[n:n + 100] for n in range(0, count, 100)]
+                if count % 100 == 0:
+                    pages.append([])
+                report = self.hosted_pages_fixture([[]], pages)
+                evidence = report["entries"][0]["pull_requests"]
+                self.assertEqual(evidence["status"], "available")
+                self.assertEqual(evidence["count"], count)
+                self.assertEqual(evidence["items"], items)
+                self.assertFalse(report["deletion_blocked"])
+                self.assertEqual(report["cleanup_plan"]["keep"], [])
+                self.assertEqual(report["cleanup_plan"]["review"], [])
+
+    def test_deployment_pages_are_aggregated_before_classifying_holds(self) -> None:
+        for count in (0, 99, 100, 101, 200, 201):
+            with self.subTest(count=count):
+                items = [{"id": n, "ref": "feature/work", "environment": "preview"}
+                         for n in range(count)]
+                pages = [items[n:n + 100] for n in range(0, count, 100)]
+                if count % 100 == 0:
+                    pages.append([])
+                report = self.hosted_pages_fixture(pages, [[]])
+                evidence = report["entries"][0]["deployments"]
+                self.assertEqual(evidence["status"], "available")
+                self.assertEqual(evidence["count"], count)
+                self.assertEqual(evidence["items"], items)
+                if count:
+                    self.assert_single_hosted_hold(report, "hosted-ref-has-deployments", "keep")
+                else:
+                    self.assertFalse(report["deletion_blocked"])
+
+    def test_partial_page_failures_discard_history_and_retain_unknown_holds(self) -> None:
+        failures = (
+            (subprocess.CompletedProcess([], 1, "", "rate limited"), "request failed"),
+            (subprocess.TimeoutExpired(["gh", "api"], 30, output=b"[]"), "timed out"),
+            ("not JSON", "invalid JSON"),
+            ({"message": "unexpected object"}, "not a list"),
+            ([None], "invalid records"),
+            ([{}] * 101, "invalid records"),
+        )
+        for key, code in (
+            ("deployments", "hosted-deployment-evidence-unknown"),
+            ("pull_requests", "hosted-pull-request-evidence-unknown"),
+        ):
+            for failure, reason in failures:
+                with self.subTest(key=key, reason=reason):
+                    first_page = ([{"id": n} for n in range(100)] if key == "deployments"
+                                  else [{"number": n, "state": "closed", "merged_at": "2099-01-01"}
+                                        for n in range(100)])
+                    pages = [first_page, failure]
+                    report = self.hosted_pages_fixture(
+                        pages if key == "deployments" else [[]],
+                        pages if key == "pull_requests" else [[]],
+                    )
+                    evidence = report["entries"][0][key]
+                    self.assertEqual(evidence["status"], "unknown")
+                    self.assertIn("page 2", evidence["reason"])
+                    self.assertIn(reason, evidence["reason"])
+                    self.assertNotIn("count", evidence)
+                    self.assertNotIn("items", evidence)
+                    other = "pull_requests" if key == "deployments" else "deployments"
+                    self.assertEqual(report["entries"][0][other]["status"], "available")
+                    self.assert_single_hosted_hold(report, code, "review")
 
     def test_check_delete_rejects_hosted_options_before_repository_or_fetch(self) -> None:
         for option in ("--hosted-branch", "--hosted-ref"):

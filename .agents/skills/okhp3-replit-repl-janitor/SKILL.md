@@ -130,8 +130,10 @@ pair with `--hosted-branch origin=feature/example` (repeat as needed).
 the remote ref without fetching or pruning. For GitHub remotes it reads
 protection, deployment, and PR evidence through an installed, authenticated
 `gh` CLI; unavailable evidence remains an explicit hold.
-An API page containing 100 PR results is treated as incomplete history and
-retains an unknown-evidence hold. Run hosted inspection separately from
+Deployment and PR history are read in 100-record pages until a short or empty
+page confirms completion. A failed or malformed page discards that partial
+history and retains its unknown-evidence hold, with the failing page identified.
+Run hosted inspection separately from
 `--check-delete`; combining those options is rejected before fetching or
 preparing deletion commands.
 
@@ -143,7 +145,8 @@ corresponding unknown-evidence hold. The reason states that the command timed
 out and gives the time limit. Partial output is discarded, never interpreted
 as a missing branch, empty history, or deletion approval. Other evidence
 lookups and requested provider/ref pairs still run; the limit is per command,
-not a total audit deadline (up to four hosted commands per present GitHub ref).
+not a total audit deadline (remote and protection probes plus all deployment
+and PR history pages for each present GitHub ref).
 This limit does not apply to local Git checks or the separate opt-in `--fetch`.
 
 ### 3. Classify every branch

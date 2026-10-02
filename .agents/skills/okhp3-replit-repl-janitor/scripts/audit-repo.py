@@ -259,6 +259,24 @@ def gh_api_json(root: Path, endpoint: str) -> tuple[object | None, str | None]:
         return None, f"GitHub API returned invalid JSON: {exc}"
 
 
+def gh_api_list(root: Path, endpoint: str, label: str) -> tuple[list | None, str | None]:
+    """Read every 100-item page; never expose a partial history as complete."""
+    items: list = []
+    page = 1
+    while True:
+        data, error = gh_api_json(root, f"{endpoint}&per_page=100&page={page}")
+        if error:
+            return None, f"GitHub {label} history incomplete at page {page}: {error}"
+        if not isinstance(data, list):
+            return None, f"GitHub {label} response on page {page} was not a list"
+        if len(data) > 100 or any(not isinstance(item, dict) for item in data):
+            return None, f"GitHub {label} response on page {page} contained invalid records"
+        items.extend(data)
+        if len(data) < 100:
+            return items, None
+        page += 1
+
+
 def github_hosted_evidence(
     root: Path, remote_url: str | None, branch: str
 ) -> dict[str, object]:
@@ -294,8 +312,8 @@ def github_hosted_evidence(
     else:
         protection = unknown_hosted_evidence("GitHub branch response was not an object")
 
-    deployments_data, deployments_error = gh_api_json(
-        root, f"repos/{encoded_repo}/deployments?ref={encoded_branch}&per_page=100",
+    deployments_data, deployments_error = gh_api_list(
+        root, f"repos/{encoded_repo}/deployments?ref={encoded_branch}", "deployments",
     )
     if deployments_error:
         deployments: dict[str, object] = unknown_hosted_evidence(deployments_error)
@@ -314,15 +332,11 @@ def github_hosted_evidence(
         deployments = unknown_hosted_evidence("GitHub deployments response was not a list")
 
     head = quote(f"{owner}:{branch}", safe="")
-    pull_requests_data, pull_requests_error = gh_api_json(
-        root, f"repos/{encoded_repo}/pulls?state=all&head={head}&per_page=100",
+    pull_requests_data, pull_requests_error = gh_api_list(
+        root, f"repos/{encoded_repo}/pulls?state=all&head={head}", "pull-request",
     )
     if pull_requests_error:
         pull_requests: dict[str, object] = unknown_hosted_evidence(pull_requests_error)
-    elif isinstance(pull_requests_data, list) and len(pull_requests_data) >= 100:
-        pull_requests = unknown_hosted_evidence(
-            "GitHub pull-request history reached the 100-result limit; additional history may be missing"
-        )
     elif isinstance(pull_requests_data, list):
         pull_requests = {
             "status": "available", "source": "github-api",
