@@ -104,6 +104,22 @@ class RetirementLedgerTests(unittest.TestCase):
         result, data = self.cli("--validate-retirement-ledger", self.policy_path)
         self.assertEqual(result.returncode, 0, data)
 
+    def test_git_clean_filters_accept_unchanged_crlf_records(self):
+        self.git("config", "core.autocrlf", "true")
+        for relative, data in ((self.policy_path, self.policy), (self.record_path, self.record)):
+            (self.root / relative).write_bytes((json.dumps(data, indent=2) + "\n").encode("utf-8"))
+        self.commit()
+        for relative in (self.policy_path, self.record_path):
+            path = self.root / relative
+            path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        result, data = self.preflight()
+        self.assertEqual(result.returncode, 0, data)
+        self.record["approver"] = "uncommitted-owner"
+        self.write(self.record_path, self.record)
+        result, data = self.preflight()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("committed unchanged", data["error"])
+
     def test_flag_without_ledger_cannot_complete_retirement(self):
         self.git("update-ref", "-d", self.ref, self.sha)
         result, data = self.cli(
@@ -204,7 +220,12 @@ class RetirementLedgerTests(unittest.TestCase):
         record = self.root / self.record_path
         copy = self.root / "copy.json"
         record.rename(copy)
-        record.symlink_to(copy)
+        try:
+            record.symlink_to(copy)
+        except OSError as exc:
+            if exc.errno in (1, 13) or getattr(exc, "winerror", None) == 1314:
+                self.skipTest("symlink creation requires unavailable privileges")
+            raise
         self.commit()
         result, data = self.preflight()
         self.assertNotEqual(result.returncode, 0)

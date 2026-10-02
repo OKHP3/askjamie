@@ -59,11 +59,18 @@ def committed_json(root, path):
         data = json.loads(content.decode("utf-8"), object_pairs_hook=unique_fields)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise LedgerError("retirement ledger: could not read valid UTF-8 JSON") from exc
+    relative = path.relative_to(root).as_posix()
     result = subprocess.run(
-        ["git", "show", f"HEAD:{path.relative_to(root).as_posix()}"],
+        ["git", "rev-parse", f"HEAD:{relative}"],
         cwd=root, capture_output=True,
     )
-    if result.returncode or result.stdout != content:
+    # Compare the Git-cleaned representation, so an unchanged CRLF checkout
+    # has the same identity as its LF blob. Without -w, hashing writes nothing.
+    filtered = subprocess.run(
+        ["git", "hash-object", f"--path={relative}", "--stdin"],
+        cwd=root, input=content, capture_output=True,
+    )
+    if result.returncode or filtered.returncode or result.stdout.strip() != filtered.stdout.strip():
         raise LedgerError("retirement ledger: policy and records must be committed unchanged in HEAD")
     return data
 
