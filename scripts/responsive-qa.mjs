@@ -12,7 +12,7 @@
  *   - BrandGuard hero geometry stays stable after its branded web fonts load
  *   - Universe diagram shell stays stable while its rendered SVG initializes
  *   - Universe caption and links remain usable when Mermaid fails or JavaScript is off
- *   - Opened Universe page-map groups keep their shell and nearby content stable
+ *   - Every opened Universe page-map group keeps its shell and nearby content stable
  *
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
@@ -168,44 +168,20 @@ async function captureUniversePageMapGeometry(page, groupIndex) {
   }, groupIndex);
 }
 
-async function openUniversePageMapForGeometryCheck(page) {
+async function openUniversePageMapGroupForGeometryCheck(page, groupIndex, groupCount) {
   const groups = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
-  const groupCount = await groups.count();
-  if (groupCount === 0) {
-    return {
-      errors: ['UNIVERSE PAGE MAP GROUP MISSING: no generated details groups were found'],
-      groupIndex: null,
-      before: null,
-      openedByKeyboard: false,
-      initiallyCollapsed: false,
-      othersStayedCollapsed: false,
-    };
-  }
-
+  const target = groups.nth(groupIndex);
+  const errors = [];
   const initiallyCollapsed = await groups.evaluateAll(elements =>
     elements.every(element => !element.open)
   );
   if (!initiallyCollapsed) {
-    return {
-      errors: ['UNIVERSE PAGE MAP COLLAPSED STATE INVALID: a generated group was already open before the check'],
-      groupIndex: null,
-      before: null,
-      openedByKeyboard: false,
-      initiallyCollapsed,
-      othersStayedCollapsed: false,
-    };
+    errors.push(
+      `UNIVERSE PAGE MAP COLLAPSED STATE INVALID: expected every group except ` +
+      `${groupIndex + 1} to be closed before opening it`
+    );
   }
 
-  const groupIndex = await groups.evaluateAll(elements =>
-    elements.reduce((bestIndex, element, index, all) => {
-      const height = group => parseFloat(
-        getComputedStyle(group.querySelector('.mermaid-scroll-wrap')).minHeight
-      ) || 0;
-      return height(element) > height(all[bestIndex]) ? index : bestIndex;
-    }, 0)
-  );
-  const target = groups.nth(groupIndex);
-  const errors = [];
   await target.locator('summary').focus();
   await page.keyboard.press('Enter');
   const openedByKeyboard = await target.evaluate(group => group.open);
@@ -226,18 +202,17 @@ async function openUniversePageMapForGeometryCheck(page) {
     );
   }
 
-  // Hold the shared Mermaid import while the selected map reaches the
-  // observer, so its shell can be measured before SVG insertion.
+  // The page-init hook holds Mermaid's scheduled render callback until the
+  // shell and its neighboring summaries have been measured.
   await target.locator('.mermaid').scrollIntoViewIfNeeded();
-  const renderStarted = await page.waitForFunction((index) => {
-    const group = document.querySelectorAll(
-      '.universe-map-generated .universe-map-group'
-    )[index];
-    return group?.querySelector('.mermaid')?.dataset.mermaidRendered === '1';
-  }, groupIndex, { timeout: 10000 }).then(() => true, () => false);
-  if (!renderStarted) {
+  const renderScheduled = await page.waitForFunction(
+    () => window.__responsiveQaMermaidRenderQueue?.length > 0,
+    undefined,
+    { timeout: 10000 }
+  ).then(() => true, () => false);
+  if (!renderScheduled) {
     errors.push(
-      `UNIVERSE PAGE MAP RENDER NOT SCHEDULED: group ${groupIndex + 1} did not begin Mermaid initialization`
+      `UNIVERSE PAGE MAP RENDER NOT SCHEDULED: group ${groupIndex + 1} did not reach the Mermaid observer`
     );
   }
 
@@ -257,6 +232,12 @@ async function openUniversePageMapForGeometryCheck(page) {
       })}`
     );
   }
+  if (!before?.other_groups_collapsed) {
+    errors.push(
+      `UNIVERSE PAGE MAP COLLAPSED STATE INVALID: group ${groupIndex + 1} opened while another ` +
+      `generated group was also open; before=${JSON.stringify(before)}`
+    );
+  }
 
   const expectedReservation = UNIVERSE_PAGE_MAP_RESERVATIONS_PX.get(before?.node_count) ??
     DEFAULT_UNIVERSE_PAGE_MAP_RESERVATION_PX;
@@ -267,6 +248,7 @@ async function openUniversePageMapForGeometryCheck(page) {
         expectedReservation) {
     errors.push(
       `UNIVERSE PAGE MAP RESERVATION TOO SMALL: group ${groupIndex + 1} expected a ` +
+      `${before?.title ? `"${before.title}" ` : ''}` +
       `${expectedReservation}px reserved shell before rendering; measured=${JSON.stringify({
         min_height_px: before?.reserved_min_height_px,
         shell: before?.geometry?.reserved_shell,
@@ -277,12 +259,211 @@ async function openUniversePageMapForGeometryCheck(page) {
   return {
     errors,
     groupIndex,
+    groupCount,
     before,
     openedByKeyboard,
-    renderStarted,
+    renderScheduled,
     initiallyCollapsed,
     othersStayedCollapsed,
   };
+}
+
+async function releaseResponsiveQaMermaidRender(page) {
+  return page.evaluate(() => {
+    const entry = window.__responsiveQaMermaidRenderQueue?.shift();
+    if (!entry) return false;
+    entry.callback(...entry.args);
+    return true;
+  });
+}
+
+async function compareUniversePageMapGeometry(page, groupCheck, after) {
+  const { groupIndex, groupCount, before } = groupCheck;
+  const errors = [];
+  const shifts = [];
+  const groupLabel = before?.title ? `"${before.title}"` : `group ${groupIndex + 1}`;
+  if (before && after) {
+    for (const selector of [
+      'group',
+      'summary',
+      'figure',
+      'reserved_shell',
+      'previous_group_summary',
+      'next_group_summary',
+    ]) {
+      const beforeRect = before.geometry[selector];
+      const afterRect = after.geometry[selector];
+      if (!beforeRect || !afterRect) {
+        // The first/last group has no neighbor summary on one side.
+        if ((selector === 'previous_group_summary' && groupIndex === 0) ||
+            (selector === 'next_group_summary' && groupIndex === groupCount - 1)) {
+          continue;
+        }
+        errors.push(
+          `UNIVERSE PAGE MAP GEOMETRY MISSING: group ${groupIndex + 1} ${groupLabel} ${selector}; ` +
+          `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+        );
+        continue;
+      }
+
+      const delta = Object.fromEntries(
+        ['x', 'y', 'width', 'height'].map(property => [
+          property,
+          Math.round((afterRect[property] - beforeRect[property]) * 100) / 100,
+        ])
+      );
+      const changedProperties = Object.keys(delta).filter(
+        property => Math.abs(delta[property]) > UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX
+      );
+      if (changedProperties.length > 0) {
+        const shift = {
+          selector,
+          before: beforeRect,
+          after: afterRect,
+          delta,
+          changed_properties: changedProperties,
+        };
+        shifts.push(shift);
+        errors.push(
+          `UNIVERSE PAGE MAP GEOMETRY SHIFT: group ${groupIndex + 1} ${groupLabel} ${selector} changed ` +
+          `${changedProperties.map(property => `${property}=${delta[property]}px`).join(', ')} ` +
+          `with ${UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+          `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+        );
+      }
+    }
+
+    if (after.svg_geometry &&
+        before.geometry.reserved_shell.height +
+          UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX < after.svg_geometry.height) {
+      errors.push(
+        `UNIVERSE PAGE MAP CONTENT EXCEEDS RESERVED SHELL: group ${groupIndex + 1} ${groupLabel} ` +
+        `reserved=${JSON.stringify(before.geometry.reserved_shell)}; ` +
+        `rendered=${JSON.stringify(after.svg_geometry)}`
+      );
+    }
+  }
+
+  if (!after?.open || !after?.other_groups_collapsed || !after?.svg_ready) {
+    errors.push(
+      `UNIVERSE PAGE MAP READY STATE INVALID: expected group ${groupIndex + 1} ${groupLabel} ` +
+      `to render while every other group remains collapsed; ` +
+      `after=${JSON.stringify({
+        open: after?.open,
+        other_groups_collapsed: after?.other_groups_collapsed,
+        svg_ready: after?.svg_ready,
+      })}`
+    );
+  }
+
+  let closedByKeyboard = false;
+  try {
+    const target = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).nth(groupIndex);
+    await target.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    closedByKeyboard = !(await target.evaluate(group => group.open));
+    if (!closedByKeyboard) {
+      errors.push(
+        `UNIVERSE PAGE MAP KEYBOARD CLOSE FAILED: Enter did not close group ${groupIndex + 1} ${groupLabel}`
+      );
+    }
+  } catch (error) {
+    errors.push(
+      `UNIVERSE PAGE MAP KEYBOARD CLOSE CHECK ERROR: group ${groupIndex + 1} ` +
+      `${error.message.split('\n')[0]}`
+    );
+  }
+
+  return { errors, shifts, closedByKeyboard };
+}
+
+async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
+  const errors = [];
+  const groups = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
+  const groupCount = await groups.count();
+  if (groupCount === 0) {
+    return {
+      errors: ['UNIVERSE PAGE MAP GROUP MISSING: no generated details groups were found'],
+      initiallyCollapsed: false,
+      groupCount,
+      groups: [],
+    };
+  }
+
+  const initiallyCollapsed = await groups.evaluateAll(elements =>
+    elements.every(element => !element.open)
+  );
+  if (!initiallyCollapsed) {
+    errors.push(
+      'UNIVERSE PAGE MAP COLLAPSED STATE INVALID: a generated group was open before the group checks'
+    );
+  }
+
+  const groupEvidence = [];
+  for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+    const groupCheck = await openUniversePageMapGroupForGeometryCheck(
+      page,
+      groupIndex,
+      groupCount
+    );
+    errors.push(...groupCheck.errors);
+
+    let released = false;
+    let ready = false;
+    let after = null;
+    try {
+      if (groupCheck.renderScheduled) {
+        released = await releaseResponsiveQaMermaidRender(page);
+        if (!released) {
+          errors.push(
+            `UNIVERSE PAGE MAP RENDER NOT RELEASED: group ${groupIndex + 1} had no held Mermaid render`
+          );
+        } else {
+          ready = await page.waitForFunction((index) => {
+            const group = document.querySelectorAll(
+              '.universe-map-generated .universe-map-group'
+            )[index];
+            return Boolean(group?.querySelector('.mermaid svg .node'));
+          }, groupIndex, { timeout: 20000 }).then(() => true, () => false);
+        }
+      }
+      await waitForTwoFrames();
+      after = await captureUniversePageMapGeometry(page, groupIndex);
+      if (!ready) {
+        errors.push(
+          `UNIVERSE PAGE MAP DID NOT REACH SVG READY STATE: group ${groupIndex + 1} ` +
+          `${groupCheck.before?.title ? `"${groupCheck.before.title}"` : ''}; ` +
+          `before=${JSON.stringify(groupCheck.before)}; after=${JSON.stringify(after)}`
+        );
+      }
+    } catch (error) {
+      errors.push(
+        `UNIVERSE PAGE MAP GEOMETRY CHECK ERROR: group ${groupIndex + 1} ` +
+        `${error.message.split('\n')[0]}`
+      );
+      after = await captureUniversePageMapGeometry(page, groupIndex).catch(() => null);
+    }
+
+    const comparison = await compareUniversePageMapGeometry(page, groupCheck, after);
+    errors.push(...comparison.errors);
+    groupEvidence.push({
+      group_index: groupIndex + 1,
+      title: groupCheck.before?.title ?? '',
+      node_count: groupCheck.before?.node_count ?? null,
+      initially_collapsed: groupCheck.initiallyCollapsed,
+      opened_by_keyboard: groupCheck.openedByKeyboard,
+      other_groups_stayed_collapsed: groupCheck.othersStayedCollapsed,
+      render_scheduled: groupCheck.renderScheduled,
+      render_released: released,
+      rendered_svg_ready: ready,
+      closed_by_keyboard: comparison.closedByKeyboard,
+      before: groupCheck.before,
+      after,
+      shifts: comparison.shifts,
+    });
+  }
+
+  return { errors, initiallyCollapsed, groupCount, groups: groupEvidence };
 }
 
 async function checkBrandGuardHeroGeometry(page) {
@@ -593,12 +774,9 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
   let before = null;
   let after = null;
   let pageMapCheck = null;
-  let pageMapAfter = null;
   let themeActive = false;
   let mermaidRequested = false;
   let rendered = false;
-  let pageMapRendered = false;
-  let pageMapClosedByKeyboard = false;
 
   const capture = () => page.evaluate((selectors) => {
     const round = value => Math.round(value * 100) / 100;
@@ -661,19 +839,15 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
   try {
     await page.locator(UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS[0]).scrollIntoViewIfNeeded();
 
-    [themeActive, mermaidRequested] = await Promise.all([
-      page.waitForFunction(() => {
-        const themeLink = document.querySelector('link[data-deferred-styles]');
-        return themeLink?.media === 'all' && Boolean(themeLink.sheet);
-      }, undefined, { timeout: 15000 }).then(() => true, () => false),
-      mermaidRequestSeen,
-    ]);
+    themeActive = await page.waitForFunction(() => {
+      const themeLink = document.querySelector('link[data-deferred-styles]');
+      return themeLink?.media === 'all' && Boolean(themeLink.sheet);
+    }, undefined, { timeout: 15000 }).then(() => true, () => false);
 
     if (themeActive) {
       await waitForTwoFrames();
       // The desktop hero has a finite scroll reveal that changes its transform.
       // Let that existing animation finish before isolating Mermaid's layout.
-      // Keep the Mermaid import blocked throughout this baseline preparation.
       await page.evaluate(async () => {
         const hero = document.querySelector('.askjamie-hero--universe');
         const reveals = (hero?.getAnimations({ subtree: true }) ?? [])
@@ -687,11 +861,6 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
       errors.push(
         'UNIVERSE DIAGRAM GEOMETRY BASELINE UNAVAILABLE: deferred theme did not activate; ' +
         `measured before=${JSON.stringify(before.geometry)}`
-      );
-    }
-    if (!mermaidRequested) {
-      errors.push(
-        'UNIVERSE DIAGRAM NOT INITIALIZED: Mermaid module request was not observed after bringing the hero into view'
       );
     }
     if (before.ready || before.has_svg_node) {
@@ -724,51 +893,48 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
       );
     }
 
-    pageMapCheck = await openUniversePageMapForGeometryCheck(page);
-    errors.push(...pageMapCheck.errors);
-
-    releaseMermaid();
-    if (mermaidRequested) {
-      const pageMapReadiness = pageMapCheck?.openedByKeyboard && pageMapCheck.groupIndex != null
-        ? page.waitForFunction((index) => {
-          const group = document.querySelectorAll(
-            '.universe-map-generated .universe-map-group'
-          )[index];
-          return Boolean(group?.querySelector('.mermaid svg .node'));
-        }, pageMapCheck.groupIndex, { timeout: 20000 })
-          .then(() => true, () => false)
-          .then(async ready => {
-            pageMapRendered = ready;
-            await waitForTwoFrames();
-            pageMapAfter = await captureUniversePageMapGeometry(page, pageMapCheck.groupIndex);
-            if (!ready) {
-              errors.push(
-                `UNIVERSE PAGE MAP DID NOT REACH SVG READY STATE: group ` +
-                `${pageMapCheck.groupIndex + 1}; before=${JSON.stringify(pageMapCheck.before)}; ` +
-                `after=${JSON.stringify(pageMapAfter)}`
-              );
-            }
-            return ready;
-          })
-        : Promise.resolve(false);
-      [rendered] = await Promise.all([
-        page.waitForFunction(() => {
-          const diagram = document.querySelector('.askjamie-hero--universe .mermaid');
-          return diagram?.dataset.universeReady === '1' && Boolean(diagram.querySelector('svg .node'));
-        }, undefined, { timeout: 15000 }).then(() => true, () => false),
-        pageMapReadiness,
-      ]);
-      if (rendered) {
-        await waitForTwoFrames();
-        after = await capture();
-      } else {
-        after = await capture();
-        errors.push(
-          'UNIVERSE DIAGRAM DID NOT REACH READY STATE: expected a rendered SVG node and data-universe-ready=1; ' +
-          `before=${JSON.stringify(before.geometry)}; after=${JSON.stringify(after.geometry)}`
-        );
-      }
+    const heroRenderScheduled = await page.waitForFunction(
+      () => window.__responsiveQaMermaidRenderQueue?.length > 0,
+      undefined,
+      { timeout: 10000 }
+    ).then(() => true, () => false);
+    if (!heroRenderScheduled) {
+      errors.push(
+        'UNIVERSE DIAGRAM RENDER NOT SCHEDULED: hero did not reach the Mermaid observer'
+      );
+    } else if (!await releaseResponsiveQaMermaidRender(page)) {
+      errors.push('UNIVERSE DIAGRAM RENDER NOT RELEASED: no held hero Mermaid render was available');
     }
+
+    mermaidRequested = await mermaidRequestSeen;
+    if (!mermaidRequested) {
+      errors.push(
+        'UNIVERSE DIAGRAM NOT INITIALIZED: Mermaid module request was not observed after bringing the hero into view'
+      );
+    }
+    releaseMermaid();
+
+    if (mermaidRequested) {
+      rendered = await page.waitForFunction(() => {
+        const diagram = document.querySelector('.askjamie-hero--universe .mermaid');
+        return diagram?.dataset.universeReady === '1' && Boolean(diagram.querySelector('svg .node'));
+      }, undefined, { timeout: 20000 }).then(() => true, () => false);
+    }
+    if (rendered) {
+      await waitForTwoFrames();
+      after = await capture();
+    } else {
+      after = await capture();
+      errors.push(
+        'UNIVERSE DIAGRAM DID NOT REACH READY STATE: expected a rendered SVG node and data-universe-ready=1; ' +
+        `before=${JSON.stringify(before.geometry)}; after=${JSON.stringify(after.geometry)}`
+      );
+    }
+
+    // Finish the hero render before opening any page map so Mermaid never has
+    // multiple diagrams rendering at once during this geometry check.
+    pageMapCheck = await checkUniversePageMapGroupsGeometry(page, waitForTwoFrames);
+    errors.push(...pageMapCheck.errors);
   } catch (error) {
     errors.push(`UNIVERSE DIAGRAM GEOMETRY CHECK ERROR: ${error.message.split('\n')[0]}`);
   } finally {
@@ -824,115 +990,14 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
     }
   }
 
-  const pageMapShifts = [];
   const pageMapEvidence = {
-    group_index: pageMapCheck?.groupIndex ?? null,
-    group_count: null,
+    group_count: pageMapCheck?.groupCount ?? 0,
     initially_collapsed: pageMapCheck?.initiallyCollapsed ?? false,
-    opened_by_keyboard: pageMapCheck?.openedByKeyboard ?? false,
-    other_groups_stayed_collapsed: pageMapCheck?.othersStayedCollapsed ?? false,
-    rendered_svg_ready: pageMapRendered,
-    closed_by_keyboard: false,
-    before: pageMapCheck?.before ?? null,
-    after: pageMapAfter,
-    shifts: pageMapShifts,
+    all_groups_rendered_svg_ready:
+      pageMapCheck?.groups.length > 0 &&
+      pageMapCheck.groups.every(group => group.rendered_svg_ready),
+    groups: pageMapCheck?.groups ?? [],
   };
-  if (pageMapCheck?.groupIndex != null) {
-    const groupIndex = pageMapCheck.groupIndex;
-    const groupCount = await page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).count();
-    pageMapEvidence.group_count = groupCount;
-    if (pageMapCheck.before && pageMapAfter && pageMapAfter.svg_ready) {
-      for (const selector of [
-        'group',
-        'summary',
-        'figure',
-        'reserved_shell',
-        'previous_group_summary',
-        'next_group_summary',
-      ]) {
-        const beforeRect = pageMapCheck.before.geometry[selector];
-        const afterRect = pageMapAfter.geometry[selector];
-        if (!beforeRect || !afterRect) {
-          // The first/last group may not have a neighbor on one side.
-          if ((selector === 'previous_group_summary' && groupIndex === 0) ||
-              (selector === 'next_group_summary' && groupIndex === groupCount - 1)) {
-            continue;
-          }
-          errors.push(
-            `UNIVERSE PAGE MAP GEOMETRY MISSING: group ${groupIndex + 1} ${selector}; ` +
-            `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
-          );
-          continue;
-        }
-
-        const delta = Object.fromEntries(
-          ['x', 'y', 'width', 'height'].map(property => [
-            property,
-            Math.round((afterRect[property] - beforeRect[property]) * 100) / 100,
-          ])
-        );
-        const changedProperties = Object.keys(delta).filter(
-          property => Math.abs(delta[property]) > UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX
-        );
-        if (changedProperties.length > 0) {
-          const shift = {
-            selector,
-            before: beforeRect,
-            after: afterRect,
-            delta,
-            changed_properties: changedProperties,
-          };
-          pageMapShifts.push(shift);
-          errors.push(
-            `UNIVERSE PAGE MAP GEOMETRY SHIFT: group ${groupIndex + 1} ${selector} changed ` +
-            `${changedProperties.map(property => `${property}=${delta[property]}px`).join(', ')} ` +
-            `with ${UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
-            `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
-          );
-        }
-      }
-
-      if (pageMapAfter.svg_geometry &&
-          pageMapCheck.before.geometry.reserved_shell.height +
-            UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX < pageMapAfter.svg_geometry.height) {
-        errors.push(
-          `UNIVERSE PAGE MAP CONTENT EXCEEDS RESERVED SHELL: group ${groupIndex + 1} ` +
-          `reserved=${JSON.stringify(pageMapCheck.before.geometry.reserved_shell)}; ` +
-          `rendered=${JSON.stringify(pageMapAfter.svg_geometry)}`
-        );
-      }
-    }
-
-    if (!pageMapAfter?.open || !pageMapAfter?.other_groups_collapsed ||
-        !pageMapAfter?.svg_ready) {
-      errors.push(
-        'UNIVERSE PAGE MAP READY STATE INVALID: expected the selected group SVG to be ready ' +
-        'while other groups remain collapsed; ' +
-        `after=${JSON.stringify({
-          open: pageMapAfter?.open,
-          other_groups_collapsed: pageMapAfter?.other_groups_collapsed,
-          svg_ready: pageMapAfter?.svg_ready,
-        })}`
-      );
-    }
-
-    try {
-      const target = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).nth(groupIndex);
-      await target.locator('summary').focus();
-      await page.keyboard.press('Enter');
-      pageMapClosedByKeyboard = !(await target.evaluate(group => group.open));
-      if (!pageMapClosedByKeyboard) {
-        errors.push(
-          `UNIVERSE PAGE MAP KEYBOARD CLOSE FAILED: Enter did not close group ${groupIndex + 1}`
-        );
-      }
-      pageMapEvidence.closed_by_keyboard = pageMapClosedByKeyboard;
-    } catch (error) {
-      errors.push(
-        `UNIVERSE PAGE MAP KEYBOARD CLOSE CHECK ERROR: ${error.message.split('\n')[0]}`
-      );
-    }
-  }
 
   return {
     errors,
@@ -1285,6 +1350,38 @@ async function runWithPlaywright() {
       }
       return route.continue();
     });
+    if (checkUniverseDiagram) {
+      await page.addInitScript(() => {
+        const queue = [];
+        Object.defineProperty(window, '__responsiveQaMermaidRenderQueue', {
+          configurable: false,
+          value: queue,
+        });
+        const isMermaidRenderCallback = callback =>
+          typeof callback === 'function' &&
+          /renderOne\s*\(\s*node\s*\)/.test(Function.prototype.toString.call(callback));
+
+        if (typeof window.requestIdleCallback === 'function') {
+          const requestIdleCallback = window.requestIdleCallback.bind(window);
+          window.requestIdleCallback = (callback, options) => {
+            if (isMermaidRenderCallback(callback)) {
+              queue.push({ callback, args: [] });
+              return queue.length;
+            }
+            return requestIdleCallback(callback, options);
+          };
+        }
+
+        const setTimeout = window.setTimeout.bind(window);
+        window.setTimeout = (callback, delay, ...args) => {
+          if (isMermaidRenderCallback(callback)) {
+            queue.push({ callback, args });
+            return queue.length;
+          }
+          return setTimeout(callback, delay, ...args);
+        };
+      });
+    }
     page.on('console', onConsole);
     page.on('request', onRequest);
     page.on('requestfailed', onRequestFailed);

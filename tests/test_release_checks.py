@@ -479,6 +479,22 @@ def test_responsive_qa_keeps_csp_suppression_narrow_and_reports_resource_failure
     assert "CONSOLE: " in source
 
 
+def test_responsive_qa_measures_every_universe_group_without_parallel_renders():
+    source = (ROOT / "scripts/responsive-qa.mjs").read_text(encoding="utf-8")
+    start = source.index("async function checkUniversePageMapGroupsGeometry")
+    end = source.index("\nasync function checkBrandGuardHeroGeometry", start)
+    group_check = source[start:end]
+
+    assert "for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1)" in group_check
+    assert "await releaseResponsiveQaMermaidRender(page)" in group_check
+    assert "await page.waitForFunction((index)" in group_check
+    assert "compareUniversePageMapGeometry(page, groupCheck, after)" in group_check
+    assert "other_groups_stayed_collapsed" in group_check
+    assert "group_index: groupIndex + 1" in group_check
+    assert "Promise.all" not in group_check
+    assert "await checkUniversePageMapGroupsGeometry(page, waitForTwoFrames)" in source
+
+
 def test_lighthouse_routes_preserves_controlled_mobile_isolation_contract():
     source = (ROOT / "scripts/lighthouse-routes.mjs").read_text(encoding="utf-8")
 
