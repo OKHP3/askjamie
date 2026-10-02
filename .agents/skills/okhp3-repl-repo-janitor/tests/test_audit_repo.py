@@ -442,6 +442,9 @@ class DecisionLedgerTests(unittest.TestCase):
     def test_clean_reconciliation_evidence_passes_both_cli_checks(self) -> None:
         root, initial = self.make_repo()
         git(root, "branch", "archived")
+        (root / "README.md").write_text("active update\n", encoding="utf-8")
+        git(root, "commit", "-qam", "active update")
+        active_tip = git(root, "rev-parse", "HEAD")
         ledger = self.write_ledger(
             root,
             f"| `archived` | **archive** | `{initial}` | reviewed |",
@@ -449,7 +452,7 @@ class DecisionLedgerTests(unittest.TestCase):
                 "These rows explain the reviewed archive tips.",
                 "",
                 f"| `archived` | `{initial.upper()}` | `{initial}` | **superseded** | Replacement | Reason. |",
-                f"| `archived` | {initial} | {initial} | reconciled | Promotion | Reason. |",
+                f"| `archived` | {active_tip} | {initial} | reconciled | Promotion | Reason. |",
                 "",
             ]),
         )
@@ -473,7 +476,113 @@ class DecisionLedgerTests(unittest.TestCase):
                 report = json.loads(result.stdout)
                 report = report if mode else report["decision_ledger"]
                 self.assertEqual(report["malformed_archive_reconciliation_rows"], [])
+                self.assertEqual(report["duplicate_archive_reconciliation_rows"], [])
                 self.assertTrue(report["ok"])
+
+    def test_duplicate_reconciliations_preserve_first_and_fail_both_cli_checks(self) -> None:
+        root, initial = self.make_repo()
+        git(root, "checkout", "-qb", "archived")
+        (root / "archive.txt").write_text("unique archive work\n", encoding="utf-8")
+        git(root, "add", "archive.txt")
+        git(root, "commit", "-qm", "archive work")
+        archive_tip = git(root, "rev-parse", "HEAD")
+        git(root, "checkout", "-q", "main")
+        original_cells = [
+            "`archived`", f"`{archive_tip}`", f"`{initial}`",
+            "**superseded**", "Replacement", "Reason.",
+        ]
+        variants = {
+            "identical": original_cells,
+            "normalized": [
+                "`archived`", archive_tip.upper(), initial.upper(),
+                "SUPERSEDED", "Replacement", "Reason.",
+            ],
+            "active tip": original_cells[:2] + [f"`{archive_tip}`"] + original_cells[3:],
+            "disposition": original_cells[:3] + ["reconciled"] + original_cells[4:],
+            "evidence": original_cells[:4] + ["Different replacement", "Reason."],
+            "rationale": original_cells[:5] + ["Different reason."],
+        }
+        for name, repeated_cells in variants.items():
+            for reverse in (False, True):
+                with self.subTest(variant=name, reverse=reverse):
+                    cells = [original_cells, repeated_cells]
+                    if reverse:
+                        cells.reverse()
+                    rows = ["| " + " | ".join(row) + " |" for row in cells]
+                    # Every repeat must point to the first row, not the prior repeat.
+                    rows.append(rows[1])
+                    ledger = self.write_ledger(
+                        root,
+                        f"| `archived` | **archive** | `{archive_tip}` | reviewed |",
+                        reconciliations="\n".join(rows),
+                    )
+                    expected = [
+                        {
+                            "line": 9 + index,
+                            "content": rows[index],
+                            "branch": "archived",
+                            "tip_sha": archive_tip,
+                            "first_line": 9,
+                            "first_content": rows[0],
+                            "reason": "duplicate archive reconciliation branch and tip SHA",
+                        }
+                        for index in (1, 2)
+                    ]
+                    parsed = audit_repo.parse_decision_ledger(ledger)
+                    self.assertEqual(len(parsed.archive_reconciliations), 1)
+                    self.assertEqual(
+                        parsed.archive_reconciliations[0]["active_tip_sha"],
+                        cells[0][2].strip("`").lower(),
+                    )
+                    self.assertEqual(
+                        parsed.archive_reconciliations[0]["disposition"],
+                        cells[0][3].strip("*").lower(),
+                    )
+                    self.assertEqual(
+                        parsed.archive_reconciliations[0]["active_line_evidence"], cells[0][4]
+                    )
+                    self.assertEqual(parsed.archive_reconciliations[0]["rationale"], cells[0][5])
+                    for mode in ([], ["--check-ledger"]):
+                        result = subprocess.run(
+                            [
+                                sys.executable, str(SCRIPT), "--root", str(root),
+                                "--base", "main", "--decision-ledger", str(ledger), *mode,
+                            ],
+                            capture_output=True, text=True, check=False,
+                        )
+                        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                        report = json.loads(result.stdout)
+                        findings = report if mode else report["decision_ledger"]
+                        self.assertEqual(findings["duplicate_archive_reconciliation_rows"], expected)
+                        self.assertFalse(findings["ok"])
+                        if not mode:
+                            archive = report["archive_equivalents"]
+                            self.assertEqual(archive["duplicate_archive_reconciliation_rows"], expected)
+                            self.assertEqual(archive["confirmed_supersession"], [])
+                            self.assertEqual(archive["unrepresented_changes"], ["archived"])
+                            self.assertNotIn("reconciliation_evidence", archive["archives"][0])
+                            self.assertFalse(archive["ok"])
+
+    def test_reconciliation_keys_include_branch_and_check_without_git(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tip = "a" * 40
+            first = f"| `one` | {tip} | {tip} | superseded | Replacement | Reason. |"
+            second = first.replace("`one`", "`two`")
+            ledger = self.write_ledger(
+                root, "", "- `one`, `two` — retained",
+                reconciliations="\n".join([first, second]),
+            )
+            self.assertTrue(audit_repo.validate_decision_ledger_structure(ledger)["ok"])
+            ledger = self.write_ledger(
+                root, "", "- `one`, `two` — retained",
+                reconciliations="\n".join([first, second, first]),
+            )
+            with patch.object(audit_repo, "_git_result", side_effect=AssertionError("Git used")):
+                report = audit_repo.validate_decision_ledger_structure(ledger)
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["duplicate_archive_reconciliation_rows"][0]["first_line"], 9)
+            self.assertEqual(report["duplicate_archive_reconciliation_rows"][0]["line"], 11)
 
     def test_reconciliation_only_malformed_draft_keeps_line_findings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

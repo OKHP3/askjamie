@@ -162,6 +162,7 @@ class DecisionLedger(NamedTuple):
     exclusions: list[str]
     archive_reconciliations: list[dict[str, str]]
     malformed_archive_reconciliation_rows: list[dict[str, object]]
+    duplicate_archive_reconciliation_rows: list[dict[str, object]]
     malformed_decision_rows: list[dict[str, object]]
     unsupported_decision_labels: list[dict[str, object]]
     malformed_exclusion_entries: list[dict[str, object]]
@@ -216,6 +217,8 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
     exclusions: list[str] = []
     archive_reconciliations: list[dict[str, str]] = []
     malformed_archive_reconciliation_rows: list[dict[str, object]] = []
+    duplicate_archive_reconciliation_rows: list[dict[str, object]] = []
+    seen_reconciliations: dict[tuple[str, str], tuple[int, str]] = {}
     malformed_decision_rows: list[dict[str, object]] = []
     unsupported_decision_labels: list[dict[str, object]] = []
     malformed_exclusion_entries: list[dict[str, object]] = []
@@ -336,14 +339,29 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
                     "reason": reason,
                 })
                 continue
-            archive_reconciliations.append({
+            reconciliation = {
                 "branch": branch_match.group(1),
                 "tip_sha": cells[1].strip("`").lower(),
                 "active_tip_sha": cells[2].strip("`").lower(),
                 "disposition": disposition,
                 "active_line_evidence": cells[4],
                 "rationale": cells[5],
-            })
+            }
+            key = (reconciliation["branch"], reconciliation["tip_sha"])
+            if key in seen_reconciliations:
+                first_line, first_content = seen_reconciliations[key]
+                duplicate_archive_reconciliation_rows.append({
+                    "line": line_number,
+                    "content": line,
+                    "branch": key[0],
+                    "tip_sha": key[1],
+                    "first_line": first_line,
+                    "first_content": first_content,
+                    "reason": "duplicate archive reconciliation branch and tip SHA",
+                })
+                continue
+            seen_reconciliations[key] = (line_number, line)
+            archive_reconciliations.append(reconciliation)
         elif section == "explicit exclusions and holds":
             if not line.strip():
                 continue
@@ -394,6 +412,7 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
         exclusions=sorted(set(exclusions)),
         archive_reconciliations=archive_reconciliations,
         malformed_archive_reconciliation_rows=malformed_archive_reconciliation_rows,
+        duplicate_archive_reconciliation_rows=duplicate_archive_reconciliation_rows,
         malformed_decision_rows=malformed_decision_rows,
         unsupported_decision_labels=unsupported_decision_labels,
         malformed_exclusion_entries=malformed_exclusion_entries,
@@ -410,6 +429,7 @@ def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
         or ledger.malformed_exclusion_entries
         or ledger.duplicate_exclusion_entries
         or ledger.malformed_archive_reconciliation_rows
+        or ledger.duplicate_archive_reconciliation_rows
     )
     return {
         "ledger_path": str(ledger_path),
@@ -420,6 +440,7 @@ def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
         "malformed_archive_reconciliation_rows": ledger.malformed_archive_reconciliation_rows,
+        "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
         "ok": not findings,
     }
 
@@ -492,6 +513,7 @@ def audit_decision_ledger(
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
         "malformed_archive_reconciliation_rows": ledger.malformed_archive_reconciliation_rows,
+        "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
         "ok": not (
             missing_branches
             or tip_sha_drift
@@ -502,6 +524,7 @@ def audit_decision_ledger(
             or ledger.malformed_exclusion_entries
             or ledger.duplicate_exclusion_entries
             or ledger.malformed_archive_reconciliation_rows
+            or ledger.duplicate_archive_reconciliation_rows
         ),
     }
 
@@ -622,6 +645,10 @@ def audit_archive_equivalents(
     archive_rows = [
         row for row in ledger.decisions if row["decision"] == "archive"
     ]
+    ambiguous_tips = {
+        (row["branch"], row["tip_sha"])
+        for row in ledger.duplicate_archive_reconciliation_rows
+    }
     reconciliation_by_tip = {
         (row["branch"], row["tip_sha"]): row
         for row in ledger.archive_reconciliations
@@ -629,6 +656,7 @@ def audit_archive_equivalents(
         and SHA_PATTERN.fullmatch(row["active_tip_sha"])
         and row["active_line_evidence"]
         and row["rationale"]
+        and (row["branch"], row["tip_sha"]) not in ambiguous_tips
     }
     active_tip = _verified_commit(root, active_line)
     reports: list[dict[str, object]] = []
@@ -798,7 +826,8 @@ def audit_archive_equivalents(
         "confirmed_supersession": sorted(confirmed_supersession),
         "unrepresented_changes": sorted(unrepresented),
         "unverifiable": sorted(unverifiable),
-        "ok": not unrepresented and not unverifiable,
+        "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
+        "ok": not unrepresented and not unverifiable and not ambiguous_tips,
     }
 
 

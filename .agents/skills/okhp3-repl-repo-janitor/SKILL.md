@@ -107,6 +107,13 @@ rationale. SHAs may be plain or enclosed in one pair of backticks. Blank lines,
 table headers and separators, and introductory prose are not evidence rows.
 Invalid table-like rows report their line number, original content, and a
 repair reason; they are not used as supersession evidence and fail both checks.
+Each branch and archive tip SHA must have only one reconciliation row. Both
+checks report repeats in `duplicate_archive_reconciliation_rows`, with the
+branch, normalized archive tip SHA, original and repeated line numbers and
+contents, and a repair reason. Identical repeats also fail validation; SHA case
+and backticks do not distinguish keys. The parser preserves the first valid
+review, but no duplicated key can authorize supersession in the archive audit.
+Reviews for different archive tips or different branches remain separate.
 It exits `0` for a clean ledger and `1` when findings or a
 ledger-selection error are present. Omit `--decision-ledger` to use the same
 active-ledger discovery rules as the full audit.
