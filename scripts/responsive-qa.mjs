@@ -1540,7 +1540,8 @@ async function runWithPlaywright() {
     return { ok: false, reason: 'Chromium could not be launched' };
   }
 
-  console.log(`Browser runtime: Playwright ${playwrightVersion}; Chromium ${browser.version()}`);
+  const chromiumVersion = browser.version();
+  console.log(`Browser runtime: Playwright ${playwrightVersion}; Chromium ${chromiumVersion}`);
 
   // Reuse contexts for isolation and speed, but create a fresh page for every
   // route. External resources are blocked so browser QA measures local assets.
@@ -1945,6 +1946,8 @@ async function runWithPlaywright() {
   const report = {
     generated: new Date().toISOString(),
     mode: 'playwright',
+    playwright_version: playwrightVersion,
+    chromium_version: chromiumVersion,
     base_url: BASE_URL,
     pages_checked: PUBLIC_PATHS.length,
     viewports_checked: VIEWPORTS.length,

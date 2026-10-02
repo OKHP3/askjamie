@@ -2120,7 +2120,10 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
         re.MULTILINE,
     )
     assert runtime, result.stdout
-    print(runtime.group(0))
+    assert report["playwright_version"] == runtime.group(1)
+    assert report["chromium_version"] == runtime.group(2)
+    assert warning_only_report["playwright_version"] == runtime.group(1)
+    assert warning_only_report["chromium_version"] == runtime.group(2)
     assert report["total_checks"] == 64
     lazy_failures = [row for row in rows["/lazy/"] if not row["pass"]]
     assert not lazy_failures, json.dumps(lazy_failures, indent=2)
