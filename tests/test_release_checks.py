@@ -444,6 +444,31 @@ Module.prototype.require = function (id) {
     assert "static-lint mode" not in result.stdout
 
 
+def test_responsive_qa_static_output_omits_browser_versions():
+    result = subprocess.run(
+        ["node", "scripts/responsive-qa.mjs", "--static"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Static-lint requested with --static." in result.stdout
+    assert "Browser runtime:" not in result.stdout
+
+    report = json.loads(
+        (ROOT / "assets/audit/responsive-qa/results.json").read_text(encoding="utf-8")
+    )
+    browser_version = re.compile(
+        r"\b(?:Playwright \d+\.\d+\.\d+|Chromium \d+(?:\.\d+){2,})\b"
+    )
+    assert not browser_version.search(result.stdout)
+    assert not browser_version.search(json.dumps(report))
+    assert report["mode"] == "static-lint"
+    assert "playwright_version" not in report
+    assert "chromium_version" not in report
+
+
 def test_responsive_qa_keeps_csp_suppression_narrow_and_reports_resource_failures():
     source = (ROOT / "scripts/responsive-qa.mjs").read_text(encoding="utf-8")
 
@@ -1379,6 +1404,13 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
 
     assert result.returncode == 1
     assert report["mode"] == "playwright"
+    runtime = re.search(
+        r"^Browser runtime: Playwright (\d+\.\d+\.\d+); Chromium (\d+(?:\.\d+){2,})$",
+        result.stdout,
+        re.MULTILINE,
+    )
+    assert runtime, result.stdout
+    print(runtime.group(0))
     assert report["total_checks"] == 56
     lazy_failures = [row for row in rows["/lazy/"] if not row["pass"]]
     assert not lazy_failures, json.dumps(lazy_failures, indent=2)

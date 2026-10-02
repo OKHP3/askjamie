@@ -79,7 +79,7 @@ jobs:
 
       - name: Verify lazy-image behavior on locked Playwright and Chromium
         run: >-
-          python3 -m pytest -q
+          python3 -m pytest -q -s
           tests/test_release_checks.py::test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures
 
       - name: Run regression tests

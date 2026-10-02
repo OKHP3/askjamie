@@ -1124,11 +1124,13 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
 
 async function runWithPlaywright() {
   let pw;
+  let playwrightVersion;
   try {
     const require = createRequire(import.meta.url);
     pw = require('playwright');
+    playwrightVersion = require('playwright/package.json').version;
   } catch {
-    return { ok: false, reason: 'Playwright is not installed' };
+    return { ok: false, reason: 'Playwright is not installed or its package version is unavailable' };
   }
 
   mkdirSync(RESULTS_DIR, { recursive: true });
@@ -1140,6 +1142,8 @@ async function runWithPlaywright() {
   } catch {
     return { ok: false, reason: 'Chromium could not be launched' };
   }
+
+  console.log(`Browser runtime: Playwright ${playwrightVersion}; Chromium ${browser.version()}`);
 
   // Reuse contexts for isolation and speed, but create a fresh page for every
   // route. External resources are blocked so browser QA measures local assets.
