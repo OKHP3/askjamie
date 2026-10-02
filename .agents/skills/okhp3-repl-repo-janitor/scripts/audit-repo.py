@@ -71,6 +71,7 @@ DATED_DECISION_LEDGER_PATTERN = re.compile(
 )
 DEFAULT_DECISION_LEDGER = "auto"
 SUPPORTED_RETENTION_DECISIONS = {"keep", "archive"}
+SUPPORTED_RECONCILIATION_DISPOSITIONS = {"reconciled", "superseded"}
 
 
 def select_decision_ledger(root: Path, requested: str | None = None) -> Path:
@@ -156,6 +157,7 @@ class DecisionLedger(NamedTuple):
     decisions: list[dict[str, str]]
     exclusions: list[str]
     archive_reconciliations: list[dict[str, str]]
+    malformed_archive_reconciliation_rows: list[dict[str, object]]
     malformed_decision_rows: list[dict[str, object]]
     unsupported_decision_labels: list[dict[str, object]]
     malformed_exclusion_entries: list[dict[str, object]]
@@ -209,6 +211,7 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
     decisions: list[dict[str, str]] = []
     exclusions: list[str] = []
     archive_reconciliations: list[dict[str, str]] = []
+    malformed_archive_reconciliation_rows: list[dict[str, object]] = []
     malformed_decision_rows: list[dict[str, object]] = []
     unsupported_decision_labels: list[dict[str, object]] = []
     malformed_exclusion_entries: list[dict[str, object]] = []
@@ -279,7 +282,9 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
                 })
         elif section == "archive reconciliation evidence":
             cells = _table_cells(line)
-            if not cells:
+            # This section allows introductory prose, but table-like lines
+            # (including a missing leading separator) must not disappear.
+            if not cells and "|" not in line:
                 continue
             normalized_cells = [cell.lower() for cell in cells]
             if normalized_cells[:5] == [
@@ -290,20 +295,48 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
                 "active-line evidence",
             ]:
                 continue
-            if all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+            if cells and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
                 continue
-            if len(cells) < 6:
-                continue
-            branch_match = re.fullmatch(r"`([^`]+)`", cells[0])
-            if not branch_match:
+            reason = ""
+            if len(cells) != 6:
+                reason = "archive reconciliation row must contain exactly six cells"
+            else:
+                branch_match = re.fullmatch(r"`([^`]+)`", cells[0])
+                disposition = re.sub(
+                    r"^\*\*|\*\*$", "", cells[3]
+                ).strip().lower()
+                if not branch_match:
+                    reason = "branch cell must contain one backticked branch name"
+                else:
+                    for index, label in (
+                        (1, "archive tip SHA"),
+                        (2, "reviewed active tip SHA"),
+                    ):
+                        if not re.fullmatch(
+                            r"(?:[0-9a-fA-F]{40}|`[0-9a-fA-F]{40}`)",
+                            cells[index],
+                        ):
+                            reason = f"{label} cell must contain one full 40-character commit SHA"
+                            break
+                    if not reason:
+                        if disposition not in SUPPORTED_RECONCILIATION_DISPOSITIONS:
+                            reason = "disposition must be reconciled or superseded"
+                        elif not cells[4]:
+                            reason = "active-line evidence cell is empty"
+                        elif not cells[5]:
+                            reason = "rationale cell is empty"
+            if reason:
+                malformed_archive_reconciliation_rows.append({
+                    "line": line_number,
+                    "content": line,
+                    "reason": reason,
+                })
                 continue
             archive_reconciliations.append({
                 "branch": branch_match.group(1),
                 "tip_sha": cells[1].strip("`").lower(),
                 "active_tip_sha": cells[2].strip("`").lower(),
-                "disposition": re.sub(
-                    r"^\*\*|\*\*$", "", cells[3]
-                ).strip().lower(),
+                "disposition": disposition,
                 "active_line_evidence": cells[4],
                 "rationale": cells[5],
             })
@@ -349,12 +382,14 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
         or exclusions
         or malformed_decision_rows
         or malformed_exclusion_entries
+        or malformed_archive_reconciliation_rows
     ):
         raise ValueError(f"decision ledger has no branch coverage rows: {path}")
     return DecisionLedger(
         decisions=decisions,
         exclusions=sorted(set(exclusions)),
         archive_reconciliations=archive_reconciliations,
+        malformed_archive_reconciliation_rows=malformed_archive_reconciliation_rows,
         malformed_decision_rows=malformed_decision_rows,
         unsupported_decision_labels=unsupported_decision_labels,
         malformed_exclusion_entries=malformed_exclusion_entries,
@@ -370,6 +405,7 @@ def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
         or ledger.unsupported_decision_labels
         or ledger.malformed_exclusion_entries
         or ledger.duplicate_exclusion_entries
+        or ledger.malformed_archive_reconciliation_rows
     )
     return {
         "ledger_path": str(ledger_path),
@@ -379,6 +415,7 @@ def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
         "unsupported_decision_labels": ledger.unsupported_decision_labels,
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
+        "malformed_archive_reconciliation_rows": ledger.malformed_archive_reconciliation_rows,
         "ok": not findings,
     }
 
@@ -450,6 +487,7 @@ def audit_decision_ledger(
         "unsupported_decision_labels": ledger.unsupported_decision_labels,
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
+        "malformed_archive_reconciliation_rows": ledger.malformed_archive_reconciliation_rows,
         "ok": not (
             missing_branches
             or tip_sha_drift
@@ -459,6 +497,7 @@ def audit_decision_ledger(
             or ledger.unsupported_decision_labels
             or ledger.malformed_exclusion_entries
             or ledger.duplicate_exclusion_entries
+            or ledger.malformed_archive_reconciliation_rows
         ),
     }
 
@@ -512,18 +551,28 @@ def _parse_cherry_lines(output: str) -> list[dict[str, str]]:
 
 
 def _parse_file_differences(output: str) -> list[dict[str, str]]:
-    """Parse deterministic ``--no-renames`` name-status evidence.
+    """Parse NUL-delimited ``--no-renames`` name-status evidence.
 
     A move is intentionally retained as separate add/delete records rather
     than inferred as a rename. This preserves both paths exactly as Git
     reported them and avoids making similarity-based classifications part of
-    the audit contract.
+    the audit contract. NUL delimiters keep spaces, tabs, and newlines inside
+    a path from being mistaken for record boundaries.
     """
     differences: list[dict[str, str]] = []
-    for line in output.splitlines():
-        status, separator, path = line.partition("\t")
-        if separator and path:
-            differences.append({"status": status, "path": path})
+    if not output:
+        return differences
+
+    fields = output.split("\0")
+    if fields[-1] == "":
+        fields.pop()
+    if len(fields) % 2:
+        raise ValueError("incomplete NUL-delimited Git name-status evidence")
+    for index in range(0, len(fields), 2):
+        status, path = fields[index:index + 2]
+        if not status or not path:
+            raise ValueError("empty status or path in Git name-status evidence")
+        differences.append({"status": status, "path": path})
     return differences
 
 
@@ -540,7 +589,7 @@ def audit_archive_equivalents(
     reconciliation_by_tip = {
         (row["branch"], row["tip_sha"]): row
         for row in ledger.archive_reconciliations
-        if row["disposition"] in {"reconciled", "superseded"}
+        if row["disposition"] in SUPPORTED_RECONCILIATION_DISPOSITIONS
         and SHA_PATTERN.fullmatch(row["active_tip_sha"])
         and row["active_line_evidence"]
         and row["rationale"]
@@ -556,6 +605,7 @@ def audit_archive_equivalents(
             "branch": branch,
             "tip_sha": tip_sha,
             "branch_tip_sha": branch_tip,
+            "file_difference_direction": "active-line-to-archive-tip",
         }
         if not SHA_PATTERN.fullmatch(tip_sha):
             report.update({
@@ -600,6 +650,7 @@ def audit_archive_equivalents(
             "diff",
             "--no-renames",
             "--name-status",
+            "-z",
             active_line,
             tip_sha,
         )

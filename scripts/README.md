@@ -24,7 +24,7 @@ cannot be mistaken for current pipeline commands.
 | `post-merge.sh` | active | Post-merge rebuild and validation hook |
 | `capture-visual-baseline.mjs` | active | Capture the dated visual reference set |
 | `check-public-gpt-links.py` | active | Opt-in reachability probe for public AJ01–AJ03 destinations |
-| `lighthouse-routes.mjs` | active | Run the four-route Lighthouse pass with desktop or mobile emulation |
+| `lighthouse-routes.mjs` | active | Run four-route desktop/mobile passes with optional repeated BrandGuard mobile samples |
 
 The following scripts are **reference-only**. They may still be useful for a
 deliberately scoped maintenance or migration task, but they are not part of

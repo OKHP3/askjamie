@@ -24,8 +24,17 @@ includes every npm lockfile path, not just direct dependencies.
 | Node, Python, Mermaid, packages, actions | `technology-audit.yml` and `technology-audit.py` | Monday, 15:43 UTC, or manual dispatch | Markdown summary and JSON artifact; failure when an actionable update exists or lookup fails |
 | Vendored Mermaid | Existing `mermaid-version-watch.yml` | Daily | Existing review issue workflow, followed by intentional re-vendoring |
 | Manifest/lockfile agreement and Python CI consumption | `technology-audit.py --check` in Site Validation | Each main push and PR | Offline gate independent of registry availability |
-| Browser engine revisions | Playwright package and `playwright install --with-deps chromium` in CI | Every Playwright update | Matching browser installed and exercised by browser tests |
+| Browser engine revisions | Playwright version in `package-lock.json` and its matching Chromium installed in CI | Every Playwright update | The isolated lazy-image fixture defines the supported browser boundary; other Playwright versions and browser engines are not implied |
 | Fonts, analytics, Pages, Replit, standards | Existing hosted smoke checks plus the manual review below | Hosted checks daily; platform review monthly | Behavior and compatibility evidence, rather than fictional version pins |
+
+The lazy-image compatibility check runs as its own Site Validation step against
+the locked Playwright package and the Chromium build installed by that package.
+It covers a normal request, a request that never starts, and one that starts
+after the request deadline. Its fixture report is browser mode (`playwright`)
+and is isolated from the static responsive-lint results. A Playwright upgrade
+is supported only after this check passes on the new locked package/browser
+pair; this does not claim compatibility with Firefox, WebKit, or separately
+installed Chromium versions.
 
 Dependabot groups minor and patch updates by ecosystem. Major updates remain
 individual PRs. Five open version PRs per ecosystem allow major proposals to

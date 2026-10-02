@@ -62,7 +62,10 @@ decision ledger, and whether each named archive tip is represented on the
 active line. Use `--active-line <branch-or-ref>` when the checked-out branch is
 not the active line; otherwise the current branch is used. Archive reports
 include patch-equivalent versus unrepresented commits, tree hashes, and
-name-status file differences. Branch-decision rows accept only the retention
+name-status file differences. The JSON field `file_difference_direction` is
+`active-line-to-archive-tip`: **A** means a path is present at the archive tip
+but not on the active line, while **D** means it is present on the active line
+but not at the archive tip. Branch-decision rows accept only the retention
 labels **keep** and **archive**; unsupported labels are reported with their
 line and branch and fail the consistency gate. The ledger check also reports
 missing branches, tip-SHA drift, and stale ledger rows, while archive
@@ -90,8 +93,16 @@ python3 .agents/skills/okhp3-repl-repo-janitor/scripts/audit-repo.py \
 This focused, read-only check parses only the ledger file. It does not require
 the root to be a Git repository, run any Git command, refresh remotes, or use
 network access. It reports the same line-level malformed decision rows,
-unsupported decision labels, malformed exclusions, and duplicate exclusions
-as the full audit. It exits `0` for a clean ledger and `1` when findings or a
+unsupported decision labels, malformed exclusions, duplicate exclusions, and
+`malformed_archive_reconciliation_rows` as the full audit's `decision_ledger`.
+Archive reconciliation rows require exactly six cells: one backticked branch
+name, a full 40-character archive tip SHA, a full reviewed active tip SHA,
+**reconciled** or **superseded**, nonempty active-line evidence, and a nonempty
+rationale. SHAs may be plain or enclosed in one pair of backticks. Blank lines,
+table headers and separators, and introductory prose are not evidence rows.
+Invalid table-like rows report their line number, original content, and a
+repair reason; they are not used as supersession evidence and fail both checks.
+It exits `0` for a clean ledger and `1` when findings or a
 ledger-selection error are present. Omit `--decision-ledger` to use the same
 active-ledger discovery rules as the full audit.
 

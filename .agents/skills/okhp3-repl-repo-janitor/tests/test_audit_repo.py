@@ -348,6 +348,140 @@ class DecisionLedgerTests(unittest.TestCase):
         self.assertEqual(report["exclusion_branch_count"], 1)
         self.assertTrue(report["ok"])
 
+    def test_malformed_reconciliations_have_matching_line_level_findings(self) -> None:
+        root, initial = self.make_repo()
+        git(root, "branch", "archived")
+        valid_cells = [
+            "`archived`", f"`{initial}`", f"`{initial}`",
+            "**superseded**", "Replacement commit", "Intentionally replaced.",
+        ]
+        cases = [
+            (valid_cells[:5], "archive reconciliation row must contain exactly six cells"),
+            (valid_cells + ["extra"], "archive reconciliation row must contain exactly six cells"),
+            (["archived"] + valid_cells[1:], "branch cell must contain one backticked branch name"),
+        ]
+        for index, label in ((1, "archive tip SHA"), (2, "reviewed active tip SHA")):
+            for invalid_sha in ("", "`abc123`", "z" * 40, f"`{initial}", f"``{initial}``"):
+                cells = valid_cells.copy()
+                cells[index] = invalid_sha
+                cases.append((
+                    cells,
+                    f"{label} cell must contain one full 40-character commit SHA",
+                ))
+        for index, value, reason in (
+            (3, "", "disposition must be reconciled or superseded"),
+            (3, "**supersededd**", "disposition must be reconciled or superseded"),
+            (4, "", "active-line evidence cell is empty"),
+            (5, "", "rationale cell is empty"),
+        ):
+            cells = valid_cells.copy()
+            cells[index] = value
+            cases.append((cells, reason))
+
+        for cells, reason in cases:
+            with self.subTest(cells=cells):
+                row = "| " + " | ".join(cells) + " |"
+                ledger = self.write_ledger(
+                    root,
+                    f"| `archived` | **archive** | `{initial}` | reviewed |",
+                    reconciliations=row,
+                )
+                expected = [{"line": 9, "content": row, "reason": reason}]
+                focused = audit_repo.validate_decision_ledger_structure(ledger)
+                full = audit_repo.audit_decision_ledger(
+                    root, self.branch_facts(root), "main", ledger
+                )
+                for report in (focused, full):
+                    self.assertEqual(
+                        report["malformed_archive_reconciliation_rows"], expected
+                    )
+                    self.assertFalse(report["ok"])
+                self.assertEqual(
+                    audit_repo.parse_decision_ledger(ledger).archive_reconciliations,
+                    [],
+                )
+
+    def test_reconciliation_cli_findings_match_and_fail_both_checks(self) -> None:
+        root, initial = self.make_repo()
+        git(root, "branch", "archived")
+        rows = [
+            "| `archived` | truncated |",
+            f"`archived` | `{initial}` | `{initial}` | superseded | evidence | reason |",
+        ]
+        ledger = self.write_ledger(
+            root,
+            f"| `archived` | **archive** | `{initial}` | reviewed |",
+            reconciliations="\n".join(rows),
+        )
+        reports = []
+        for mode in ([], ["--check-ledger"]):
+            result = subprocess.run(
+                [
+                    sys.executable, str(SCRIPT), "--root", str(root),
+                    "--base", "main", "--decision-ledger", str(ledger), *mode,
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 1)
+            report = json.loads(result.stdout)
+            reports.append(report if mode else report["decision_ledger"])
+        expected = [
+            {
+                "line": 9 + index,
+                "content": row,
+                "reason": "archive reconciliation row must contain exactly six cells",
+            }
+            for index, row in enumerate(rows)
+        ]
+        for report in reports:
+            self.assertEqual(report["malformed_archive_reconciliation_rows"], expected)
+            self.assertFalse(report["ok"])
+
+    def test_clean_reconciliation_evidence_passes_both_cli_checks(self) -> None:
+        root, initial = self.make_repo()
+        git(root, "branch", "archived")
+        ledger = self.write_ledger(
+            root,
+            f"| `archived` | **archive** | `{initial}` | reviewed |",
+            reconciliations="\n".join([
+                "These rows explain the reviewed archive tips.",
+                "",
+                f"| `archived` | `{initial.upper()}` | `{initial}` | **superseded** | Replacement | Reason. |",
+                f"| `archived` | {initial} | {initial} | reconciled | Promotion | Reason. |",
+                "",
+            ]),
+        )
+        parsed = audit_repo.parse_decision_ledger(ledger)
+        self.assertEqual(len(parsed.archive_reconciliations), 2)
+        self.assertEqual(parsed.archive_reconciliations[0]["tip_sha"], initial)
+        self.assertEqual(
+            [row["disposition"] for row in parsed.archive_reconciliations],
+            ["superseded", "reconciled"],
+        )
+        for mode in ([], ["--check-ledger"]):
+            with self.subTest(mode=mode):
+                result = subprocess.run(
+                    [
+                        sys.executable, str(SCRIPT), "--root", str(root),
+                        "--base", "main", "--decision-ledger", str(ledger), *mode,
+                    ],
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                report = json.loads(result.stdout)
+                report = report if mode else report["decision_ledger"]
+                self.assertEqual(report["malformed_archive_reconciliation_rows"], [])
+                self.assertTrue(report["ok"])
+
+    def test_reconciliation_only_malformed_draft_keeps_line_findings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = self.write_ledger(
+                Path(directory), "", reconciliations="| `archive` | truncated |"
+            )
+            report = audit_repo.validate_decision_ledger_structure(ledger)
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["malformed_archive_reconciliation_rows"][0]["line"], 9)
+
     def test_archive_equivalence_distinguishes_promoted_and_unrepresented_work(self) -> None:
         root, initial = self.make_repo()
         git(root, "branch", "promoted-archive")
@@ -447,6 +581,10 @@ class DecisionLedgerTests(unittest.TestCase):
         archive = result["archives"][0]
         self.assertEqual(result["active_line_tip_sha"], active_tip)
         self.assertEqual(
+            archive["file_difference_direction"],
+            "active-line-to-archive-tip",
+        )
+        self.assertEqual(
             archive["file_differences"],
             [
                 {"status": "D", "path": "new-name.txt"},
@@ -456,6 +594,80 @@ class DecisionLedgerTests(unittest.TestCase):
         self.assertEqual(
             before,
             git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+        )
+
+    def test_nul_evidence_preserves_unusual_paths_through_json(self) -> None:
+        paths = ["space name.txt", "tab\tname.txt", "line\nbreak.txt"]
+        evidence = "".join(f"M\0{path}\0" for path in paths)
+        records = audit_repo._parse_file_differences(evidence)
+        self.assertEqual(
+            json.loads(json.dumps(records)),
+            [{"status": "M", "path": path} for path in paths],
+        )
+
+    @unittest.skipIf(sys.platform == "win32", "Windows rejects tab and newline filenames")
+    def test_cli_json_preserves_filenames_with_spaces_tabs_and_newlines(
+        self,
+    ) -> None:
+        root, _ = self.make_repo()
+        (root / "space name.txt").write_text("before\n", encoding="utf-8")
+        (root / "tab\tname.txt").write_text("before\n", encoding="utf-8")
+        git(root, "add", "--", "space name.txt", "tab\tname.txt")
+        git(root, "commit", "-qm", "add whitespace paths")
+        git(root, "branch", "unusual-paths-archive")
+        git(root, "checkout", "-q", "unusual-paths-archive")
+        (root / "space name.txt").unlink()
+        (root / "tab\tname.txt").write_text("after\n", encoding="utf-8")
+        (root / "line\nbreak.txt").write_text("added\n", encoding="utf-8")
+        git(root, "add", "--all")
+        git(root, "commit", "-qm", "add paths with whitespace")
+        archive_tip = git(root, "rev-parse", "HEAD")
+        git(root, "checkout", "-q", "main")
+        ledger = self.write_ledger(
+            root,
+            (
+                f"| `unusual-paths-archive` | **archive** | "
+                f"`{archive_tip}` | reviewed |"
+            ),
+        )
+        refs_before = git(
+            root, "for-each-ref", "--format=%(refname) %(objectname)"
+        )
+        worktree_before = git(root, "status", "--porcelain", "--untracked-files=all")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--root",
+                str(root),
+                "--base",
+                "main",
+                "--decision-ledger",
+                str(ledger),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        report = json.loads(result.stdout)
+        self.assertEqual(
+            report["archive_equivalents"]["archives"][0]["file_differences"],
+            [
+                {"status": "A", "path": "line\nbreak.txt"},
+                {"status": "D", "path": "space name.txt"},
+                {"status": "M", "path": "tab\tname.txt"},
+            ],
+        )
+        self.assertEqual(
+            refs_before,
+            git(root, "for-each-ref", "--format=%(refname) %(objectname)"),
+        )
+        self.assertEqual(
+            worktree_before,
+            git(root, "status", "--porcelain", "--untracked-files=all"),
         )
 
     def test_archive_equivalence_accepts_exact_tip_supersession_evidence(self) -> None:

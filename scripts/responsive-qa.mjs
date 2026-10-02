@@ -56,6 +56,8 @@ const VIEWPORTS = [
 // Cap concurrent viewport work at four to limit browser request bursts while
 // preserving every viewport row in the release inventory.
 const VIEWPORT_CONCURRENCY = 4;
+const LAZY_IMAGE_REQUEST_TIMEOUT_MS = 5000;
+const LAZY_IMAGE_LATE_REQUEST_GRACE_MS = 1500;
 
 // The sitemap is the release inventory. This avoids silently testing a stale
 // hand-maintained list when a public route is added or retired.
@@ -513,6 +515,7 @@ async function runWithPlaywright() {
     const failedResponses = [];
     const requestInfo = new WeakMap();
     const requestedUrls = new Set();
+    const requestedAtByUrl = new Map();
     const warnings = [];
 
     const onConsole = msg => {
@@ -525,6 +528,9 @@ async function runWithPlaywright() {
     };
     const onRequest = req => {
       requestedUrls.add(req.url());
+      if (!requestedAtByUrl.has(req.url())) {
+        requestedAtByUrl.set(req.url(), Date.now());
+      }
       requestInfo.set(req, {
         requestedUrl: req.url(),
         documentUrl: req.frame()?.url() || '',
@@ -616,10 +622,37 @@ async function runWithPlaywright() {
       );
       const pendingLazyRequests = lazyImageUrls
         .filter(imageUrl => !requestedUrls.has(imageUrl))
-        .map(imageUrl =>
-          page.waitForRequest(request => request.url() === imageUrl, { timeout: 5000 })
-            .catch(() => null)
-        );
+        .map(async imageUrl => {
+          const observationStartedAt = Date.now();
+          const observed = await page.waitForRequest(
+            request => request.url() === imageUrl,
+            { timeout: LAZY_IMAGE_REQUEST_TIMEOUT_MS }
+          ).then(() => true, () => false);
+          if (!observed) {
+            const observedLate = requestedAtByUrl.has(imageUrl) || await page.waitForRequest(
+              request => request.url() === imageUrl,
+              { timeout: LAZY_IMAGE_LATE_REQUEST_GRACE_MS }
+            ).then(() => true, () => false) || requestedAtByUrl.has(imageUrl);
+            if (observedLate) {
+              const requestedAt = requestedAtByUrl.get(imageUrl) ?? Date.now();
+              warnings.push(
+                `lazy image request observed too late: started about ` +
+                `${requestedAt - observationStartedAt}ms after observation began; ` +
+                `expected within ${LAZY_IMAGE_REQUEST_TIMEOUT_MS}ms ` +
+                `(late-start grace ${LAZY_IMAGE_LATE_REQUEST_GRACE_MS}ms): ` +
+                `route ${url}; image ${imageUrl}`
+              );
+            } else {
+              warnings.push(
+                `lazy image request was never triggered during the ` +
+                `${LAZY_IMAGE_REQUEST_TIMEOUT_MS + LAZY_IMAGE_LATE_REQUEST_GRACE_MS}ms ` +
+                `observation window (${LAZY_IMAGE_REQUEST_TIMEOUT_MS}ms deadline + ` +
+                `${LAZY_IMAGE_LATE_REQUEST_GRACE_MS}ms late-start grace): ` +
+                `route ${url}; image ${imageUrl}`
+              );
+            }
+          }
+        });
       for (let index = 0, count = await lazyImages.count(); index < count; index += 1) {
         await lazyImages.nth(index).scrollIntoViewIfNeeded().catch(() => {});
       }
