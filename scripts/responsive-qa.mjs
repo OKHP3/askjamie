@@ -11,6 +11,7 @@
  *   - BrandGuard hero geometry stays stable when its deferred theme activates
  *   - BrandGuard hero geometry stays stable after its branded web fonts load
  *   - Universe diagram shell stays stable while its rendered SVG initializes
+ *   - Universe caption and links remain usable when Mermaid fails or JavaScript is off
  *   - Opened Universe page-map groups keep their shell and nearby content stable
  *
  * MODE B — Static lint (`--static` only):
@@ -949,6 +950,176 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
   };
 }
 
+async function checkUniverseMermaidFailure(browser, viewport, url) {
+  const errors = [];
+  const mermaidPath = '/assets/vendor/mermaid/mermaid.esm.min.mjs';
+  const externalBlock =
+    /fonts\.(gstatic|googleapis)\.com|google-analytics\.com|googletagmanager\.com|cdn\.jsdelivr\.net/;
+  const context = await browser.newContext({
+    viewport: { width: viewport.width, height: viewport.height },
+  });
+  const page = await context.newPage();
+  let noJsContext;
+
+  const isMermaidRequest = request =>
+    new URL(request.url()).pathname === mermaidPath;
+  const mermaidRequest = page.waitForRequest(isMermaidRequest, { timeout: 15000 })
+    .then(request => request.url(), () => null);
+  const mermaidFailure = page.waitForEvent('requestfailed', {
+    predicate: isMermaidRequest,
+    timeout: 15000,
+  }).then(request => request.failure()?.errorText || 'failed', () => null);
+  const renderWarning = page.waitForEvent('console', {
+    predicate: message =>
+      message.type() === 'warning' &&
+      message.text().startsWith('[mermaid-init] render error:'),
+    timeout: 15000,
+  }).then(message => message.text(), () => null);
+
+  const inspectFallback = targetPage => targetPage.evaluate(() => {
+    const figure = document.querySelector(
+      '.askjamie-hero--universe .askjamie-mermaid-shell'
+    );
+    const diagram = figure?.querySelector('.mermaid');
+    const caption = figure?.querySelector('figcaption');
+    const links = [...(figure?.querySelectorAll('.link-list a') ?? [])];
+    const visible = element => Boolean(
+      element &&
+      element.getClientRects().length > 0 &&
+      getComputedStyle(element).visibility !== 'hidden' &&
+      getComputedStyle(element).display !== 'none'
+    );
+
+    return {
+      caption: caption?.textContent.trim() ?? '',
+      caption_visible: visible(caption),
+      links: links.map(link => ({
+        text: link.textContent.trim(),
+        href: link.getAttribute('href'),
+        visible: visible(link),
+      })),
+      ready_state: diagram?.dataset.universeReady ?? null,
+      has_svg_node: Boolean(diagram?.querySelector('svg .node')),
+      noscript_visible: visible(figure?.querySelector('.mermaid-noscript')),
+      noscript_text: figure?.querySelector('.mermaid-noscript')?.textContent.trim() ?? '',
+    };
+  });
+
+  const clickPageMapLink = async targetPage => {
+    const link = targetPage.locator(
+      '.askjamie-hero--universe .link-list a[href="#indexed-map-title"]'
+    );
+    if (await link.count() !== 1 || !(await link.isVisible())) return false;
+    await link.click({ timeout: 5000 });
+    return targetPage.evaluate(() =>
+      location.hash === '#indexed-map-title' &&
+      Boolean(document.querySelector('#indexed-map-title'))
+    );
+  };
+
+  try {
+    await page.route('**/*', route => {
+      const requestUrl = new URL(route.request().url());
+      if (requestUrl.pathname === mermaidPath) return route.abort();
+      if (externalBlock.test(route.request().url())) return route.abort();
+      return route.continue();
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const transitionDismiss = page.locator(
+      '[data-transition-dialog][open] [data-transition-dismiss]'
+    );
+    if (await transitionDismiss.isVisible()) await transitionDismiss.click();
+    await page.locator('.askjamie-hero--universe .mermaid').scrollIntoViewIfNeeded();
+
+    const renderStarted = await page.waitForFunction(() => {
+      const diagram = document.querySelector('.askjamie-hero--universe .mermaid');
+      return diagram?.dataset.mermaidRendered === '1';
+    }, undefined, { timeout: 10000 }).then(() => true, () => false);
+    if (!renderStarted) {
+      errors.push('UNIVERSE MERMAID FAILURE CHECK DID NOT START: hero initialization was not observed');
+    }
+
+    const [requestedUrl, failure, warning] = await Promise.all([
+      mermaidRequest,
+      mermaidFailure,
+      renderWarning,
+    ]);
+    if (!requestedUrl) {
+      errors.push('UNIVERSE MERMAID FAILURE CHECK DID NOT REQUEST: local Mermaid module request was not observed');
+    }
+    if (!failure) {
+      errors.push('UNIVERSE MERMAID FAILURE CHECK DID NOT FAIL: blocked local module request did not fail');
+    }
+    if (!warning) {
+      errors.push('UNIVERSE MERMAID FAILURE NOT CAUGHT: expected the renderer failure warning');
+    }
+
+    const failedState = await inspectFallback(page);
+    if (!failedState.caption_visible || !failedState.caption) {
+      errors.push(`UNIVERSE MERMAID FAILURE HID CAPTION: ${JSON.stringify(failedState)}`);
+    }
+    if (failedState.links.length < 3 || failedState.links.some(link => !link.visible || !link.href)) {
+      errors.push(`UNIVERSE MERMAID FAILURE MADE PAGE LINKS UNAVAILABLE: ${JSON.stringify(failedState.links)}`);
+    }
+    if (failedState.ready_state === '1' || failedState.has_svg_node) {
+      errors.push(
+        'UNIVERSE MERMAID FAILURE REPORTED FALSE READY STATE: ' +
+        JSON.stringify({
+          ready_state: failedState.ready_state,
+          has_svg_node: failedState.has_svg_node,
+        })
+      );
+    }
+    const failedPageMapLinkWorks = await clickPageMapLink(page).catch(() => false);
+    if (!failedPageMapLinkWorks) {
+      errors.push('UNIVERSE MERMAID FAILURE BROKE ORDINARY LINK: page-map link did not reach its in-page target');
+    }
+
+    noJsContext = await browser.newContext({
+      viewport: { width: viewport.width, height: viewport.height },
+      javaScriptEnabled: false,
+    });
+    const noJsPage = await noJsContext.newPage();
+    await noJsPage.route('**/*', route =>
+      externalBlock.test(route.request().url()) ? route.abort() : route.continue()
+    );
+    await noJsPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const noJsState = await inspectFallback(noJsPage);
+    if (!noJsState.noscript_visible ||
+        !noJsState.noscript_text.includes('The page links below work without JavaScript.')) {
+      errors.push(`UNIVERSE NO-JAVASCRIPT FALLBACK MISSING: ${JSON.stringify(noJsState)}`);
+    }
+    if (!noJsState.caption_visible || noJsState.links.length < 3 ||
+        noJsState.links.some(link => !link.visible || !link.href)) {
+      errors.push(`UNIVERSE NO-JAVASCRIPT LINKS UNAVAILABLE: ${JSON.stringify(noJsState)}`);
+    }
+    const noJsPageMapLinkWorks = await clickPageMapLink(noJsPage).catch(() => false);
+    if (!noJsPageMapLinkWorks) {
+      errors.push('UNIVERSE NO-JAVASCRIPT LINK BROKE: page-map link did not reach its in-page target');
+    }
+
+    return {
+      errors,
+      evidence: {
+        module_requested: Boolean(requestedUrl),
+        module_failure: failure,
+        render_failure_caught: Boolean(warning),
+        failed_state: failedState,
+        failed_page_map_link_works: failedPageMapLinkWorks,
+        no_javascript_state: noJsState,
+        no_javascript_page_map_link_works: noJsPageMapLinkWorks,
+      },
+    };
+  } catch (error) {
+    errors.push(`UNIVERSE MERMAID FAILURE CHECK ERROR: ${error.message.split('\n')[0]}`);
+    return { errors, evidence: null };
+  } finally {
+    await page.close();
+    await context.close();
+    await noJsContext?.close();
+  }
+}
+
 // ── MODE A: Playwright ────────────────────────────────────────────────────────
 
 async function runWithPlaywright() {
@@ -989,6 +1160,8 @@ async function runWithPlaywright() {
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
+    const checkUniverseFailure =
+      path === UNIVERSE_DIAGRAM_GEOMETRY_PATH && vp.name === 'mobile-390';
     let releaseBrandGuardFontRequests = () => {};
     let brandGuardFontGate = Promise.resolve();
     if (checkBrandGuardFonts) {
@@ -1151,6 +1324,9 @@ async function runWithPlaywright() {
           universeMermaidRequestSeen
         )
         : null;
+      const universeMermaidFailure = checkUniverseFailure
+        ? await checkUniverseMermaidFailure(browser, vp, url)
+        : null;
 
       // Lazy loading is viewport-driven. Scroll each lazy image into view so
       // every runtime observes the same request opportunity before the page
@@ -1221,6 +1397,7 @@ async function runWithPlaywright() {
         ...(heroThemeGeometry?.errors ?? []),
         ...(heroFontGeometry?.errors ?? []),
         ...(universeDiagramGeometry?.errors ?? []),
+        ...(universeMermaidFailure?.errors ?? []),
         ...(overflow ? [`OVERFLOW: scrollWidth > ${vp.width}px`] : []),
         ...consoleErrors.slice(0, 5).map(e => 'CONSOLE: ' + e),
         ...requestFailures.slice(0, 5).map(r =>
@@ -1245,6 +1422,9 @@ async function runWithPlaywright() {
                       : {}),
                     ...(universeDiagramGeometry
                       ? { universe_diagram_geometry: universeDiagramGeometry.evidence }
+                      : {}),
+                    ...(universeMermaidFailure
+                      ? { universe_mermaid_failure: universeMermaidFailure.evidence }
                       : {}) };
       if (!row.pass) {
         const ssFile = `${path.replace(/\//g, '_')}_${vp.name}.png`;
