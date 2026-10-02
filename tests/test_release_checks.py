@@ -477,6 +477,7 @@ def test_lighthouse_routes_preserves_controlled_mobile_isolation_contract():
     assert "Controlled lab measurement only. Not field data." in source
     assert 'lcpElement: lcpElement?.selector || null' in source
     assert 'audits["largest-contentful-paint-element"]?.details?.items?.[0]?.items?.[0]?.node' in source
+    assert "unavailableMetrics" in source
 
 
 def test_lighthouse_routes_preserves_normal_output_contract():
@@ -507,6 +508,7 @@ def test_lighthouse_routes_preserves_normal_output_contract():
         "lcpElement",
         "deltaPerformance",
         "deltaLcpMs",
+        "unavailableMetrics",
     ):
         assert f"{field}:" in source
     assert "path," in source
@@ -608,7 +610,53 @@ process.stdout.write(JSON.stringify({
                 "lcpElement": "div.askjamie-hero-copy > p.hero-tagline",
                 "deltaPerformance": 91 - baseline["pages"][name]["performance"],
                 "deltaLcpMs": 2345 - baseline["pages"][name]["lcpMs"],
+                "unavailableMetrics": [],
             }
+
+
+def test_lighthouse_incomplete_fixture_marks_missing_metrics_unavailable_without_browser(tmp_path):
+    fixture = ROOT / "tests/fixtures/lighthouse-summary-incomplete-report.json"
+    assert fixture.is_file()
+    runner = tmp_path / "incomplete-summary-fixture.mjs"
+    runner.write_text(
+        """
+import { readFileSync } from "node:fs";
+import { LIGHTHOUSE_ROUTES, summarizePage } from "./scripts/lighthouse-routes.mjs";
+
+const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-incomplete-report.json", "utf8"));
+const baseline = JSON.parse(readFileSync("assets/audit/lighthouse-baseline-2026-08-22.json", "utf8"));
+const summary = summarizePage({
+  report,
+  path: LIGHTHOUSE_ROUTES.brandguard,
+  baselinePage: baseline.pages.brandguard
+});
+process.stdout.write(JSON.stringify(summary));
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", runner.read_text(encoding="utf-8")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    summary = json.loads(result.stdout)
+    assert summary["path"] == "/lens-system/okhp3-brandguard/"
+    assert summary["performance"] is None
+    assert summary["deltaPerformance"] is None
+    assert summary["tbtMs"] is None
+    assert summary["lcpElement"] is None
+    assert summary["unavailableMetrics"] == [
+        {"field": "performance", "source": "categories.performance.score"},
+        {"field": "tbtMs", "source": "audits.total-blocking-time.numericValue"},
+        {
+            "field": "lcpElement",
+            "source": "audits.largest-contentful-paint-element.details.items[0].items[0].node.selector",
+        },
+    ]
 
 
 def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp_path):

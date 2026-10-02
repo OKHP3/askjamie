@@ -51,29 +51,60 @@ export function createSummary({ date, preset, controlled, baseUrl }) {
 
 export function summarizePage({ report, path, baselinePage = {} }) {
   const audits = report.audits ?? {};
-  const metric = (id) => audits[id]?.numericValue ?? null;
+  const unavailableMetrics = [];
+  const metric = (id, field) => {
+    const value = audits[id]?.numericValue;
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      unavailableMetrics.push({ field, source: `audits.${id}.numericValue` });
+      return null;
+    }
+    return value;
+  };
+  const categoryScore = (id, field) => {
+    const value = report.categories?.[id]?.score;
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      unavailableMetrics.push({ field, source: `categories.${id}.score` });
+      return null;
+    }
+    return Math.round(value * 100);
+  };
   const lcpElement = audits["largest-contentful-paint-element"]?.details?.items?.[0]?.items?.[0]?.node;
   const lcpInvalidated = audits.metrics?.details?.items
     ?.find((item) => typeof item?.lcpInvalidated === "boolean")
     ?.lcpInvalidated ?? null;
-  const performance = Math.round((report.categories?.performance?.score || 0) * 100);
-  const lcpMs = Math.round(metric("largest-contentful-paint"));
+  const performance = categoryScore("performance", "performance");
+  const accessibility = categoryScore("accessibility", "accessibility");
+  const bestPractices = categoryScore("best-practices", "bestPractices");
+  const seo = categoryScore("seo", "seo");
+  const lcpValue = metric("largest-contentful-paint", "lcpMs");
+  const clsValue = metric("cumulative-layout-shift", "cls");
+  const tbtValue = metric("total-blocking-time", "tbtMs");
+  const fcpValue = metric("first-contentful-paint", "fcpMs");
+  const speedIndexValue = metric("speed-index", "speedIndexMs");
+  if (!lcpElement?.selector) {
+    unavailableMetrics.push({
+      field: "lcpElement",
+      source: "audits.largest-contentful-paint-element.details.items[0].items[0].node.selector",
+    });
+  }
+  const lcpMs = lcpValue === null ? null : Math.round(lcpValue);
 
   return {
     path,
-    performance,
-    accessibility: Math.round((report.categories?.accessibility?.score || 0) * 100),
-    bestPractices: Math.round((report.categories?.["best-practices"]?.score || 0) * 100),
-    seo: Math.round((report.categories?.seo?.score || 0) * 100),
+    performance: performance,
+    accessibility: accessibility,
+    bestPractices: bestPractices,
+    seo: seo,
     lcpMs,
-    cls: Number(metric("cumulative-layout-shift")?.toFixed(6)),
-    tbtMs: Math.round(metric("total-blocking-time")),
-    fcpMs: Math.round(metric("first-contentful-paint")),
-    speedIndexMs: Math.round(metric("speed-index")),
+    cls: clsValue === null ? null : Number(clsValue.toFixed(6)),
+    tbtMs: tbtValue === null ? null : Math.round(tbtValue),
+    fcpMs: fcpValue === null ? null : Math.round(fcpValue),
+    speedIndexMs: speedIndexValue === null ? null : Math.round(speedIndexValue),
     lcpInvalidated,
     lcpElement: lcpElement?.selector || null,
-    deltaPerformance: performance - (baselinePage.performance ?? 0),
-    deltaLcpMs: lcpMs - (baselinePage.lcpMs ?? 0),
+    deltaPerformance: performance === null ? null : performance - (baselinePage.performance ?? 0),
+    deltaLcpMs: lcpMs === null ? null : lcpMs - (baselinePage.lcpMs ?? 0),
+    unavailableMetrics: unavailableMetrics,
   };
 }
 
