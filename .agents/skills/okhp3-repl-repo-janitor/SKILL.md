@@ -75,7 +75,17 @@ subjects use the same representation per text field: valid UTF-8 stays a
 readable string, while invalid UTF-8 is Base64 of the exact field bytes.
 Branch-decision rows accept only the retention labels **keep** and **archive**;
 unsupported labels are reported with their line and branch and fail the
-consistency gate. The ledger check also reports missing branches, tip-SHA
+consistency gate. Each branch must have exactly one branch-decision row,
+regardless of its retention label or tip SHA. Identical repeats and conflicting
+rows both fail `--check-ledger` and the full audit. Both checks report
+`duplicate_decision_rows` with the branch, original and repeated line numbers
+and contents, and a repair reason; every repeat points to the first row.
+All rows remain available as evidence, but duplicated branch keys do not count
+as decision coverage, and their archive rows are `unverifiable`: neither
+promotion nor reconciliation evidence can authorize cleanup for them.
+Resolve duplicates to one unambiguous row before planning cleanup. This rule
+is separate from archive-reconciliation evidence keys and historical retirement
+drift. The ledger check also reports missing branches, tip-SHA
 drift, and stale ledger rows, while archive verification reports unrepresented
 or unverifiable archive work; either condition exits nonzero.
 By default, the audit selects `.agents/branch-decision-ledger.md` when that
@@ -99,7 +109,7 @@ python3 .agents/skills/okhp3-repl-repo-janitor/scripts/audit-repo.py \
 
 This focused, read-only check parses only the ledger file. It does not require
 the root to be a Git repository, run any Git command, refresh remotes, or use
-network access. It reports the same line-level malformed decision rows,
+network access. It reports the same line-level malformed and duplicate decision rows,
 unsupported decision labels, malformed exclusions, duplicate exclusions, and
 `malformed_archive_reconciliation_rows` as the full audit's `decision_ledger`.
 Archive reconciliation rows require exactly six cells: one backticked branch

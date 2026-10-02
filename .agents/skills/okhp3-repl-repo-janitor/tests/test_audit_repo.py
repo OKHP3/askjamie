@@ -199,6 +199,139 @@ class DecisionLedgerTests(unittest.TestCase):
         self.assertEqual(result["unsupported_decision_labels"], [])
         self.assertTrue(result["ok"])
 
+    def test_duplicate_decisions_fail_both_cli_checks_in_either_order(self) -> None:
+        root, initial = self.make_repo()
+        git(root, "branch", "reviewed")
+        (root / "README.md").write_text("active update\n", encoding="utf-8")
+        git(root, "commit", "-qam", "active update")
+        active_tip = git(root, "rev-parse", "HEAD")
+        archive_row = f"| `reviewed` | **archive** | `{initial}` | retained |"
+        keep_row = f"| `reviewed` | **keep** | `{initial}` | active |"
+        variants = {
+            "identical archive": (archive_row, archive_row),
+            "identical keep": (keep_row, keep_row),
+            "retention label": (archive_row, keep_row),
+            "tip SHA": (
+                archive_row,
+                f"| `reviewed` | **archive** | `{active_tip}` | retained |",
+            ),
+            "label and tip SHA": (
+                archive_row,
+                f"| `reviewed` | **keep** | `{active_tip}` | active |",
+            ),
+            "normalized cells": (
+                archive_row,
+                f"| `reviewed` | ARCHIVE | {initial.upper()} | retained |",
+            ),
+        }
+        branches = audit_repo.audit_branches(root, "main", refresh=False)
+        for name, pair in variants.items():
+            for reverse in (False, True):
+                with self.subTest(variant=name, reverse=reverse):
+                    rows = list(reversed(pair)) if reverse else list(pair)
+                    # All repeats refer to the original, not the previous repeat.
+                    rows.append(rows[1])
+                    ledger = self.write_ledger(
+                        root,
+                        "\n".join(rows),
+                        reconciliations=(
+                            f"| `reviewed` | {initial} | {initial} | superseded "
+                            "| Reviewed replacement | Reason. |"
+                        ),
+                    )
+                    expected = [
+                        {
+                            "line": 4 + index,
+                            "content": rows[index],
+                            "branch": "reviewed",
+                            "first_line": 4,
+                            "first_content": rows[0],
+                            "reason": "duplicate branch decision; retain one unambiguous row per branch",
+                        }
+                        for index in (1, 2)
+                    ]
+                    parsed = audit_repo.parse_decision_ledger(ledger)
+                    self.assertEqual(len(parsed.decisions), 3)
+                    self.assertEqual(parsed.duplicate_decision_rows, expected)
+                    coverage = audit_repo.audit_decision_ledger(
+                        root, branches, "main", ledger
+                    )
+                    self.assertEqual(coverage["covered_branch_count"], 0)
+                    self.assertEqual(coverage["missing_branches"], ["reviewed"])
+                    self.assertEqual(coverage["tip_sha_drift"], [])
+                    self.assertFalse(coverage["ok"])
+                    for mode in ([], ["--check-ledger"]):
+                        result = subprocess.run(
+                            [
+                                sys.executable, str(SCRIPT), "--root", str(root),
+                                "--base", "main", "--decision-ledger", str(ledger), *mode,
+                            ],
+                            capture_output=True, text=True, check=False,
+                        )
+                        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                        report = json.loads(result.stdout)
+                        findings = report if mode else report["decision_ledger"]
+                        self.assertEqual(findings["duplicate_decision_rows"], expected)
+                        self.assertEqual(findings["decision_row_count"], 3)
+                        self.assertEqual(findings["duplicate_archive_reconciliation_rows"], [])
+                        self.assertFalse(findings["ok"])
+                        if not mode:
+                            archive = report["archive_equivalents"]
+                            self.assertEqual(archive["duplicate_decision_rows"], expected)
+                            self.assertEqual(archive["already_promoted"], [])
+                            self.assertEqual(archive["confirmed_supersession"], [])
+                            self.assertFalse(archive["ok"])
+                            for entry in archive["archives"]:
+                                self.assertEqual(entry["classification"], "unverifiable")
+                                self.assertIn("duplicate branch decisions", entry["error"])
+                                self.assertNotIn("reconciliation_evidence", entry)
+
+    def test_duplicate_decisions_block_supersession_even_with_valid_review(self) -> None:
+        root, initial = self.make_repo()
+        git(root, "checkout", "-qb", "reviewed")
+        (root / "archive.txt").write_text("unique work\n", encoding="utf-8")
+        git(root, "add", "archive.txt")
+        git(root, "commit", "-qm", "archive work")
+        tip = git(root, "rev-parse", "HEAD")
+        git(root, "checkout", "-q", "main")
+        archive_row = f"| `reviewed` | archive | {tip} | retained |"
+        for rows in (
+            [archive_row],
+            [archive_row, archive_row],
+            [archive_row, f"| `reviewed` | keep | {tip} | hold |"],
+            [f"| `reviewed` | keep | {tip} | hold |", archive_row],
+        ):
+            with self.subTest(rows=rows):
+                ledger = self.write_ledger(
+                    root, "\n".join(rows),
+                    reconciliations=(
+                        f"| `reviewed` | {tip} | {initial} | superseded "
+                        "| Reviewed replacement | Reason. |"
+                    ),
+                )
+                report = audit_repo.audit_archive_equivalents(root, ledger, "main")
+                if len(rows) == 1:
+                    self.assertTrue(report["ok"])
+                    self.assertEqual(report["confirmed_supersession"], ["reviewed"])
+                else:
+                    self.assertFalse(report["ok"])
+                    self.assertEqual(report["confirmed_supersession"], [])
+                    self.assertEqual(report["unverifiable"], ["reviewed"] * rows.count(archive_row))
+
+    def test_decision_keys_are_case_sensitive_and_checked_without_git(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            row = f"| `reviewed` | keep | {'a' * 40} | hold |"
+            other = f"| `Reviewed` | archive | {'a' * 40} | retained |"
+            ledger = self.write_ledger(root, "\n".join([row, other]))
+            with patch.object(audit_repo.subprocess, "run", side_effect=AssertionError("Git called")):
+                self.assertTrue(audit_repo.validate_decision_ledger_structure(ledger)["ok"])
+                ledger = self.write_ledger(root, "\n".join([row, other, row]))
+                report = audit_repo.validate_decision_ledger_structure(ledger)
+                self.assertFalse(report["ok"])
+                self.assertEqual(report["duplicate_decision_rows"][0]["first_line"], 4)
+                self.assertEqual(report["duplicate_decision_rows"][0]["line"], 6)
+
     def test_reports_unsupported_decision_with_line_and_branch_context(self) -> None:
         root, initial = self.make_repo()
         git(root, "branch", "ambiguous")

@@ -167,6 +167,7 @@ class DecisionLedger(NamedTuple):
     malformed_archive_reconciliation_rows: list[dict[str, object]]
     duplicate_archive_reconciliation_rows: list[dict[str, object]]
     malformed_decision_rows: list[dict[str, object]]
+    duplicate_decision_rows: list[dict[str, object]]
     unsupported_decision_labels: list[dict[str, object]]
     malformed_exclusion_entries: list[dict[str, object]]
     duplicate_exclusion_entries: list[dict[str, object]]
@@ -223,6 +224,8 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
     duplicate_archive_reconciliation_rows: list[dict[str, object]] = []
     seen_reconciliations: dict[tuple[str, str], tuple[int, str]] = {}
     malformed_decision_rows: list[dict[str, object]] = []
+    duplicate_decision_rows: list[dict[str, object]] = []
+    seen_decisions: dict[str, tuple[int, str]] = {}
     unsupported_decision_labels: list[dict[str, object]] = []
     malformed_exclusion_entries: list[dict[str, object]] = []
     duplicate_exclusion_entries: list[dict[str, object]] = []
@@ -278,6 +281,19 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
                 r"^\*\*|\*\*$", "", cells[1]
             ).strip().lower()
             branch = branch_match.group(1)
+            if branch in seen_decisions:
+                first_line, first_content = seen_decisions[branch]
+                duplicate_decision_rows.append({
+                    "line": line_number,
+                    "content": line,
+                    "branch": branch,
+                    "first_line": first_line,
+                    "first_content": first_content,
+                    "reason": "duplicate branch decision; retain one unambiguous row per branch",
+                })
+            else:
+                seen_decisions[branch] = (line_number, line)
+            # Retain all rows as evidence, but consumers must reject ambiguous keys.
             decisions.append({
                 "branch": branch,
                 "decision": decision,
@@ -417,6 +433,7 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
         malformed_archive_reconciliation_rows=malformed_archive_reconciliation_rows,
         duplicate_archive_reconciliation_rows=duplicate_archive_reconciliation_rows,
         malformed_decision_rows=malformed_decision_rows,
+        duplicate_decision_rows=duplicate_decision_rows,
         unsupported_decision_labels=unsupported_decision_labels,
         malformed_exclusion_entries=malformed_exclusion_entries,
         duplicate_exclusion_entries=duplicate_exclusion_entries,
@@ -428,6 +445,7 @@ def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
     ledger = parse_decision_ledger(ledger_path)
     findings = (
         ledger.malformed_decision_rows
+        or ledger.duplicate_decision_rows
         or ledger.unsupported_decision_labels
         or ledger.malformed_exclusion_entries
         or ledger.duplicate_exclusion_entries
@@ -439,6 +457,7 @@ def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
         "decision_row_count": len(ledger.decisions),
         "exclusion_branch_count": len(ledger.exclusions),
         "malformed_decision_rows": ledger.malformed_decision_rows,
+        "duplicate_decision_rows": ledger.duplicate_decision_rows,
         "unsupported_decision_labels": ledger.unsupported_decision_labels,
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
@@ -461,7 +480,11 @@ def audit_decision_ledger(
         for branch in branches
         if str(branch["branch"]) != current
     }
-    decision_by_name = {row["branch"]: row for row in ledger.decisions}
+    ambiguous_branches = {row["branch"] for row in ledger.duplicate_decision_rows}
+    decision_by_name = {
+        row["branch"]: row for row in ledger.decisions
+        if row["branch"] not in ambiguous_branches
+    }
     covered = set(decision_by_name) | set(ledger.exclusions)
 
     missing_branches = sorted(set(local_by_name) - covered)
@@ -512,6 +535,7 @@ def audit_decision_ledger(
             stale_ledger_rows, key=lambda item: (item["branch"], item["kind"])
         ),
         "malformed_decision_rows": ledger.malformed_decision_rows,
+        "duplicate_decision_rows": ledger.duplicate_decision_rows,
         "unsupported_decision_labels": ledger.unsupported_decision_labels,
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
@@ -523,6 +547,7 @@ def audit_decision_ledger(
             or invalid_tip_sha
             or stale_ledger_rows
             or ledger.malformed_decision_rows
+            or ledger.duplicate_decision_rows
             or ledger.unsupported_decision_labels
             or ledger.malformed_exclusion_entries
             or ledger.duplicate_exclusion_entries
@@ -679,6 +704,7 @@ def audit_archive_equivalents(
     archive_rows = [
         row for row in ledger.decisions if row["decision"] == "archive"
     ]
+    ambiguous_branches = {row["branch"] for row in ledger.duplicate_decision_rows}
     ambiguous_tips = {
         (row["branch"], row["tip_sha"])
         for row in ledger.duplicate_archive_reconciliation_rows
@@ -705,6 +731,13 @@ def audit_archive_equivalents(
             "branch_tip_sha": branch_tip,
             "file_difference_direction": "active-line-to-archive-tip",
         }
+        if branch in ambiguous_branches:
+            report.update({
+                "classification": "unverifiable",
+                "error": "duplicate branch decisions cannot authorize archive cleanup",
+            })
+            reports.append(report)
+            continue
         if not SHA_PATTERN.fullmatch(tip_sha):
             report.update({
                 "classification": "unverifiable",
@@ -869,7 +902,8 @@ def audit_archive_equivalents(
         "unrepresented_changes": sorted(unrepresented),
         "unverifiable": sorted(unverifiable),
         "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
-        "ok": not unrepresented and not unverifiable and not ambiguous_tips,
+        "duplicate_decision_rows": ledger.duplicate_decision_rows,
+        "ok": not unrepresented and not unverifiable and not ambiguous_tips and not ambiguous_branches,
     }
 
 
