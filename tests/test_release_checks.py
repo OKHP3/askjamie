@@ -218,6 +218,9 @@ def test_pages_artifact_excludes_repository_only_files(tmp_path):
     assert (output / "index.html").exists()
     assert (output / "assets/js/app.js").exists()
     assert (output / "assets/css/theme.css").exists()
+    assert (output / ".well-known/security.txt").read_bytes() == (
+        ROOT / ".well-known/security.txt"
+    ).read_bytes()
     assert not (output / "assets/fonts").exists()
     assert not (output / ".github").exists()
     assert not (output / "scripts").exists()
