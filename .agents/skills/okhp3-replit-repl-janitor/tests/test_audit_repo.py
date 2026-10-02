@@ -17,6 +17,26 @@ assert SPEC and SPEC.loader
 audit_repo = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(audit_repo)
 
+MALFORMED_PULL_REQUESTS = (
+    {},
+    {"merged_at": None},
+    {"merged_at": "2099-01-01"},
+    {"state": "open"},
+    {"state": "closed"},
+    {"state": None, "merged_at": None},
+    {"state": "", "merged_at": None},
+    {"state": "merged", "merged_at": "2099-01-01"},
+    {"state": [], "merged_at": None},
+    {"state": {}, "merged_at": None},
+    {"state": "closed", "merged_at": False},
+    {"state": "closed", "merged_at": 0},
+    {"state": "closed", "merged_at": []},
+    {"state": "closed", "merged_at": {}},
+    {"state": "closed", "merged_at": ""},
+    {"state": "closed", "merged_at": "  "},
+    {"state": "open", "merged_at": False},
+)
+
 
 class AuditRepoTests(unittest.TestCase):
     def test_remote_start_failures_hold_and_continue_each_provider_ref(self) -> None:
@@ -331,6 +351,68 @@ class AuditRepoTests(unittest.TestCase):
                 self.assertEqual(report["cleanup_plan"]["keep"], [])
                 self.assertEqual(report["cleanup_plan"]["review"], [])
 
+    def test_malformed_pr_fields_discard_history_and_retain_unknown_hold(self) -> None:
+        merged = {"state": "closed", "merged_at": "2099-01-01"}
+        for record in MALFORMED_PULL_REQUESTS:
+            for page in (1, 2):
+                with self.subTest(record=record, page=page):
+                    pages = [[merged] * 100] if page == 2 else []
+                    pages.append([merged, record])
+                    report = self.hosted_pages_fixture([[]], pages)
+                    entry = report["entries"][0]
+                    evidence = entry["pull_requests"]
+                    self.assertEqual(evidence, {
+                        "status": "unknown",
+                        "reason": f"GitHub pull-request response on page {page} contained invalid classification fields",
+                    })
+                    self.assertEqual(entry["protection"]["status"], "unprotected")
+                    self.assertEqual(entry["deployments"]["status"], "available")
+                    self.assert_single_hosted_hold(
+                        report, "hosted-pull-request-evidence-unknown", "review",
+                    )
+
+    def test_hosted_audit_does_not_trust_malformed_available_pr_records(self) -> None:
+        for record in (*MALFORMED_PULL_REQUESTS, None, "not an object"):
+            with self.subTest(record=record), patch.object(
+                audit_repo, "remote_url_for_provider",
+                return_value=("origin", "https://github.com/fixture/repo.git"),
+            ), patch.object(
+                audit_repo, "hosted_command",
+                return_value=subprocess.CompletedProcess(
+                    [], 0, f"{'a' * 40}\trefs/heads/work\n", "",
+                ),
+            ), patch.object(audit_repo, "github_hosted_evidence", return_value={
+                "protection": {"status": "unprotected"},
+                "deployments": {"status": "available", "count": 0, "items": []},
+                "pull_requests": {"status": "available", "count": 1, "items": [record]},
+            }):
+                report = audit_repo.audit_hosted_branches(Path("."), ["origin=work"])
+            self.assert_single_hosted_hold(
+                report, "hosted-pull-request-evidence-unknown", "review",
+            )
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
+    def test_explicit_null_and_merged_pr_fields_preserve_legitimate_results(self) -> None:
+        for record, code, bucket in (
+            ({"state": "open", "merged_at": None}, "hosted-open-pull-request", "keep"),
+            ({"state": "closed", "merged_at": None}, "hosted-closed-unmerged-pull-request", "review"),
+            ({"state": "closed", "merged_at": "2099-01-01"}, None, None),
+        ):
+            with self.subTest(record=record):
+                report = self.hosted_pages_fixture([[]], [[record]])
+                self.assertEqual(report["entries"][0]["pull_requests"], {
+                    "status": "available", "source": "github-api",
+                    "count": 1, "items": [record],
+                })
+                if code:
+                    self.assert_single_hosted_hold(report, code, bucket)
+                else:
+                    self.assertFalse(report["deletion_blocked"])
+                    self.assertEqual(report["entries"][0]["blocking_reasons"], [])
+                    self.assertEqual(report["cleanup_plan"]["keep"], [])
+                    self.assertEqual(report["cleanup_plan"]["review"], [])
+
     def test_deployment_pages_are_aggregated_before_classifying_holds(self) -> None:
         for count in (0, 99, 100, 101, 200, 201):
             with self.subTest(count=count):
@@ -477,7 +559,7 @@ class AuditRepoTests(unittest.TestCase):
         fixtures = {
             "protected": {"protection": {"status": "protected"}},
             "deployed": {"deployments": {"status": "available", "count": 1}},
-            "open-pr": {"pull_requests": {"status": "available", "items": [{"state": "open"}]}},
+            "open-pr": {"pull_requests": {"status": "available", "items": [{"state": "open", "merged_at": None}]}},
             "closed-pr": {"pull_requests": {"status": "available", "items": [{"state": "closed", "merged_at": None}]}},
             "unknown-protection": {"protection": {"status": "unknown"}},
             "unknown-deployments": {"deployments": {"status": "unknown"}},

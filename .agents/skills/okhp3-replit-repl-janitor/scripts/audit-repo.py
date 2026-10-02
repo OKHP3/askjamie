@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 from urllib.parse import quote, urlparse
 
 
@@ -261,7 +261,20 @@ def gh_api_json(root: Path, endpoint: str) -> tuple[object | None, str | None]:
         return None, f"GitHub API returned invalid JSON: {exc}"
 
 
-def gh_api_list(root: Path, endpoint: str, label: str) -> tuple[list | None, str | None]:
+def valid_pull_request_classification(record: object) -> bool:
+    """Require explicit classification fields; null means unmerged, not missing."""
+    if not isinstance(record, dict) or record.get("state") not in ("open", "closed"):
+        return False
+    if "merged_at" not in record:
+        return False
+    merged_at = record["merged_at"]
+    return merged_at is None or (isinstance(merged_at, str) and bool(merged_at.strip()))
+
+
+def gh_api_list(
+    root: Path, endpoint: str, label: str,
+    record_validator: Callable[[object], bool] | None = None,
+) -> tuple[list | None, str | None]:
     """Read every 100-item page; never expose a partial history as complete."""
     items: list = []
     page = 1
@@ -273,6 +286,8 @@ def gh_api_list(root: Path, endpoint: str, label: str) -> tuple[list | None, str
             return None, f"GitHub {label} response on page {page} was not a list"
         if len(data) > 100 or any(not isinstance(item, dict) for item in data):
             return None, f"GitHub {label} response on page {page} contained invalid records"
+        if record_validator is not None and any(not record_validator(item) for item in data):
+            return None, f"GitHub {label} response on page {page} contained invalid classification fields"
         items.extend(data)
         if len(data) < 100:
             return items, None
@@ -336,6 +351,7 @@ def github_hosted_evidence(
     head = quote(f"{owner}:{branch}", safe="")
     pull_requests_data, pull_requests_error = gh_api_list(
         root, f"repos/{encoded_repo}/pulls?state=all&head={head}", "pull-request",
+        record_validator=valid_pull_request_classification,
     )
     if pull_requests_error:
         pull_requests: dict[str, object] = unknown_hosted_evidence(pull_requests_error)
@@ -431,12 +447,17 @@ def audit_hosted_branches(root: Path, requested: Iterable[str]) -> dict[str, obj
         if pull_requests.get("status") != "available":
             blocking_reasons.append("hosted-pull-request-evidence-unknown")
         else:
-            for pull_request in pull_requests.get("items", []):
-                if not isinstance(pull_request, dict):
+            items = pull_requests.get("items")
+            if not isinstance(items, list):
+                blocking_reasons.append("hosted-pull-request-evidence-unknown")
+                items = []
+            for pull_request in items:
+                if not valid_pull_request_classification(pull_request):
+                    blocking_reasons.append("hosted-pull-request-evidence-unknown")
                     continue
-                if pull_request.get("state") == "open":
+                if pull_request["state"] == "open":
                     blocking_reasons.append("hosted-open-pull-request")
-                elif pull_request.get("state") == "closed" and not pull_request.get("merged_at"):
+                elif pull_request["merged_at"] is None:
                     blocking_reasons.append("hosted-closed-unmerged-pull-request")
         entry["deletion_blocked"] = bool(blocking_reasons)
         entry["blocking_reasons"] = sorted(set(blocking_reasons))
