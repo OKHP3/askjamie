@@ -460,8 +460,8 @@ def test_lighthouse_routes_preserves_controlled_mobile_isolation_contract():
     assert "The controlled third-party isolation mode is only supported with --preset=mobile." in source
     assert 'const outputSuffix = `${preset === "mobile" ? "-mobile" : ""}${controlled ? "-controlled" : ""}`;' in source
 
-    blocked_patterns_start = source.index("const controlledBlockedUrlPatterns = [")
-    blocked_patterns_end = source.index("];", blocked_patterns_start) + 2
+    blocked_patterns_start = source.index("export const CONTROLLED_BLOCKED_URL_PATTERNS = Object.freeze([")
+    blocked_patterns_end = source.index("]);", blocked_patterns_start) + 2
     blocked_patterns = re.findall(
         r'"([^"]+)"',
         source[blocked_patterns_start:blocked_patterns_end],
@@ -473,7 +473,7 @@ def test_lighthouse_routes_preserves_controlled_mobile_isolation_contract():
         "https://www.google-analytics.com/*",
         "https://*.google-analytics.com/*",
     ]
-    assert "controlledBlockedUrlPatterns.map((pattern) => `--blocked-url-patterns=${pattern}`)" in source
+    assert "CONTROLLED_BLOCKED_URL_PATTERNS.map((pattern) => `--blocked-url-patterns=${pattern}`)" in source
 
     assert 'thirdPartyFonts: "blocked"' in source
     assert 'analytics: "blocked"' in source
@@ -530,7 +530,7 @@ def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without
     runner.write_text(
         """
 import { readFileSync } from "node:fs";
-import { HISTORICAL_REFERENCE_MEASUREMENT_STACK, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage } from "./scripts/lighthouse-routes.mjs";
+import { CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
 const baseline = { pages: {
@@ -539,14 +539,30 @@ const baseline = { pages: {
   universe: { performance: 90, lcpMs: 2500 },
   search: { performance: 91, lcpMs: 3000 }
 }, measurementStack: HISTORICAL_REFERENCE_MEASUREMENT_STACK };
-const emit = (controlled, measurementStack) => {
+const baselineRunConditions = summarizeRunConditions(report);
+const allBaselineRunConditions = Object.fromEntries(
+  Object.keys(LIGHTHOUSE_ROUTES).map((name) => [`${name}.json`, baselineRunConditions])
+);
+const controlledRunConditions = Object.fromEntries(
+  Object.entries(allBaselineRunConditions).map(([name, conditions]) => [
+    name,
+    { ...conditions, blockedUrlPatterns: CONTROLLED_BLOCKED_URL_PATTERNS }
+  ])
+);
+const emit = (
+  controlled,
+  measurementStack,
+  runConditionsReports = controlled ? controlledRunConditions : allBaselineRunConditions
+) => {
   const summary = createSummary({
     date: "2099-01-02",
     preset: "mobile",
     controlled,
     baseUrl: "https://fixture.invalid",
     measurementStack,
-    baselineMeasurementStack: baseline.measurementStack
+    baselineMeasurementStack: baseline.measurementStack,
+    runConditionsReports,
+    baselineRunConditions: HISTORICAL_REFERENCE_RUN_CONDITIONS
   });
   for (const [name, path] of Object.entries(LIGHTHOUSE_ROUTES)) {
     summary.pages[name] = summarizePage({
@@ -556,6 +572,13 @@ const emit = (controlled, measurementStack) => {
     });
   }
   return summary;
+};
+const changedRunConditions = {
+  ...baselineRunConditions,
+  throttling: {
+    ...baselineRunConditions.throttling,
+    cpuSlowdownMultiplier: 5
+  }
 };
 process.stdout.write(JSON.stringify({
   routes: LIGHTHOUSE_ROUTES,
@@ -573,6 +596,17 @@ process.stdout.write(JSON.stringify({
   chromiumPatchChange: emit(false, {
     ...baseline.measurementStack,
     chromiumVersion: "148.0.7778.97"
+  }),
+  runConditionChange: emit(false, baseline.measurementStack, {
+    ...allBaselineRunConditions,
+    "brandguard.json": changedRunConditions,
+    "search.json": {
+      ...baselineRunConditions,
+      formFactor: "desktop"
+    }
+  }),
+  missingRunConditions: emit(false, baseline.measurementStack, {
+    "homepage.json": summarizeRunConditions({})
   }),
   controlled: emit(true, {
     lighthouseVersion: "13.5.0",
@@ -598,7 +632,7 @@ process.stdout.write(JSON.stringify({
 
     normal = emitted["normal"]
     assert emitted["parsedChromiumVersion"] == "153.0.8010.12"
-    assert normal["schemaVersion"] == 3
+    assert normal["schemaVersion"] == 4
     assert normal["capturedAt"] == "2099-01-02"
     assert normal["tool"] == "Lighthouse 12.8.2"
     assert normal["measurementStack"] == {
@@ -622,6 +656,20 @@ process.stdout.write(JSON.stringify({
         "action": "No Lighthouse or Chromium version change from the historical reference measurement stack.",
     }
     assert normal["environment"] == "Local or supplied static server, mobile preset"
+    assert normal["runConditions"]["condition"] == "normal"
+    assert normal["runConditions"]["reports"]["homepage.json"]["formFactor"] == "mobile"
+    assert normal["runConditions"]["reports"]["homepage.json"]["blockedUrlPatterns"] is None
+    assert normal["runConditions"]["reports"]["homepage.json"]["throttling"] == {
+        "rttMs": 150,
+        "throughputKbps": 1638.4,
+        "requestLatencyMs": 562.5,
+        "downloadThroughputKbps": 1474.5600000000002,
+        "uploadThroughputKbps": 675,
+        "cpuSlowdownMultiplier": 4,
+    }
+    assert normal["runConditionsReview"]["status"] == "not-required"
+    assert normal["runConditionsReview"]["changedComponents"] == []
+    assert normal["runConditionsReview"]["changedReports"] == []
     assert normal["controls"] == {
         "thirdPartyFonts": "in flight",
         "analytics": "in flight",
@@ -644,6 +692,27 @@ process.stdout.write(JSON.stringify({
         "chromiumVersion",
     ]
 
+    run_condition_change = emitted["runConditionChange"]
+    assert run_condition_change["measurementStackReview"]["status"] == "not-required"
+    assert run_condition_change["runConditionsReview"]["status"] == "required"
+    assert run_condition_change["runConditionsReview"]["changedComponents"] == [
+        "formFactor",
+        "throttling.cpuSlowdownMultiplier",
+    ]
+    assert run_condition_change["runConditionsReview"]["changedReports"] == [{
+        "report": "brandguard.json",
+        "changedComponents": ["throttling.cpuSlowdownMultiplier"],
+    }, {
+        "report": "search.json",
+        "changedComponents": ["formFactor"],
+    }]
+    assert "Owner review is required" in run_condition_change["runConditionsReview"]["action"]
+
+    missing_run_conditions = emitted["missingRunConditions"]
+    assert missing_run_conditions["runConditionsReview"]["status"] == "required"
+    assert "formFactor" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+    assert "blockedUrlPatterns" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+
     controlled = emitted["controlled"]
     assert controlled["tool"] == "Lighthouse 13.5.0"
     assert controlled["measurementStackReview"]["status"] == "required"
@@ -653,6 +722,16 @@ process.stdout.write(JSON.stringify({
     ]
     assert "Owner review is required" in controlled["measurementStackReview"]["action"]
     assert controlled["environment"] == "Local or supplied static server, controlled mobile preset"
+    assert controlled["runConditions"]["condition"] == "controlled"
+    assert controlled["runConditionsReview"]["status"] == "not-required"
+    assert controlled["runConditionsReview"]["baseline"]["blockedUrlPatterns"] is None
+    assert controlled["runConditionsReview"]["expected"]["blockedUrlPatterns"] == [
+        "https://fonts.googleapis.com/*",
+        "https://fonts.gstatic.com/*",
+        "https://www.googletagmanager.com/*",
+        "https://www.google-analytics.com/*",
+        "https://*.google-analytics.com/*",
+    ]
     assert controlled["controls"] == {
         "thirdPartyFonts": "blocked",
         "analytics": "blocked",
@@ -666,7 +745,7 @@ process.stdout.write(JSON.stringify({
         "search": {"performance": 91, "lcpMs": 3000},
     }}
     for summary in (normal, controlled):
-        assert summary["schemaVersion"] == 3
+        assert summary["schemaVersion"] == 4
         assert summary["property"] == "https://fixture.invalid"
         assert summary["baseline"] == "assets/audit/lighthouse-baseline-2026-08-22.json"
         assert set(summary["pages"]) == set(expected_routes)
@@ -832,6 +911,31 @@ const sampleOffset = isBrandGuard ? sampleIndex : 0;
 const report = {
   lighthouseVersion: "12.8.2",
   environment: { hostUserAgent: "HeadlessChrome/148.0.0.0" },
+  configSettings: {
+    formFactor: "mobile",
+    throttlingMethod: "simulate",
+    throttling: {
+      rttMs: 150,
+      throughputKbps: 1638.4,
+      requestLatencyMs: 562.5,
+      downloadThroughputKbps: 1474.5600000000002,
+      uploadThroughputKbps: 675,
+      cpuSlowdownMultiplier: 4
+    },
+    screenEmulation: {
+      mobile: true,
+      width: 412,
+      height: 823,
+      deviceScaleFactor: 1.75,
+      disabled: false
+    },
+    emulatedUserAgent: "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+    blockedUrlPatterns: args.some((arg) => arg.startsWith("--blocked-url-patterns="))
+      ? args
+        .filter((arg) => arg.startsWith("--blocked-url-patterns="))
+        .map((arg) => arg.slice("--blocked-url-patterns=".length))
+      : null
+  },
   categories: {
     performance: { score: 0.9 },
     accessibility: { score: 1 },
@@ -939,6 +1043,27 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
         (controlled_dir, controlled, "controlled"),
     ):
         repeat = summary["brandguardRepeatSamples"]
+        assert summary["runConditions"]["condition"] == condition
+        assert set(summary["runConditions"]["reports"]) == {
+            "homepage.json",
+            "brandguard.json",
+            "universe.json",
+            "search.json",
+            "brandguard-sample-02.json",
+            "brandguard-sample-03.json",
+        }
+        assert summary["runConditionsReview"]["status"] == "not-required"
+        assert summary["runConditions"]["reports"]["brandguard.json"]["blockedUrlPatterns"] == (
+            [
+                "https://fonts.googleapis.com/*",
+                "https://fonts.gstatic.com/*",
+                "https://www.googletagmanager.com/*",
+                "https://www.google-analytics.com/*",
+                "https://*.google-analytics.com/*",
+            ]
+            if condition == "controlled"
+            else None
+        )
         assert repeat["condition"] == condition
         assert repeat["sampleCount"] == 3
         assert repeat["metrics"]["lcpMs"] == {

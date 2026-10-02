@@ -36,6 +36,29 @@ approved budget. A tool upgrade alone does not approve a budget change. Keep
 the historical reference intact unless an owner approves a new comparison
 baseline.
 
+## Run-condition review gate
+
+The approved 2026-08-22 raw reports record a mobile form factor with simulated
+throttling, a 412×823 Moto G Power screen emulation, and a 4× CPU slowdown. The
+route runner records the effective `formFactor`, `throttlingMethod`, network
+and CPU throttling values, screen emulation, and emulated user agent from each
+raw report's `configSettings` in the dated summary. The reference values are
+kept with the runner because the raw audit directory is regenerable.
+
+Each report's effective settings are compared with the approved historical
+conditions. Controlled runs are checked against their explicit blocked-URL
+profile; normal runs are checked for no blocked-URL patterns. A difference or
+missing setting marks `runConditionsReview.status` as `required` and names the
+changed setting. This gate is separate from `measurementStackReview`, so
+version changes and condition changes remain independently visible.
+
+Normal and controlled mobile runs are separate conditions in the summary.
+Controlled runs continue to block third-party fonts and analytics as an
+explicit isolation measure; they are not merged with normal results. The
+condition review compares Lighthouse emulation and throttling settings, while
+the run label and `controls` field preserve the normal-versus-controlled
+distinction.
+
 ## Lighthouse summary
 
 | Page | Performance | Accessibility | Best practices | SEO | LCP | CLS | Max potential FID | TBT |

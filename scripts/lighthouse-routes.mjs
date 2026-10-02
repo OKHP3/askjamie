@@ -30,9 +30,17 @@ export const routes = Object.freeze({
 });
 export const LIGHTHOUSE_ROUTES = routes;
 
-// This is a historical reference stack, independent of the ignored, regenerable
-// files under assets/audit/. Historical reports establish Chromium major 148;
-// the exact patch build below is inferred from Playwright 1.60.0 metadata, not
+export const CONTROLLED_BLOCKED_URL_PATTERNS = Object.freeze([
+  "https://fonts.googleapis.com/*",
+  "https://fonts.gstatic.com/*",
+  "https://www.googletagmanager.com/*",
+  "https://www.google-analytics.com/*",
+  "https://*.google-analytics.com/*",
+]);
+
+// Historical references are independent of the ignored, regenerable files
+// under assets/audit/. Historical reports establish Chromium major 148; the
+// exact patch build below is inferred from Playwright 1.60.0 metadata, not
 // independently confirmed or owner-approved.
 export const HISTORICAL_REFERENCE_MEASUREMENT_STACK = Object.freeze({
   lighthouseVersion: "12.8.2",
@@ -40,6 +48,118 @@ export const HISTORICAL_REFERENCE_MEASUREMENT_STACK = Object.freeze({
   chromiumVersion: "148.0.7778.96",
   chromiumUserAgent: "HeadlessChrome/148.0.0.0",
 });
+
+// Effective settings copied from configSettings in the approved 2026-08-22 raw
+// reports. Keep this reference in source because assets/audit/ is regenerable.
+export const HISTORICAL_REFERENCE_RUN_CONDITIONS = Object.freeze({
+  formFactor: "mobile",
+  throttlingMethod: "simulate",
+  throttling: Object.freeze({
+    rttMs: 150,
+    throughputKbps: 1638.4,
+    requestLatencyMs: 562.5,
+    downloadThroughputKbps: 1474.5600000000002,
+    uploadThroughputKbps: 675,
+    cpuSlowdownMultiplier: 4,
+  }),
+  screenEmulation: Object.freeze({
+    mobile: true,
+    width: 412,
+    height: 823,
+    deviceScaleFactor: 1.75,
+    disabled: false,
+  }),
+  emulatedUserAgent: "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+  blockedUrlPatterns: null,
+});
+
+export function summarizeRunConditions(report) {
+  const settings = report.configSettings ?? {};
+  const pickFields = (value, fields) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    return Object.fromEntries(fields.map((field) => [
+      field,
+      Object.hasOwn(value, field) ? value[field] : null,
+    ]));
+  };
+
+  return {
+    formFactor: typeof settings.formFactor === "string" ? settings.formFactor : null,
+    throttlingMethod: typeof settings.throttlingMethod === "string" ? settings.throttlingMethod : null,
+    throttling: pickFields(settings.throttling, [
+      "rttMs",
+      "throughputKbps",
+      "requestLatencyMs",
+      "downloadThroughputKbps",
+      "uploadThroughputKbps",
+      "cpuSlowdownMultiplier",
+    ]),
+    screenEmulation: pickFields(settings.screenEmulation, [
+      "mobile",
+      "width",
+      "height",
+      "deviceScaleFactor",
+      "disabled",
+    ]),
+    emulatedUserAgent: typeof settings.emulatedUserAgent === "string"
+      ? settings.emulatedUserAgent
+      : null,
+    blockedUrlPatterns: Object.hasOwn(settings, "blockedUrlPatterns")
+      ? settings.blockedUrlPatterns
+      : "unavailable",
+  };
+}
+
+function changedRunConditionComponents(actual, expected, prefix = "") {
+  const actualIsObject = actual !== null && typeof actual === "object" && !Array.isArray(actual);
+  const expectedIsObject = expected !== null && typeof expected === "object" && !Array.isArray(expected);
+  if (actualIsObject && expectedIsObject) {
+    const keys = [...new Set([...Object.keys(actual), ...Object.keys(expected)])].sort();
+    return keys.flatMap((key) => changedRunConditionComponents(
+      actual[key],
+      expected[key],
+      prefix ? `${prefix}.${key}` : key,
+    ));
+  }
+  return JSON.stringify(actual) === JSON.stringify(expected) ? [] : [prefix || "run conditions"];
+}
+
+export function createRunConditionsReview(
+  reports,
+  {
+    controlled = false,
+    baselineRunConditions = HISTORICAL_REFERENCE_RUN_CONDITIONS,
+  } = {},
+) {
+  const expectedConditions = controlled
+    ? {
+        ...baselineRunConditions,
+        blockedUrlPatterns: CONTROLLED_BLOCKED_URL_PATTERNS,
+      }
+    : baselineRunConditions;
+  const entries = Object.entries(reports ?? {});
+  const changedReports = entries
+    .map(([report, conditions]) => ({
+      report,
+      changedComponents: changedRunConditionComponents(conditions, expectedConditions),
+    }))
+    .filter(({ changedComponents }) => changedComponents.length > 0);
+  const changedComponents = [...new Set(
+    changedReports.flatMap(({ changedComponents: changed }) => changed),
+  )].sort();
+  const reviewRequired = entries.length === 0 || changedComponents.length > 0;
+
+  return {
+    baseline: baselineRunConditions,
+    expected: expectedConditions,
+    status: reviewRequired ? "required" : "not-required",
+    changedComponents: entries.length === 0 ? ["run conditions unavailable"] : changedComponents,
+    changedReports,
+    action: reviewRequired
+      ? "Owner review is required before interpreting or changing the BrandGuard lab budget because Lighthouse run conditions differ from or are missing in the historical reference."
+      : "No Lighthouse run-condition change from the historical reference.",
+  };
+}
 
 export function parseChromiumVersion(output) {
   const match = String(output).match(/\b(\d+\.\d+\.\d+\.\d+)\b/);
@@ -56,6 +176,8 @@ export function createSummary({
   baseUrl,
   measurementStack,
   baselineMeasurementStack,
+  runConditionsReports = {},
+  baselineRunConditions = HISTORICAL_REFERENCE_RUN_CONDITIONS,
 }) {
   const versionFields = ["lighthouseVersion", "chromiumVersion"];
   const baselineKnown = versionFields.every((field) => Boolean(baselineMeasurementStack?.[field]));
@@ -65,7 +187,7 @@ export function createSummary({
   const reviewRequired = changedComponents.length > 0;
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     capturedAt: date,
     tool: `Lighthouse ${measurementStack.lighthouseVersion}`,
     measurementStack,
@@ -78,6 +200,14 @@ export function createSummary({
         ? "Owner review is required before interpreting or changing the BrandGuard lab budget."
         : "No Lighthouse or Chromium version change from the historical reference measurement stack.",
     },
+    runConditions: {
+      condition: controlled ? "controlled" : "normal",
+      reports: runConditionsReports,
+    },
+    runConditionsReview: createRunConditionsReview(runConditionsReports, {
+      controlled,
+      baselineRunConditions,
+    }),
     environment: controlled
       ? "Local or supplied static server, controlled mobile preset"
       : `Local or supplied static server, ${preset} preset`,
@@ -270,13 +400,6 @@ function main() {
   }
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
   const lighthouseBin = resolve(root, "node_modules/.bin/lighthouse");
-  const controlledBlockedUrlPatterns = [
-    "https://fonts.googleapis.com/*",
-    "https://fonts.gstatic.com/*",
-    "https://www.googletagmanager.com/*",
-    "https://www.google-analytics.com/*",
-    "https://*.google-analytics.com/*",
-  ];
   const chromePath = process.env.CHROME_PATH || (() => {
     try {
       return execFileSync(process.execPath, ["-e", "process.stdout.write(require('playwright').chromium.executablePath())"], {
@@ -317,6 +440,7 @@ function main() {
   let chromiumUserAgent = null;
   const baselineMeasurementStack = HISTORICAL_REFERENCE_MEASUREMENT_STACK;
   const pages = {};
+  const runConditionsReports = {};
 
   for (const [name, path] of Object.entries(routes)) {
     const reportPath = resolve(outputDir, `${name}.json`);
@@ -328,7 +452,7 @@ function main() {
       `--output-path=${reportPath}`,
       ...(preset === "desktop" ? ["--preset=desktop"] : ["--form-factor=mobile"]),
       ...(controlled
-        ? controlledBlockedUrlPatterns.map((pattern) => `--blocked-url-patterns=${pattern}`)
+        ? CONTROLLED_BLOCKED_URL_PATTERNS.map((pattern) => `--blocked-url-patterns=${pattern}`)
         : []),
       "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
       "--quiet",
@@ -357,6 +481,7 @@ function main() {
     }
     lighthouseVersion = report.lighthouseVersion;
     chromiumUserAgent = browserMatch[0];
+    runConditionsReports[`${name}.json`] = summarizeRunConditions(report);
     pages[name] = summarizePage({
       report,
       path,
@@ -379,7 +504,7 @@ function main() {
       `--output-path=${reportPath}`,
       "--form-factor=mobile",
       ...(controlled
-        ? controlledBlockedUrlPatterns.map((pattern) => `--blocked-url-patterns=${pattern}`)
+        ? CONTROLLED_BLOCKED_URL_PATTERNS.map((pattern) => `--blocked-url-patterns=${pattern}`)
         : []),
       "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
       "--quiet",
@@ -406,6 +531,7 @@ function main() {
       throw new Error(`Chromium user agent changed during the route run (${chromiumUserAgent} to ${browserMatch[0]}).`);
     }
 
+    runConditionsReports[reportName] = summarizeRunConditions(report);
     repeatedBrandGuardSamples.push({
       report: reportName,
       page: summarizePage({
@@ -428,6 +554,7 @@ function main() {
     baseUrl,
     measurementStack,
     baselineMeasurementStack,
+    runConditionsReports,
   });
   summary.pages = pages;
   if (brandguardSamples > 1) {
@@ -449,6 +576,12 @@ function main() {
       `BRANDGUARD BUDGET REVIEW REQUIRED: ${summary.measurementStackReview.changedComponents.join(", ")} changed from the historical reference measurement stack.`,
     );
     console.warn(summary.measurementStackReview.action);
+  }
+  if (summary.runConditionsReview.status === "required") {
+    console.warn(
+      `BRANDGUARD RUN-CONDITION REVIEW REQUIRED: ${summary.runConditionsReview.changedComponents.join(", ")} changed from the historical reference.`,
+    );
+    console.warn(summary.runConditionsReview.action);
   }
   console.table(Object.fromEntries(Object.entries(summary.pages).map(([name, page]) => [
     name,
