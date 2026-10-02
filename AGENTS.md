@@ -236,11 +236,16 @@ changes:
 python3 scripts/validate-site.py
 python3 scripts/check-links.py
 python3 -m pytest
+node --test tests/test_capture_visual_baseline.mjs
 python3 scripts/cache-bust.py --check
 python3 scripts/build-search-index.py --check
 node scripts/responsive-qa.mjs --static
 python3 scripts/audit-site.py --quiet
 ```
+
+The Node visual-capture regression checks safe capture destinations, readiness,
+and the small responsive header-avatar sources across tracked public pages.
+Site Validation runs this command as a required check.
 
 `validate-site.py` is the structural validator. `check-links.py` writes a
 dated JSON report under `assets/audit/`. `responsive-qa.mjs --static` checks
