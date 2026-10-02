@@ -688,7 +688,9 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
 
     events = []
     state = {"active": 0, "max_active": 0, "page_active": 0, "page_max_active": 0}
-    page_paths = {"/lazy/", "/clean/", "/abort/", "/console-404/", "/timeout/"}
+    page_paths = {
+        "/lazy/", "/lazy-unobserved/", "/clean/", "/abort/", "/console-404/", "/timeout/"
+    }
     lock = threading.Lock()
     png_header = b"\x89PNG\r\n\x1a\n"
 
@@ -714,6 +716,16 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
                 self._record("start", path)
                 body = {
                     "/lazy/": '<div style="height: 1200px"></div><img src="/slow-lazy.png" loading="lazy" width="10" height="10">',
+                    "/lazy-unobserved/": (
+                        '<div style="height:100000px"></div>'
+                        '<img id="unobserved-lazy" src="/unobserved-lazy.png" '
+                        'loading="lazy" width="10" height="10">'
+                        '<script>window.addEventListener("scroll", () => { '
+                        'const image = document.getElementById("unobserved-lazy"); '
+                        'if (image?.getAttribute("src") === "/unobserved-lazy.png") '
+                        'image.src = "data:image/png;base64,iVBORw0KGgo="; '
+                        '}, { once: true });</script>'
+                    ),
                     "/clean/": "",
                     "/abort/": '<img src="/aborted.png" width="10" height="10">',
                     "/console-404/": '<script>console.error("fixture console failure")</script><img src="/missing.png" width="10" height="10">',
@@ -790,7 +802,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     sitemap = (
         '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
         + "".join(f"<url><loc>https://askjamie.bot{path}</loc></url>" for path in (
-            "/lazy/", "/clean/", "/abort/", "/console-404/", "/timeout/"
+            "/lazy/", "/lazy-unobserved/", "/clean/", "/abort/", "/console-404/", "/timeout/"
         ))
         + "</urlset>"
     )
@@ -806,7 +818,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
             cwd=fixture_root,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=60,
             env={**os.environ, "NODE_PATH": node_modules},
         )
     finally:
@@ -820,12 +832,26 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
         )
     )
     rows = {path: [row for row in report["results"] if path in row["url"]] for path in (
-        "/lazy/", "/clean/", "/abort/", "/console-404/", "/timeout/"
+        "/lazy/", "/lazy-unobserved/", "/clean/", "/abort/", "/console-404/", "/timeout/"
     )}
 
     assert result.returncode == 1
-    assert report["total_checks"] == 40
+    assert report["total_checks"] == 48
     assert all(row["pass"] for row in rows["/lazy/"])
+    assert all(not row["warnings"] for row in rows["/lazy/"])
+    assert all(row["pass"] for row in rows["/lazy-unobserved/"])
+    assert all(
+        any(
+            "lazy image request not observed" in warning
+            and row["url"] in warning
+            and "unobserved-lazy.png" in warning
+            for warning in row["warnings"]
+        )
+        for row in rows["/lazy-unobserved/"]
+    )
+    assert not any(
+        event[1] == "/unobserved-lazy.png" for event in events
+    )
     assert all(row["pass"] for row in rows["/clean/"])
     assert all(any("REQUEST FAILED" in error or "BROKEN IMG" in error for error in row["errors"])
                for row in rows["/abort/"])
