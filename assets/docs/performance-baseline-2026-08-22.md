@@ -16,22 +16,24 @@ summary is `assets/audit/lighthouse-baseline-2026-08-22.json`.
 
 ## Measurement-stack review gate
 
-The approved historical comparison stack is Lighthouse **12.8.2** with
-Playwright-managed Chromium **148.0.7778.96**. The route runner records the
+The historical reference uses Lighthouse **12.8.2** and Chromium major version
+**148**. The exact Chromium build **148.0.7778.96** is inferred from Playwright
+1.60.0 browser metadata; the historical Lighthouse reports establish major
+148 through the `HeadlessChrome/148.0.0.0` user agent, not that exact patch
+build. Treat the full build number as a historical reference, not an
+independently owner-approved exact stack. The route runner records the
 effective Lighthouse version from each raw report and the exact version of the
 Chromium binary it launches in each dated `summary.json`, alongside the
-browser user agent reported by Lighthouse. The exact Chromium build is from
-the Playwright 1.60.0 browser metadata; the historical Lighthouse report
-records its corresponding `HeadlessChrome/148.0.0.0` user agent. The approved
-comparison values are kept with the runner so the review gate does not depend
-on ignored, regenerable files under `assets/audit/`.
+browser user agent reported by Lighthouse. These reference values are kept
+with the runner so the review gate does not depend on ignored, regenerable
+files under `assets/audit/`.
 
 Every dated summary compares those versions with the historical stack. If
 either version changes, the summary marks `measurementStackReview.status` as
 `required`, names the changed component, and directs the owner to review
 BrandGuard budget comparability before interpreting results or changing the
 approved budget. A tool upgrade alone does not approve a budget change. Keep
-the historical baseline intact unless an owner approves a new comparison
+the historical reference intact unless an owner approves a new comparison
 baseline.
 
 ## Lighthouse summary
@@ -424,6 +426,34 @@ budget despite higher blocking work. The current runner therefore still
 supports the approved budget; owner review is not required again at this time.
 The budget remains a controlled Lighthouse lab allowance, not a real-user
 performance target.
+
+## Repeat-sample protocol for the BrandGuard lab budget
+
+Starting with future budget reviews, one controlled/normal pair is not enough
+to request a budget change. Capture at least **three complete BrandGuard samples
+per condition** on the same code, route, host, Lighthouse/Chromium stack, and
+mobile preset. Use a fresh date that does not already have audit evidence:
+
+```bash
+node scripts/lighthouse-routes.mjs --preset=mobile --brandguard-samples=3 --date=YYYY-MM-DD
+node scripts/lighthouse-routes.mjs --preset=mobile --controlled --brandguard-samples=3 --date=YYYY-MM-DD
+```
+
+The normal and controlled commands write to separate dated directories. Each
+summary records its condition, the individual sample values and raw report
+filenames, and the min, max, and spread for FCP, Speed Index, LCP, and TBT.
+LCP invalidation is reported as true, false, and unavailable counts. Missing
+measurements do not count as complete samples; rerun those samples before
+requesting owner review. The controlled LCP is the evidence for the approved
+3.5 second controlled-lab allowance. Normal results provide separate context
+and must not be pooled with or substituted for controlled results.
+
+Three samples per condition is the minimum evidence for an owner review, not
+automatic approval to change the budget. If the controlled LCP range crosses
+3.5 seconds, collect another three complete samples per condition before
+submitting a proposed change. Any approved change still requires owner review,
+and a changed measurement stack remains subject to the measurement-stack review
+gate above. These results remain lab measurements, not field performance.
 
 ## Visual reference set
 

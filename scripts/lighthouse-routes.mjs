@@ -9,6 +9,7 @@
  *   node scripts/lighthouse-routes.mjs
  *   node scripts/lighthouse-routes.mjs --preset=mobile
  *   node scripts/lighthouse-routes.mjs --preset=mobile --controlled
+ *   node scripts/lighthouse-routes.mjs --preset=mobile --controlled --brandguard-samples=3
  *   node scripts/lighthouse-routes.mjs --base-url=https://askjamie.bot
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -24,10 +25,13 @@ export const routes = Object.freeze({
 });
 export const LIGHTHOUSE_ROUTES = routes;
 
-// The approved historical measurement stack is intentionally independent of
-// the ignored, regenerable files under assets/audit/.
-export const APPROVED_MEASUREMENT_STACK = Object.freeze({
+// This is a historical reference stack, independent of the ignored, regenerable
+// files under assets/audit/. Historical reports establish Chromium major 148;
+// the exact patch build below is inferred from Playwright 1.60.0 metadata, not
+// independently confirmed or owner-approved.
+export const HISTORICAL_REFERENCE_MEASUREMENT_STACK = Object.freeze({
   lighthouseVersion: "12.8.2",
+  // Inferred from Playwright metadata; historical reports establish major 148.
   chromiumVersion: "148.0.7778.96",
   chromiumUserAgent: "HeadlessChrome/148.0.0.0",
 });
@@ -62,11 +66,12 @@ export function createSummary({
     measurementStack,
     measurementStackReview: {
       baseline: baselineMeasurementStack ?? null,
+      referenceNote: "Historical reference only. The exact Chromium 148.0.7778.96 build is inferred from Playwright metadata; historical reports establish major version 148, not an independently owner-approved exact build.",
       status: reviewRequired ? "required" : "not-required",
       changedComponents,
       action: reviewRequired
         ? "Owner review is required before interpreting or changing the BrandGuard lab budget."
-        : "No Lighthouse or Chromium version change from the approved baseline.",
+        : "No Lighthouse or Chromium version change from the historical reference measurement stack.",
     },
     environment: controlled
       ? "Local or supplied static server, controlled mobile preset"
@@ -147,6 +152,56 @@ export function summarizePage({ report, path, baselinePage = {} }) {
   };
 }
 
+export function summarizeBrandGuardSamples(samples, { controlled }) {
+  if (!Array.isArray(samples) || samples.length === 0) {
+    throw new Error("At least one BrandGuard sample is required.");
+  }
+
+  const metricRange = (field) => {
+    const values = samples
+      .map(({ page }) => page[field])
+      .filter((value) => typeof value === "number" && Number.isFinite(value));
+    const min = values.length ? Math.min(...values) : null;
+    const max = values.length ? Math.max(...values) : null;
+    return {
+      availableCount: values.length,
+      unavailableCount: samples.length - values.length,
+      min,
+      max,
+      spread: min === null ? null : max - min,
+    };
+  };
+  const invalidationValues = samples.map(({ page }) => page.lcpInvalidated);
+
+  return {
+    condition: controlled ? "controlled" : "normal",
+    controls: controlled
+      ? { thirdPartyFonts: "blocked", analytics: "blocked" }
+      : { thirdPartyFonts: "in flight", analytics: "in flight" },
+    sampleCount: samples.length,
+    metrics: {
+      fcpMs: metricRange("fcpMs"),
+      speedIndexMs: metricRange("speedIndexMs"),
+      lcpMs: metricRange("lcpMs"),
+      tbtMs: metricRange("tbtMs"),
+      lcpInvalidated: {
+        trueCount: invalidationValues.filter((value) => value === true).length,
+        falseCount: invalidationValues.filter((value) => value === false).length,
+        unavailableCount: invalidationValues.filter((value) => typeof value !== "boolean").length,
+      },
+    },
+    samples: samples.map(({ report, page }, index) => ({
+      sample: index + 1,
+      report,
+      fcpMs: page.fcpMs,
+      speedIndexMs: page.speedIndexMs,
+      lcpMs: page.lcpMs,
+      tbtMs: page.tbtMs,
+      lcpInvalidated: page.lcpInvalidated,
+    })),
+  };
+}
+
 function main() {
   const root = resolve(import.meta.dirname, "..");
   const baselinePath = resolve(root, "assets/audit/lighthouse-baseline-2026-08-22.json");
@@ -162,6 +217,18 @@ function main() {
   const dateArg = process.argv.find((arg) => arg.startsWith("--date="));
   const date = dateArg ? dateArg.slice("--date=".length) : new Date().toISOString().slice(0, 10);
   const controlled = process.argv.includes("--controlled");
+  const brandguardSamplesArg = process.argv.find((arg) => arg.startsWith("--brandguard-samples="));
+  const brandguardSamples = brandguardSamplesArg
+    ? Number(brandguardSamplesArg.slice("--brandguard-samples=".length))
+    : 1;
+  if (!Number.isInteger(brandguardSamples) || brandguardSamples < 1 || brandguardSamples > 10) {
+    console.error("BrandGuard sample count must be a whole number from 1 to 10.");
+    process.exit(1);
+  }
+  if (brandguardSamples > 1 && preset !== "mobile") {
+    console.error("Repeated BrandGuard samples are only supported with --preset=mobile.");
+    process.exit(1);
+  }
   if (controlled && preset !== "mobile") {
     console.error("The controlled third-party isolation mode is only supported with --preset=mobile.");
     process.exit(1);
@@ -204,7 +271,7 @@ function main() {
   mkdirSync(outputDir, { recursive: true });
   let lighthouseVersion = null;
   let chromiumUserAgent = null;
-  const baselineMeasurementStack = APPROVED_MEASUREMENT_STACK;
+  const baselineMeasurementStack = HISTORICAL_REFERENCE_MEASUREMENT_STACK;
   const pages = {};
 
   for (const [name, path] of Object.entries(routes)) {
@@ -253,6 +320,58 @@ function main() {
     });
   }
 
+  const repeatedBrandGuardSamples = [{
+    report: "brandguard.json",
+    page: pages.brandguard,
+  }];
+  for (let sampleIndex = 2; sampleIndex <= brandguardSamples; sampleIndex += 1) {
+    const reportName = `brandguard-sample-${String(sampleIndex).padStart(2, "0")}.json`;
+    const reportPath = resolve(outputDir, reportName);
+    const url = `${baseUrl}${routes.brandguard}`;
+    console.log(`Running brandguard sample ${sampleIndex}/${brandguardSamples}: ${url}`);
+    execFileSync(lighthouseBin, [
+      url,
+      "--output=json",
+      `--output-path=${reportPath}`,
+      "--form-factor=mobile",
+      ...(controlled
+        ? controlledBlockedUrlPatterns.map((pattern) => `--blocked-url-patterns=${pattern}`)
+        : []),
+      "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
+      "--quiet",
+    ], { cwd: root, stdio: "inherit", env: { ...process.env, CHROME_PATH: chromePath } });
+
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+    if (typeof report.lighthouseVersion !== "string" || !report.lighthouseVersion) {
+      throw new Error(`Lighthouse report for BrandGuard sample ${sampleIndex} does not identify its Lighthouse version.`);
+    }
+    const reportBrowser = report.environment?.hostUserAgent || report.userAgent || "";
+    const browserMatch = reportBrowser.match(/(?:HeadlessChrome|Chrome)\/([\d.]+)/);
+    if (!browserMatch) {
+      throw new Error(`Lighthouse report for BrandGuard sample ${sampleIndex} does not identify its Chromium version.`);
+    }
+    if (browserMatch[1].split(".")[0] !== chromiumVersion.split(".")[0]) {
+      throw new Error(
+        `Lighthouse used Chromium ${browserMatch[1]}, but the selected binary reports ${chromiumVersion}.`,
+      );
+    }
+    if (lighthouseVersion !== report.lighthouseVersion) {
+      throw new Error(`Lighthouse version changed during the route run (${lighthouseVersion} to ${report.lighthouseVersion}).`);
+    }
+    if (chromiumUserAgent !== browserMatch[0]) {
+      throw new Error(`Chromium user agent changed during the route run (${chromiumUserAgent} to ${browserMatch[0]}).`);
+    }
+
+    repeatedBrandGuardSamples.push({
+      report: reportName,
+      page: summarizePage({
+        report,
+        path: routes.brandguard,
+        baselinePage: baseline.pages.brandguard || {},
+      }),
+    });
+  }
+
   const measurementStack = {
     lighthouseVersion,
     chromiumVersion,
@@ -267,14 +386,23 @@ function main() {
     baselineMeasurementStack,
   });
   summary.pages = pages;
+  if (brandguardSamples > 1) {
+    summary.brandguardRepeatSamples = summarizeBrandGuardSamples(repeatedBrandGuardSamples, { controlled });
+  }
 
   const summaryPath = resolve(outputDir, "summary.json");
   writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
   console.log(`\nWrote ${summaryPath}`);
   console.log(`Measurement stack: Lighthouse ${lighthouseVersion}; Chromium ${chromiumVersion}`);
+  if (summary.brandguardRepeatSamples) {
+    const { condition, sampleCount, metrics } = summary.brandguardRepeatSamples;
+    console.log(
+      `BrandGuard ${condition} samples: ${sampleCount}; LCP ${metrics.lcpMs.min}–${metrics.lcpMs.max} ms`,
+    );
+  }
   if (summary.measurementStackReview.status === "required") {
     console.warn(
-      `BRANDGUARD BUDGET REVIEW REQUIRED: ${summary.measurementStackReview.changedComponents.join(", ")} changed from the approved measurement baseline.`,
+      `BRANDGUARD BUDGET REVIEW REQUIRED: ${summary.measurementStackReview.changedComponents.join(", ")} changed from the historical reference measurement stack.`,
     );
     console.warn(summary.measurementStackReview.action);
   }

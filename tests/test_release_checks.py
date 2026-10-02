@@ -527,7 +527,7 @@ def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without
     runner.write_text(
         """
 import { readFileSync } from "node:fs";
-import { APPROVED_MEASUREMENT_STACK, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage } from "./scripts/lighthouse-routes.mjs";
+import { HISTORICAL_REFERENCE_MEASUREMENT_STACK, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
 const baseline = { pages: {
@@ -535,7 +535,7 @@ const baseline = { pages: {
   brandguard: { performance: 88, lcpMs: 2000 },
   universe: { performance: 90, lcpMs: 2500 },
   search: { performance: 91, lcpMs: 3000 }
-}, measurementStack: APPROVED_MEASUREMENT_STACK };
+}, measurementStack: HISTORICAL_REFERENCE_MEASUREMENT_STACK };
 const emit = (controlled, measurementStack) => {
   const summary = createSummary({
     date: "2099-01-02",
@@ -566,6 +566,10 @@ process.stdout.write(JSON.stringify({
     ...baseline.measurementStack,
     chromiumVersion: "153.0.8010.12",
     chromiumUserAgent: "HeadlessChrome/153.0.0.0"
+  }),
+  chromiumPatchChange: emit(false, {
+    ...baseline.measurementStack,
+    chromiumVersion: "148.0.7778.97"
   }),
   controlled: emit(true, {
     lighthouseVersion: "13.5.0",
@@ -605,9 +609,14 @@ process.stdout.write(JSON.stringify({
             "chromiumVersion": "148.0.7778.96",
             "chromiumUserAgent": "HeadlessChrome/148.0.0.0",
         },
+        "referenceNote": (
+            "Historical reference only. The exact Chromium 148.0.7778.96 build is inferred from "
+            "Playwright metadata; historical reports establish major version 148, not an independently "
+            "owner-approved exact build."
+        ),
         "status": "not-required",
         "changedComponents": [],
-        "action": "No Lighthouse or Chromium version change from the approved baseline.",
+        "action": "No Lighthouse or Chromium version change from the historical reference measurement stack.",
     }
     assert normal["environment"] == "Local or supplied static server, mobile preset"
     assert normal["controls"] == {
@@ -624,6 +633,11 @@ process.stdout.write(JSON.stringify({
     chromium_upgrade = emitted["chromiumUpgrade"]
     assert chromium_upgrade["measurementStackReview"]["status"] == "required"
     assert chromium_upgrade["measurementStackReview"]["changedComponents"] == [
+        "chromiumVersion",
+    ]
+    chromium_patch_change = emitted["chromiumPatchChange"]
+    assert chromium_patch_change["measurementStackReview"]["status"] == "required"
+    assert chromium_patch_change["measurementStackReview"]["changedComponents"] == [
         "chromiumVersion",
     ]
 
@@ -716,6 +730,186 @@ process.stdout.write(JSON.stringify(summary));
             "source": "audits.largest-contentful-paint-element.details.items[0].items[0].node.selector",
         },
     ]
+
+
+def test_lighthouse_brandguard_repeat_summary_keeps_conditions_and_missing_values_separate(tmp_path):
+    runner = tmp_path / "repeat-summary-fixture.mjs"
+    runner.write_text(
+        """
+import { summarizeBrandGuardSamples } from "./scripts/lighthouse-routes.mjs";
+
+const pages = [
+  { fcpMs: 100, speedIndexMs: 500, lcpMs: 3500, tbtMs: 20, lcpInvalidated: false },
+  { fcpMs: 140, speedIndexMs: 700, lcpMs: 3700, tbtMs: 40, lcpInvalidated: true },
+  { fcpMs: null, speedIndexMs: 650, lcpMs: 3600, tbtMs: null, lcpInvalidated: null }
+];
+const samples = pages.map((page, index) => ({
+  report: index === 0 ? "brandguard.json" : `brandguard-sample-0${index + 1}.json`,
+  page
+}));
+process.stdout.write(JSON.stringify({
+  controlled: summarizeBrandGuardSamples(samples, { controlled: true }),
+  normal: summarizeBrandGuardSamples(samples, { controlled: false })
+}));
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", runner.read_text(encoding="utf-8")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    emitted = json.loads(result.stdout)
+
+    controlled = emitted["controlled"]
+    assert controlled["condition"] == "controlled"
+    assert controlled["controls"] == {"thirdPartyFonts": "blocked", "analytics": "blocked"}
+    assert controlled["sampleCount"] == 3
+    assert controlled["metrics"]["fcpMs"] == {
+        "availableCount": 2,
+        "unavailableCount": 1,
+        "min": 100,
+        "max": 140,
+        "spread": 40,
+    }
+    assert controlled["metrics"]["speedIndexMs"]["spread"] == 200
+    assert controlled["metrics"]["lcpMs"]["min"] == 3500
+    assert controlled["metrics"]["lcpMs"]["max"] == 3700
+    assert controlled["metrics"]["tbtMs"]["unavailableCount"] == 1
+    assert controlled["metrics"]["lcpInvalidated"] == {
+        "trueCount": 1,
+        "falseCount": 1,
+        "unavailableCount": 1,
+    }
+    assert controlled["samples"][1]["report"] == "brandguard-sample-02.json"
+
+    normal = emitted["normal"]
+    assert normal["condition"] == "normal"
+    assert normal["controls"] == {"thirdPartyFonts": "in flight", "analytics": "in flight"}
+    assert normal["metrics"] == controlled["metrics"]
+
+
+def test_lighthouse_route_runner_captures_repeat_brandguard_samples_by_condition(tmp_path):
+    node_bin = shutil.which("node")
+    if not node_bin:
+        pytest.skip("Node.js is unavailable")
+
+    root = tmp_path
+    (root / "scripts").mkdir()
+    shutil.copy2(ROOT / "scripts/lighthouse-routes.mjs", root / "scripts/lighthouse-routes.mjs")
+    audit_dir = root / "assets/audit"
+    audit_dir.mkdir(parents=True)
+    baseline_pages = {name: {} for name in ("homepage", "brandguard", "universe", "search")}
+    (audit_dir / "lighthouse-baseline-2026-08-22.json").write_text(
+        json.dumps({"pages": baseline_pages}),
+        encoding="utf-8",
+    )
+
+    lighthouse_dir = root / "node_modules/.bin"
+    lighthouse_dir.mkdir(parents=True)
+    fake_lighthouse = lighthouse_dir / "lighthouse"
+    fake_lighthouse.write_text(
+        """#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+const reportPath = args.find((arg) => arg.startsWith("--output-path=")).slice("--output-path=".length);
+const reportName = path.basename(reportPath);
+const sampleIndex = reportName === "brandguard.json"
+  ? 1
+  : Number(reportName.match(/sample-(\\d+)/)?.[1] || 0);
+const isBrandGuard = args[0].includes("/lens-system/okhp3-brandguard/");
+const sampleOffset = isBrandGuard ? sampleIndex : 0;
+const report = {
+  lighthouseVersion: "12.8.2",
+  environment: { hostUserAgent: "HeadlessChrome/148.0.0.0" },
+  categories: {
+    performance: { score: 0.9 },
+    accessibility: { score: 1 },
+    "best-practices": { score: 1 },
+    seo: { score: 1 }
+  },
+  audits: {
+    "largest-contentful-paint": { numericValue: 3400 + sampleOffset * 100 },
+    "cumulative-layout-shift": { numericValue: 0.01 },
+    "total-blocking-time": { numericValue: 10 + sampleOffset * 10 },
+    "first-contentful-paint": { numericValue: 100 + sampleOffset * 20 },
+    "speed-index": { numericValue: 500 + sampleOffset * 100 },
+    "largest-contentful-paint-element": {
+      details: { items: [{ items: [{ node: { selector: "#hero-title" } }] }] }
+    },
+    metrics: { details: { items: [{ lcpInvalidated: sampleOffset === 2 }] } }
+  }
+};
+fs.writeFileSync(reportPath, JSON.stringify(report));
+""",
+        encoding="utf-8",
+    )
+    fake_lighthouse.chmod(0o755)
+
+    fake_chrome = root / "fake-chrome"
+    fake_chrome.write_text("#!/bin/sh\necho 'Chromium 148.0.7778.96'\n", encoding="utf-8")
+    fake_chrome.chmod(0o755)
+
+    script = root / "scripts/lighthouse-routes.mjs"
+    common_args = [
+        node_bin,
+        str(script),
+        "--preset=mobile",
+        "--brandguard-samples=3",
+        "--date=2099-02-03",
+        "--base-url=https://fixture.invalid",
+    ]
+    environment = {**os.environ, "CHROME_PATH": str(fake_chrome)}
+    normal_run = subprocess.run(
+        common_args,
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert normal_run.returncode == 0, normal_run.stderr
+    controlled_run = subprocess.run(
+        [*common_args, "--controlled"],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert controlled_run.returncode == 0, controlled_run.stderr
+
+    normal_dir = audit_dir / "lighthouse-2099-02-03-mobile"
+    controlled_dir = audit_dir / "lighthouse-2099-02-03-mobile-controlled"
+    normal = json.loads((normal_dir / "summary.json").read_text(encoding="utf-8"))
+    controlled = json.loads((controlled_dir / "summary.json").read_text(encoding="utf-8"))
+    for output_dir, summary, condition in (
+        (normal_dir, normal, "normal"),
+        (controlled_dir, controlled, "controlled"),
+    ):
+        repeat = summary["brandguardRepeatSamples"]
+        assert repeat["condition"] == condition
+        assert repeat["sampleCount"] == 3
+        assert repeat["metrics"]["lcpMs"] == {
+            "availableCount": 3,
+            "unavailableCount": 0,
+            "min": 3500,
+            "max": 3700,
+            "spread": 200,
+        }
+        assert [sample["report"] for sample in repeat["samples"]] == [
+            "brandguard.json",
+            "brandguard-sample-02.json",
+            "brandguard-sample-03.json",
+        ]
+        assert all((output_dir / report).is_file() for report in (
+            "brandguard.json",
+            "brandguard-sample-02.json",
+            "brandguard-sample-03.json",
+        ))
 
 
 def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp_path):
