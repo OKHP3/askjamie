@@ -89,3 +89,17 @@ def test_responsive_qa_measures_brandguard_mobile_theme_geometry():
     assert "before=${JSON.stringify(beforeRect)}" in source
     assert "after=${JSON.stringify(afterRect)}" in source
     assert "hero_theme_geometry" in source
+
+
+def test_responsive_qa_measures_brandguard_geometry_after_branded_fonts_load():
+    source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
+
+    assert "BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS = 15000" in source
+    assert "fonts.googleapis.com', 'fonts.gstatic.com" in source
+    assert "requestType === 'font'" in source
+    assert "brandGuardFontGate.then(() => route.continue())" in source
+    assert "BRANDGUARD WEB FONT GEOMETRY SHIFT" in source
+    assert "before=${JSON.stringify(beforeRect)}" in source
+    assert "after=${JSON.stringify(afterRect)}" in source
+    assert "font_asset_loaded=${hasFontAsset}" in source
+    assert "hero_font_geometry" in source

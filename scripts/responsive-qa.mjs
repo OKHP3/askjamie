@@ -9,6 +9,7 @@
  *   - All images loaded (no broken img src)
  *   - CSS and JS assets load (no 404 on critical resources)
  *   - BrandGuard hero geometry stays stable when its deferred theme activates
+ *   - BrandGuard hero geometry stays stable after its branded web fonts load
  *   - Universe diagram shell stays stable while its rendered SVG initializes
  *
  * MODE B — Static lint (`--static` only):
@@ -82,12 +83,15 @@ const SCREENSHOTS_DIR = resolve(RESULTS_DIR, 'screenshots');
 const BRANDGUARD_GEOMETRY_PATH = '/lens-system/okhp3-brandguard/';
 const BRANDGUARD_GEOMETRY_VIEWPORT = 'mobile-390';
 const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
+const BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS = 15000;
 const BRANDGUARD_GEOMETRY_SELECTORS = [
   '.askjamie-brandguard-page .askjamie-breadcrumb',
   '.askjamie-brandguard-page .askjamie-hero-copy h1',
   '.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle',
   '.askjamie-brandguard-page .askjamie-hero-copy .hero-tagline',
 ];
+const BRANDGUARD_FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
+const BRANDGUARD_FONT_FAMILIES = ['Kalam', 'Baloo 2', 'Kalam', 'Open Sans'];
 const BRANDGUARD_LOGO_SELECTOR =
   '.askjamie-brandguard-page .askjamie-logo--crumb img';
 const UNIVERSE_DIAGRAM_GEOMETRY_PATH = '/universe/';
@@ -230,6 +234,172 @@ async function checkBrandGuardHeroGeometry(page) {
       },
       before: before.geometry,
       after: after.geometry,
+      shifts,
+    },
+  };
+}
+
+async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontResponses) {
+  const errors = [];
+  const capture = () => page.evaluate((selectors) => {
+    const geometry = {};
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) {
+        geometry[selector] = null;
+        continue;
+      }
+      const rect = element.getBoundingClientRect();
+      const round = value => Math.round(value * 100) / 100;
+      geometry[selector] = Object.fromEntries(
+        ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left']
+          .map(property => [property, round(rect[property])])
+      );
+    }
+    return geometry;
+  }, BRANDGUARD_GEOMETRY_SELECTORS);
+
+  const before = await capture();
+  releaseFontRequests();
+
+  let fontLoading = null;
+  try {
+    await page.waitForFunction(() => {
+      const fontLink = document.querySelector('link[data-deferred-fonts]');
+      return fontLink?.media === 'all' && Boolean(fontLink.sheet);
+    }, undefined, { timeout: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS });
+    fontLoading = await page.evaluate(async ({ selectors, expectedFamilies, timeoutMs }) => {
+      const fontLink = document.querySelector('link[data-deferred-fonts]');
+      if (fontLink?.media !== 'all' || !fontLink.sheet) {
+        throw new Error(
+          `link[data-deferred-fonts] was not active (media=${JSON.stringify(fontLink?.media ?? null)})`
+        );
+      }
+
+      const loadFonts = Promise.all(selectors.map(async (selector, index) => {
+        const element = document.querySelector(selector);
+        if (!element) {
+          return {
+            selector,
+            expected_family: expectedFamilies[index],
+            loaded: false,
+            reason: 'element missing',
+          };
+        }
+
+        const style = getComputedStyle(element);
+        const expectedFamily = expectedFamilies[index];
+        const declaredFamily = style.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, '');
+        const faces = await document.fonts.load(style.font, element.textContent || ' ');
+        const matchingFaces = faces.filter(face =>
+          face.family.replace(/^["']|["']$/g, '') === expectedFamily
+        );
+        return {
+          selector,
+          expected_family: expectedFamily,
+          declared_family: declaredFamily,
+          font: style.font,
+          face_statuses: matchingFaces.map(face => face.status),
+          loaded: declaredFamily === expectedFamily &&
+            matchingFaces.length > 0 &&
+            matchingFaces.every(face => face.status === 'loaded'),
+        };
+      }));
+
+      let timeoutId;
+      try {
+        const fonts = await Promise.race([
+          loadFonts,
+          new Promise((_, reject) => {
+            timeoutId = setTimeout(
+              () => reject(new Error(`font loading exceeded ${timeoutMs}ms`)),
+              timeoutMs
+            );
+          }),
+        ]);
+        await document.fonts.ready;
+        await new Promise(resolve => requestAnimationFrame(() =>
+          requestAnimationFrame(resolve)
+        ));
+        return {
+          status: document.fonts.status,
+          link_media: fontLink.media,
+          fonts,
+        };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }, {
+      selectors: BRANDGUARD_GEOMETRY_SELECTORS,
+      expectedFamilies: BRANDGUARD_FONT_FAMILIES,
+      timeoutMs: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+    });
+  } catch (error) {
+    errors.push(
+      `BRANDGUARD WEB FONTS NOT READY: ${error.message.split('\n')[0]}; ` +
+      `selectors=${JSON.stringify(BRANDGUARD_GEOMETRY_SELECTORS)}; ` +
+      `before=${JSON.stringify(before)}; after=not-measured`
+    );
+  }
+
+  const after = await capture();
+  const hasStylesheet = fontResponses.some(
+    response => response.resource_type === 'stylesheet' && response.status < 400
+  );
+  const hasFontAsset = fontResponses.some(
+    response => response.resource_type === 'font' && response.status < 400
+  );
+  const failedFontChecks = fontLoading?.fonts.filter(font => !font.loaded) ?? [];
+  if (!hasStylesheet || !hasFontAsset || failedFontChecks.length > 0) {
+    errors.push(
+      `BRANDGUARD WEB FONTS UNAVAILABLE: stylesheet_loaded=${hasStylesheet}; ` +
+      `font_asset_loaded=${hasFontAsset}; failed_faces=${JSON.stringify(failedFontChecks)}; ` +
+      `resources=${JSON.stringify(fontResponses)}; ` +
+      `before=${JSON.stringify(before)}; after=${JSON.stringify(after)}`
+    );
+  }
+
+  const shifts = [];
+  for (const selector of BRANDGUARD_GEOMETRY_SELECTORS) {
+    const beforeRect = before[selector];
+    const afterRect = after[selector];
+    if (!beforeRect || !afterRect) {
+      errors.push(
+        `BRANDGUARD WEB FONT GEOMETRY MISSING: ${selector}; ` +
+        `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+      );
+      continue;
+    }
+
+    const delta = Object.fromEntries(
+      ['x', 'y', 'width', 'height'].map(property => [
+        property,
+        Math.round((afterRect[property] - beforeRect[property]) * 100) / 100,
+      ])
+    );
+    const changedProperties = Object.keys(delta).filter(
+      property => Math.abs(delta[property]) > BRANDGUARD_GEOMETRY_TOLERANCE_PX
+    );
+    if (changedProperties.length > 0) {
+      shifts.push({ selector, before: beforeRect, after: afterRect, delta, changed_properties: changedProperties });
+      errors.push(
+        `BRANDGUARD WEB FONT GEOMETRY SHIFT: ${selector} changed ` +
+        `${changedProperties.map(property => `${property}=${delta[property]}px`).join(', ')} ` +
+        `with ${BRANDGUARD_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+        `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+      );
+    }
+  }
+
+  return {
+    errors,
+    evidence: {
+      threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+      timeout_ms: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+      before,
+      after,
+      font_loading: fontLoading,
+      font_resources: fontResponses,
       shifts,
     },
   };
@@ -489,9 +659,23 @@ async function runWithPlaywright() {
   async function runViewport(worker, path, url) {
     const { vp, ctx } = worker;
     const page = await ctx.newPage();
+    const checkBrandGuardFonts =
+      path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_GEOMETRY_VIEWPORT;
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
+    let releaseBrandGuardFontRequests = () => {};
+    let brandGuardFontGate = Promise.resolve();
+    if (checkBrandGuardFonts) {
+      let release;
+      brandGuardFontGate = new Promise(resolve => { release = resolve; });
+      let released = false;
+      releaseBrandGuardFontRequests = () => {
+        if (released) return;
+        released = true;
+        release();
+      };
+    }
     let releaseUniverseMermaid;
     let universeMermaidImportGate = Promise.resolve();
     let universeMermaidRequestSeen = Promise.resolve(false);
@@ -513,6 +697,7 @@ async function runWithPlaywright() {
     const consoleErrors = [];
     const requestFailures = [];
     const failedResponses = [];
+    const brandGuardFontResponses = [];
     const requestInfo = new WeakMap();
     const requestedUrls = new Set();
     const requestedAtByUrl = new Map();
@@ -551,6 +736,15 @@ async function runWithPlaywright() {
       });
     };
     const onResponse = resp => {
+      const responseUrl = new URL(resp.url());
+      if (checkBrandGuardFonts && BRANDGUARD_FONT_HOSTS.has(responseUrl.hostname)) {
+        brandGuardFontResponses.push({
+          host: responseUrl.hostname,
+          path: responseUrl.pathname,
+          resource_type: resp.request().resourceType(),
+          status: resp.status(),
+        });
+      }
       if (resp.status() < 400 || blockedExternal.has(resp.url())) return;
       const info = requestInfo.get(resp.request());
       failedResponses.push({
@@ -565,8 +759,22 @@ async function runWithPlaywright() {
     };
 
     await page.route('**/*', route => {
+      const requestUrl = new URL(route.request().url());
+      if (checkBrandGuardFonts && BRANDGUARD_FONT_HOSTS.has(requestUrl.hostname)) {
+        const requestType = route.request().resourceType();
+        if (requestUrl.hostname === 'fonts.googleapis.com' &&
+            requestUrl.pathname === '/css2' &&
+            requestType === 'stylesheet') {
+          return route.continue();
+        }
+        if (requestUrl.hostname === 'fonts.gstatic.com' && requestType === 'font') {
+          return brandGuardFontGate.then(() => route.continue());
+        }
+        blockedExternal.add(route.request().url());
+        return route.abort();
+      }
       if (checkUniverseDiagram &&
-          new URL(route.request().url()).pathname === '/assets/vendor/mermaid/mermaid.esm.min.mjs') {
+          requestUrl.pathname === '/assets/vendor/mermaid/mermaid.esm.min.mjs') {
         return universeMermaidImportGate.then(() => route.continue());
       }
       if (EXTERNAL_BLOCK.test(route.request().url())) {
@@ -604,6 +812,13 @@ async function runWithPlaywright() {
         path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_GEOMETRY_VIEWPORT
           ? await checkBrandGuardHeroGeometry(page)
           : null;
+      const heroFontGeometry = checkBrandGuardFonts
+        ? await checkBrandGuardWebFontGeometry(
+          page,
+          releaseBrandGuardFontRequests,
+          brandGuardFontResponses
+        )
+        : null;
       const universeDiagramGeometry = checkUniverseDiagram
         ? await checkUniverseDiagramGeometry(
           page,
@@ -679,6 +894,7 @@ async function runWithPlaywright() {
       );
       const errors = [
         ...(heroThemeGeometry?.errors ?? []),
+        ...(heroFontGeometry?.errors ?? []),
         ...(universeDiagramGeometry?.errors ?? []),
         ...(overflow ? [`OVERFLOW: scrollWidth > ${vp.width}px`] : []),
         ...consoleErrors.slice(0, 5).map(e => 'CONSOLE: ' + e),
@@ -699,6 +915,9 @@ async function runWithPlaywright() {
                     ...(heroThemeGeometry
                       ? { hero_theme_geometry: heroThemeGeometry.evidence }
                       : {}),
+                     ...(heroFontGeometry
+                      ? { hero_font_geometry: heroFontGeometry.evidence }
+                      : {}),
                     ...(universeDiagramGeometry
                       ? { universe_diagram_geometry: universeDiagramGeometry.evidence }
                       : {}) };
@@ -708,6 +927,7 @@ async function runWithPlaywright() {
       }
       return row;
     } finally {
+      releaseBrandGuardFontRequests();
       page.removeListener('console', onConsole);
       page.removeListener('request', onRequest);
       page.removeListener('requestfailed', onRequestFailed);
@@ -881,6 +1101,7 @@ async function staticAnalysis() {
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 8 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-390.',
+      'BrandGuard hero geometry after deferred web fonts load is checked only in Playwright mode at mobile-390.',
       'Universe diagram shell geometry through Mermaid rendering is checked only in Playwright mode at mobile-390 and desktop-1280.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
