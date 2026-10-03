@@ -131,6 +131,7 @@ const UNIVERSE_DIAGRAM_GEOMETRY_PATH = '/universe/';
 const UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set([
   'mobile-320',
   'mobile-390',
+  'tablet-768',
   'desktop-1280',
 ]);
 const UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX = 1;
@@ -2488,7 +2489,7 @@ async function staticAnalysis() {
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
       'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-360 and mobile-390 on the hub and representative short and long case-study pages.',
       'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
-      'Universe hero and opened page-map shell geometry through sequential Mermaid rendering is checked in dark mode only in Playwright mode at mobile-320, mobile-390, and desktop-1280.',
+      'Universe hero and opened page-map shell geometry through sequential Mermaid rendering is checked in dark mode only in Playwright mode at mobile-320, mobile-390, tablet-768, and desktop-1280.',
       'Every generated Universe page-map group is checked for page overflow, diagram scrolling, usable summaries, and working ordinary links at mobile-320 in Playwright mode.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
