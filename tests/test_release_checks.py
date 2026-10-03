@@ -622,6 +622,7 @@ def test_lighthouse_desktop_reference_is_independent_and_not_mislabelled_approve
     assert desktop_baseline["approval"]["approvedAt"] is None
     assert desktop_baseline["approval"]["approvedBy"] is None
     assert desktop_baseline["approval"]["approvalRecord"] is None
+    assert desktop_baseline["approval"]["integrityFingerprint"] is None
 
     runner = tmp_path / "desktop-reference-fixture.mjs"
     runner.write_text(
@@ -631,6 +632,7 @@ import {
   HISTORICAL_REFERENCE_MEASUREMENT_STACK,
   HISTORICAL_REFERENCE_RUN_CONDITIONS,
   createSummary,
+  getDesktopReferenceIntegrityFingerprint,
   getLighthouseReference,
   summarizePage,
   summarizeReferenceApproval,
@@ -644,6 +646,53 @@ const desktopBaseline = JSON.parse(readFileSync(
 const fixture = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
 const desktopReference = getLighthouseReference("desktop", desktopBaseline);
 const mobileReference = getLighthouseReference("mobile", desktopBaseline);
+const approvedBaseline = {
+  ...desktopBaseline,
+  approval: {
+    status: "owner-approved",
+    approvedAt: "2026-10-02",
+    approvedBy: "site owner",
+    approvalRecord: "docs/desktop-reference-approval.md",
+    integrityFingerprint: getDesktopReferenceIntegrityFingerprint(desktopBaseline)
+  }
+};
+const approvedReference = getLighthouseReference("desktop", approvedBaseline);
+const unchangedApproval = summarizeReferenceApproval(
+  approvedReference.approval,
+  approvedReference.integrityFingerprint
+);
+const staleVariants = {
+  measurement: {
+    ...approvedBaseline,
+    pages: {
+      ...approvedBaseline.pages,
+      brandguard: { ...approvedBaseline.pages.brandguard, performance: 98 }
+    }
+  },
+  conditions: {
+    ...approvedBaseline,
+    runConditions: {
+      ...approvedBaseline.runConditions,
+      screenEmulation: {
+        ...approvedBaseline.runConditions.screenEmulation,
+        width: approvedBaseline.runConditions.screenEmulation.width + 1
+      }
+    }
+  },
+  measurementStack: {
+    ...approvedBaseline,
+    measurementStack: {
+      ...approvedBaseline.measurementStack,
+      lighthouseVersion: "12.8.3"
+    }
+  }
+};
+const staleApprovals = Object.fromEntries(
+  Object.entries(staleVariants).map(([name, baseline]) => {
+    const reference = getLighthouseReference("desktop", baseline);
+    return [name, summarizeReferenceApproval(reference.approval, reference.integrityFingerprint)];
+  })
+);
 const desktopReports = Object.fromEntries(
   ["homepage", "brandguard", "universe", "search"].map(name => [
     `${name}.json`,
@@ -661,7 +710,8 @@ const desktopSummary = createSummary({
   baselineRunConditions: desktopReference.runConditions,
   baselinePath: desktopReference.path,
   measurementStackReferenceNote: desktopReference.measurementStackReferenceNote,
-  referenceApproval: desktopReference.approval
+  referenceApproval: desktopReference.approval,
+  referenceIntegrityFingerprint: desktopReference.integrityFingerprint
 });
 desktopSummary.pages.brandguard = summarizePage({
   report: fixture,
@@ -678,7 +728,8 @@ const upgradedStack = createSummary({
   runConditionsReports: desktopReports,
   baselineRunConditions: desktopReference.runConditions,
   baselinePath: desktopReference.path,
-  referenceApproval: desktopReference.approval
+  referenceApproval: desktopReference.approval,
+  referenceIntegrityFingerprint: desktopReference.integrityFingerprint
 });
 const chromiumUpgrade = createSummary({
   date: "2099-01-02",
@@ -690,7 +741,8 @@ const chromiumUpgrade = createSummary({
   runConditionsReports: desktopReports,
   baselineRunConditions: desktopReference.runConditions,
   baselinePath: desktopReference.path,
-  referenceApproval: desktopReference.approval
+  referenceApproval: desktopReference.approval,
+  referenceIntegrityFingerprint: desktopReference.integrityFingerprint
 });
 const changedConditions = createSummary({
   date: "2099-01-02",
@@ -702,7 +754,8 @@ const changedConditions = createSummary({
   runConditionsReports: { "homepage.json": summarizeRunConditions(fixture) },
   baselineRunConditions: desktopReference.runConditions,
   baselinePath: desktopReference.path,
-  referenceApproval: desktopReference.approval
+  referenceApproval: desktopReference.approval,
+  referenceIntegrityFingerprint: desktopReference.integrityFingerprint
 });
 const mobileSummary = createSummary({
   date: "2099-01-02",
@@ -725,8 +778,9 @@ const recordedApproval = summarizeReferenceApproval({
   status: "owner-approved",
   approvedAt: "2026-10-02",
   approvedBy: "site owner",
-  approvalRecord: "docs/desktop-reference-approval.md"
-});
+  approvalRecord: "docs/desktop-reference-approval.md",
+  integrityFingerprint: desktopReference.integrityFingerprint
+}, desktopReference.integrityFingerprint);
 let mobileConditionsRejected = "";
 try {
   getLighthouseReference("desktop", {
@@ -738,6 +792,8 @@ try {
 }
 process.stdout.write(JSON.stringify({
   desktopReference,
+  unchangedApproval,
+  staleApprovals,
   mobileReference,
   desktopSummary,
   upgradedStack,
@@ -776,8 +832,21 @@ process.stdout.write(JSON.stringify({
     assert desktop_summary["referenceApproval"] == {
         "status": "not-recorded",
         "ownerApproved": False,
+        "approvalIntegrityFingerprint": None,
+        "currentIntegrityFingerprint": emitted["desktopReference"]["integrityFingerprint"],
         "action": "No owner approval is recorded for this reference; treat desktop trend deltas as exploratory.",
     }
+    assert emitted["desktopReference"]["integrityFingerprint"].startswith("sha256:")
+    assert emitted["unchangedApproval"]["status"] == "owner-approved"
+    assert emitted["unchangedApproval"]["ownerApproved"] is True
+    assert emitted["unchangedApproval"]["approvalIntegrityFingerprint"] == (
+        emitted["unchangedApproval"]["currentIntegrityFingerprint"]
+    )
+    assert set(emitted["staleApprovals"]) == {"measurement", "conditions", "measurementStack"}
+    for stale_approval in emitted["staleApprovals"].values():
+        assert stale_approval["status"] == "stale"
+        assert stale_approval["ownerApproved"] is False
+        assert "fresh owner decision" in stale_approval["action"]
     assert desktop_summary["pages"]["brandguard"]["deltaPerformance"] == -8
     assert desktop_summary["pages"]["brandguard"]["deltaLcpMs"] == 1616
     assert emitted["upgradedStack"]["measurementStackReview"]["status"] == "required"

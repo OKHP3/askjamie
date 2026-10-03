@@ -19,6 +19,7 @@
  * separate directory, or --replace to explicitly clear and reuse that output.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -179,6 +180,29 @@ export const HISTORICAL_REFERENCE_RUN_CONDITIONS = Object.freeze({
 export const DESKTOP_REFERENCE_PATH = "assets/docs/performance-baseline-desktop-2026-09-07.json";
 export const MOBILE_REFERENCE_PATH = "assets/audit/lighthouse-baseline-2026-08-22.json";
 
+function canonicalizeJson(value) {
+  if (Array.isArray(value)) return value.map(canonicalizeJson);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalizeJson(value[key])]),
+    );
+  }
+  return value;
+}
+
+export function getDesktopReferenceIntegrityFingerprint(reference) {
+  const integrityPayload = {
+    measurementStack: reference?.measurementStack,
+    runConditions: reference?.runConditions,
+    pages: reference?.pages,
+  };
+  const canonicalPayload = JSON.stringify(canonicalizeJson(integrityPayload));
+  const digest = createHash("sha256")
+    .update(`desktop-lighthouse-reference:v1\n${canonicalPayload}`)
+    .digest("hex");
+  return `sha256:${digest}`;
+}
+
 export function getLighthouseReference(preset, baseline) {
   if (preset === "mobile") {
     return {
@@ -211,12 +235,14 @@ export function getLighthouseReference(preset, baseline) {
       `Desktop Lighthouse reference is missing performance or LCP measurements for: ${missingRouteMeasurements.join(", ")}.`,
     );
   }
+  const integrityFingerprint = getDesktopReferenceIntegrityFingerprint(baseline);
   return {
     path: DESKTOP_REFERENCE_PATH,
     measurementStack: baseline.measurementStack,
     runConditions: baseline.runConditions,
     measurementStackReferenceNote: baseline.measurementStackReferenceNote,
     approval: baseline.approval ?? null,
+    integrityFingerprint,
   };
 }
 
@@ -386,6 +412,7 @@ export function createSummary({
   baselinePath = MOBILE_REFERENCE_PATH,
   measurementStackReferenceNote = "Historical reference only. The exact Chromium 148.0.7778.96 build is inferred from Playwright metadata; historical reports establish major version 148, not an independently owner-approved exact build.",
   referenceApproval = null,
+  referenceIntegrityFingerprint = null,
 }) {
   const versionFields = ["lighthouseVersion", "chromiumVersion"];
   const baselineKnown = versionFields.every((field) => Boolean(baselineMeasurementStack?.[field]));
@@ -426,7 +453,10 @@ export function createSummary({
     property: baseUrl,
     baseline: baselinePath,
     ...(referenceApproval === null ? {} : {
-      referenceApproval: summarizeReferenceApproval(referenceApproval),
+      referenceApproval: summarizeReferenceApproval(
+        referenceApproval,
+        referenceIntegrityFingerprint,
+      ),
     }),
     controls: controlled
       ? {
@@ -443,7 +473,7 @@ export function createSummary({
   };
 }
 
-export function summarizeReferenceApproval(approval) {
+export function summarizeReferenceApproval(approval, currentIntegrityFingerprint = null) {
   const status = approval?.status ?? "not-recorded";
   if (!["not-recorded", "owner-approved"].includes(status)) {
     throw new Error(`Unsupported Lighthouse reference approval status: ${status}.`);
@@ -452,6 +482,8 @@ export function summarizeReferenceApproval(approval) {
     return {
       status,
       ownerApproved: false,
+      approvalIntegrityFingerprint: null,
+      currentIntegrityFingerprint,
       action: "No owner approval is recorded for this reference; treat desktop trend deltas as exploratory.",
     };
   }
@@ -469,10 +501,27 @@ export function summarizeReferenceApproval(approval) {
       `Owner-approved Lighthouse reference is missing recorded approval fields: ${missingFields.join(", ")}.`,
     );
   }
+  const approvalIntegrityFingerprint = approval.integrityFingerprint;
+  if (
+    typeof currentIntegrityFingerprint !== "string"
+    || approvalIntegrityFingerprint !== currentIntegrityFingerprint
+  ) {
+    return {
+      status: "stale",
+      ownerApproved: false,
+      ...approvalRecord,
+      approvalIntegrityFingerprint:
+        typeof approvalIntegrityFingerprint === "string" ? approvalIntegrityFingerprint : null,
+      currentIntegrityFingerprint,
+      action: "The desktop reference changed since approval or its integrity fingerprint is missing; record a fresh owner decision before interpreting desktop trend deltas.",
+    };
+  }
   return {
     status,
     ownerApproved: true,
     ...approvalRecord,
+    approvalIntegrityFingerprint,
+    currentIntegrityFingerprint,
   };
 }
 
@@ -883,6 +932,7 @@ function main() {
     baselinePath: reference.path,
     measurementStackReferenceNote: reference.measurementStackReferenceNote,
     referenceApproval: reference.approval,
+    referenceIntegrityFingerprint: reference.integrityFingerprint,
   });
   summary.pages = pages;
   if (brandguardSamples > 1) {
