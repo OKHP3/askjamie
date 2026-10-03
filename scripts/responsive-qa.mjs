@@ -95,7 +95,7 @@ const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
   'mobile-390',
   'mobile-430',
 ]);
-const BRANDGUARD_FONT_GEOMETRY_VIEWPORT = 'mobile-390';
+const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set(['mobile-360', 'mobile-390']);
 const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
 const BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS = 15000;
 const BRANDGUARD_GEOMETRY_SELECTORS = [
@@ -1605,7 +1605,7 @@ async function runWithPlaywright() {
     const page = await ctx.newPage();
     const checkBrandGuardFonts =
       BRANDGUARD_FONT_GEOMETRY_PATHS.has(path) &&
-      vp.name === BRANDGUARD_FONT_GEOMETRY_VIEWPORT;
+      BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name);
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
@@ -2129,7 +2129,7 @@ async function staticAnalysis() {
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 8 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-360, mobile-390, and mobile-430.',
-      'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-390 on the hub and representative short and long case-study pages.',
+      'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-360 and mobile-390 on the hub and representative short and long case-study pages.',
       'Universe hero and opened page-map shell geometry through Mermaid rendering is checked in dark mode only in Playwright mode at mobile-390 and desktop-1280.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),

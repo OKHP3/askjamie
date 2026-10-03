@@ -506,6 +506,24 @@ body.askjamie-main a {
   }
 }
 
+/* At 360px, keep fallback and deferred BrandGuard text on the same line counts
+   without applying the 390px-specific tracking across narrower phone widths. */
+@media (min-width: 350px) and (max-width: 370px) {
+  .askjamie-main.askjamie-brandguard-page .capability-transition h2 {
+    letter-spacing: -0.05em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {
+    letter-spacing: -0.08em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    font-size: 1rem;
+    letter-spacing: -1.25px;
+  }
+
+}
+
 /* At 390px, small tracking adjustments keep the fallback and deferred fonts
    on the same line counts without leaving reserved blank space in the copy. */
 @media (min-width: 381px) and (max-width: 400px) {

@@ -14,3 +14,5 @@ When deferred fonts move a hero, measure the content above it and the breadcrumb
 **Why:** A visually displaced block can be a downstream symptom, while fixed reservations may pass geometry checks but still leave visible empty space.
 
 **How to apply:** Compare the same viewport before and after font release, inspect preceding text-block heights and breadcrumb wrapping, and keep the geometry gate enabled while resolving the underlying wrap difference.
+
+Font-swap checks must use each route's actual page root and active stylesheet mode. A hub and its case studies can have different root classes, so a hub-only pass does not prove case-study rules took effect. **Why:** font tuning that is correct for one route can silently miss the same-looking content on another route. **How to apply:** Verify computed styles and before/after boxes on each representative route, then run the full browser gate rather than relying only on a simulated font-family swap.

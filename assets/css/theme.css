@@ -7604,6 +7604,37 @@ html[data-theme="light"] .askjamie-main {
   }
 }
 
+/* At 360px, keep fallback and deferred BrandGuard text on the same line counts
+   without applying the 390px-specific tracking across narrower phone widths. */
+@media (min-width: 350px) and (max-width: 370px) {
+  .askjamie-main.askjamie-brandguard-page .capability-transition h2 {
+    letter-spacing: -0.05em;
+  }
+
+  .askjamie-main:has(.brandguard-demo-notice) .capability-transition h2 {
+    letter-spacing: -0.05em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {
+    letter-spacing: -0.08em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    font-size: 1rem;
+    letter-spacing: -1.25px;
+  }
+
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy h1 {
+    font-size: 1.75rem;
+    letter-spacing: 0.5px;
+  }
+
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-subtitle {
+    font-size: 0.97rem;
+    letter-spacing: -1.1px;
+  }
+}
+
 /* Keep the 390px fallback and deferred BrandGuard fonts on the same line
    counts so text reflow does not add empty space or shift the hero. */
 @media (min-width: 381px) and (max-width: 400px) {

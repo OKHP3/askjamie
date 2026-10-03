@@ -101,6 +101,59 @@ def test_brandguard_390px_font_tracking_keeps_fallback_line_counts():
         assert drift._last_value(theme, selector, "letter-spacing") == expected
 
 
+def test_brandguard_360px_font_tracking_keeps_fallback_line_counts():
+    import re
+
+    critical = (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
+    theme = (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+    media_query = "@media (min-width: 350px) and (max-width: 370px)"
+    next_media_query = "@media (min-width: 381px) and (max-width: 400px)"
+    shared_360_rules = {
+        ".askjamie-main.askjamie-brandguard-page .capability-transition h2": {
+            "letter-spacing": "-0.05em",
+        },
+        ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1": {
+            "letter-spacing": "-0.08em",
+        },
+        ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle": {
+            "font-size": "1rem",
+            "letter-spacing": "-1.25px",
+        },
+    }
+
+    for source in (critical, theme):
+        start = source.index(media_query)
+        end = source.index(next_media_query, start)
+        mobile_360_rules = source[start:end]
+        for selector, declarations in shared_360_rules.items():
+            match = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", mobile_360_rules)
+            assert match
+            for property_name, value in declarations.items():
+                assert re.search(rf"{property_name}:\s*{re.escape(value)};", match.group(1))
+
+    start = theme.index(media_query)
+    end = theme.index(next_media_query, start)
+    mobile_360_theme_rules = theme[start:end]
+    case_study_rules = {
+        ".askjamie-main:has(.brandguard-demo-notice) .capability-transition h2": {
+            "letter-spacing": "-0.05em",
+        },
+        ".askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy h1": {
+            "font-size": "1.75rem",
+            "letter-spacing": "0.5px",
+        },
+        ".askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-subtitle": {
+            "font-size": "0.97rem",
+            "letter-spacing": "-1.1px",
+        },
+    }
+    for selector, declarations in case_study_rules.items():
+        match = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", mobile_360_theme_rules)
+        assert match
+        for property_name, value in declarations.items():
+            assert re.search(rf"{property_name}:\s*{re.escape(value)};", match.group(1))
+
+
 def test_brandguard_case_study_390px_font_tracking_is_scoped_to_case_studies():
     theme = (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
 
@@ -153,7 +206,8 @@ def test_responsive_qa_measures_brandguard_mobile_theme_geometry():
     assert "'mobile-390'" in source
     assert "'mobile-430'" in source
     assert "BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)" in source
-    assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORT = 'mobile-390'" in source
+    assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set(['mobile-360', 'mobile-390'])" in source
+    assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name)" in source
     assert "link[data-deferred-styles]" in source
     assert "BRANDGUARD HERO GEOMETRY SHIFT" in source
     assert "before=${JSON.stringify(beforeRect)}" in source
