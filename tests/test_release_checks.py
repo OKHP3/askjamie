@@ -264,7 +264,17 @@ count=0
 if [ -f "$CURL_COUNT_FILE" ]; then count=$(cat "$CURL_COUNT_FILE"); fi
 count=$((count + 1))
 printf '%s' "$count" > "$CURL_COUNT_FILE"
-[ "$count" -gt 1 ]
+[ "$count" -gt 1 ] || exit 1
+if [ "$count" -eq 2 ]; then
+  attempt=0
+  while [ "$attempt" -lt 100 ]; do
+    if [ -f "$SERVER_PID_FILE" ]; then exit 0; fi
+    sleep 0.01
+    attempt=$((attempt + 1))
+  done
+  exit 1
+fi
+[ -f "$SERVER_PID_FILE" ]
 """,
         encoding="utf-8",
     )
