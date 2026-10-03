@@ -3331,6 +3331,11 @@ html[data-theme="light"] .pf-boundary-label--private    { color: #475569; }
   -webkit-overflow-scrolling: touch;
 }
 
+/* Keep generated page maps swipeable while their reserved shells clip vertically. */
+.askjamie-main .universe-map-generated .mermaid-scroll-wrap {
+  overflow-x: auto;
+}
+
 .mermaid-noscript {
   margin-top: 1rem;
   padding: 1rem 1.25rem;

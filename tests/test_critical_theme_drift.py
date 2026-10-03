@@ -392,10 +392,14 @@ def test_responsive_qa_samples_short_and_long_brandguard_case_studies():
     ] == max(all_headline_lengths.values())
 
 
-def test_responsive_qa_measures_universe_page_map_geometry_with_dark_theme():
+def test_responsive_qa_measures_universe_page_map_geometry_with_dark_theme_and_320px_usability():
     source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
 
-    assert "UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set(['mobile-390', 'desktop-1280'])" in source
+    assert """UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-320',
+  'mobile-390',
+  'desktop-1280',
+]);""" in source
     assert "page.emulateMedia({ colorScheme: 'dark' })" in source
     assert "localStorage.setItem('askjamie-color-scheme', 'dark')" in source
     assert "UNIVERSE PAGE MAP DARK THEME NOT ACTIVE" in source
@@ -406,3 +410,6 @@ def test_responsive_qa_measures_universe_page_map_geometry_with_dark_theme():
     assert "UNIVERSE PAGE MAP COLLAPSED STATE INVALID" in source
     assert "dark_theme_active_before_render" in source
     assert "dark_theme_active_after_render" in source
+    assert "async function checkUniversePageMapNarrowUsability" in source
+    assert "UNIVERSE PAGE MAP 320PX" in source
+    assert "ORDINARY LINK DID NOT RESPOND TO A TAP" in source

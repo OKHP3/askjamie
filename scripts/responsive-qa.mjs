@@ -13,6 +13,7 @@
  *   - Universe diagram shell stays stable while its rendered SVG initializes
  *   - Universe caption and links remain usable when Mermaid fails or JavaScript is off
  *   - Every opened Universe page-map group keeps its shell and nearby content stable in dark mode
+ *   - Every Universe page-map group remains usable at 320px with a locally scrollable diagram
  *
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
@@ -127,7 +128,11 @@ const BRANDGUARD_LOGO_SELECTOR =
 const CRITICAL_HERO_STYLESHEET_PATH = '/assets/css/critical-hero.css';
 const BRANDGUARD_CRITICAL_STYLE_VIEWPORT = 'mobile-390';
 const UNIVERSE_DIAGRAM_GEOMETRY_PATH = '/universe/';
-const UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set(['mobile-390', 'desktop-1280']);
+const UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-320',
+  'mobile-390',
+  'desktop-1280',
+]);
 const UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX = 1;
 const UNIVERSE_PAGE_MAP_GROUP_SELECTOR = '.universe-map-generated .universe-map-group';
 const UNIVERSE_PAGE_MAP_RESERVATIONS_PX = new Map([
@@ -549,6 +554,234 @@ async function compareUniversePageMapGeometry(page, groupCheck, after) {
   return { errors, shifts, closedByKeyboard };
 }
 
+async function checkUniversePageMapNarrowUsability(page, groupIndex) {
+  const errors = [];
+  const groupLabel = `group ${groupIndex + 1}`;
+  const prefix = `UNIVERSE PAGE MAP 320PX ${groupLabel}`;
+  let evidence = null;
+
+  try {
+    evidence = await page.evaluate((index) => {
+      const groups = [...document.querySelectorAll(
+        '.universe-map-generated .universe-map-group'
+      )];
+      const group = groups[index];
+      if (!group) return { group_exists: false };
+
+      const visible = element => Boolean(
+        element &&
+        element.getClientRects().length > 0 &&
+        getComputedStyle(element).display !== 'none' &&
+        getComputedStyle(element).visibility !== 'hidden'
+      );
+      const rect = element => {
+        if (!element) return null;
+        const box = element.getBoundingClientRect();
+        return {
+          left: Math.round(box.left * 100) / 100,
+          right: Math.round(box.right * 100) / 100,
+          width: Math.round(box.width * 100) / 100,
+          height: Math.round(box.height * 100) / 100,
+        };
+      };
+      const summary = group.querySelector('summary');
+      const scrollWrap = group.querySelector('.mermaid-scroll-wrap');
+      const diagram = group.querySelector('.mermaid');
+      const originalScrollLeft = scrollWrap?.scrollLeft ?? 0;
+      const maxScrollLeft = scrollWrap
+        ? Math.max(0, scrollWrap.scrollWidth - scrollWrap.clientWidth)
+        : 0;
+      let scrollLeftAfterPan = null;
+      if (scrollWrap && maxScrollLeft > 0) {
+        scrollWrap.scrollLeft = 0;
+        scrollWrap.scrollLeft = maxScrollLeft;
+        scrollLeftAfterPan = scrollWrap.scrollLeft;
+        scrollWrap.scrollLeft = originalScrollLeft;
+      }
+
+      const links = [...(group.querySelectorAll('.link-list a') ?? [])];
+      return {
+        group_exists: true,
+        title: summary?.textContent.trim() ?? '',
+        open: group.open,
+        other_groups_collapsed: groups.every((other, otherIndex) =>
+          otherIndex === index || !other.open
+        ),
+        page_width: {
+          viewport: window.innerWidth,
+          document: document.documentElement.scrollWidth,
+          body: document.body?.scrollWidth ?? null,
+        },
+        summary: {
+          visible: visible(summary),
+          text: summary?.textContent.trim() ?? '',
+          rect: rect(summary),
+          client_width: summary?.clientWidth ?? null,
+          scroll_width: summary?.scrollWidth ?? null,
+        },
+        map: {
+          visible: visible(scrollWrap),
+          overflow_x: scrollWrap ? getComputedStyle(scrollWrap).overflowX : null,
+          client_width: scrollWrap?.clientWidth ?? null,
+          scroll_width: scrollWrap?.scrollWidth ?? null,
+          max_scroll_left: maxScrollLeft,
+          scroll_left_after_pan: scrollLeftAfterPan,
+          rendered_svg_ready: Boolean(
+            diagram?.dataset.universeReady === '1' &&
+            diagram.querySelector('svg .node')
+          ),
+        },
+        links: links.map(link => {
+          const box = rect(link);
+          return {
+            text: link.textContent.trim(),
+            href: link.getAttribute('href'),
+            visible: visible(link),
+            rect: box,
+            within_viewport: Boolean(
+              box && box.left >= -1 && box.right <= window.innerWidth + 1
+            ),
+          };
+        }),
+      };
+    }, groupIndex);
+  } catch (error) {
+    errors.push(
+      `${prefix} USABILITY CHECK ERROR: ${error.message.split('\n')[0]}`
+    );
+    return { errors, evidence };
+  }
+
+  const label = evidence?.title ? `"${evidence.title}"` : groupLabel;
+  if (!evidence?.group_exists) {
+    errors.push(`${prefix} MISSING: generated page-map group was not found`);
+    return { errors, evidence };
+  }
+  if (!evidence.open || !evidence.other_groups_collapsed) {
+    errors.push(
+      `${prefix} COLLAPSED STATE INVALID: expected only ${label} to be open; ` +
+      `${JSON.stringify({
+        open: evidence.open,
+        other_groups_collapsed: evidence.other_groups_collapsed,
+      })}`
+    );
+  }
+  if (evidence.page_width.document > evidence.page_width.viewport ||
+      evidence.page_width.body > evidence.page_width.viewport) {
+    errors.push(
+      `${prefix} PAGE OVERFLOW: document or body is wider than the viewport; ` +
+      `${JSON.stringify(evidence.page_width)}`
+    );
+  }
+  if (!evidence.summary.visible || !evidence.summary.text ||
+      !evidence.summary.rect || evidence.summary.rect.left < -1 ||
+      evidence.summary.rect.right > evidence.page_width.viewport + 1 ||
+      evidence.summary.client_width <= 0 ||
+      evidence.summary.scroll_width > evidence.summary.client_width + 1) {
+    errors.push(
+      `${prefix} SUMMARY UNUSABLE: ${label} is hidden, clipped, or horizontally overflowing; ` +
+      `${JSON.stringify(evidence.summary)}`
+    );
+  }
+  if (!evidence.map.visible ||
+      !['auto', 'scroll'].includes(evidence.map.overflow_x) ||
+      evidence.map.max_scroll_left <= 1 ||
+      evidence.map.scroll_left_after_pan <= 1 ||
+      !evidence.map.rendered_svg_ready) {
+    errors.push(
+      `${prefix} DIAGRAM NOT HORIZONTALLY SCROLLABLE OR READY: ${label}; ` +
+      `${JSON.stringify(evidence.map)}`
+    );
+  }
+  if (evidence.links.length === 0 ||
+      evidence.links.some(link =>
+        !link.visible || !link.href || !link.within_viewport
+      )) {
+    errors.push(
+      `${prefix} ORDINARY LINKS UNUSABLE: ${label} has missing, hidden, or clipped page links; ` +
+      `${JSON.stringify(evidence.links)}`
+    );
+  }
+
+  let linkClickWorks = false;
+  try {
+    const setup = await page.evaluate((index) => {
+      const group = document.querySelectorAll(
+        '.universe-map-generated .universe-map-group'
+      )[index];
+      const link = group?.querySelector('.link-list a');
+      if (!link) return null;
+
+      link.setAttribute('data-responsive-qa-click-target', '');
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        window.__responsiveQaPageMapLinkClick = {
+          trusted: event.isTrusted,
+          href: link.getAttribute('href'),
+        };
+      }, { capture: true, once: true });
+      return { href: link.getAttribute('href') };
+    }, groupIndex);
+
+    if (setup?.href) {
+      const link = page.locator(
+        `${UNIVERSE_PAGE_MAP_GROUP_SELECTOR}:nth-of-type(${groupIndex + 1}) ` +
+        '.link-list a[data-responsive-qa-click-target]'
+      );
+      await link.scrollIntoViewIfNeeded();
+      linkClickWorks = await link.click({ timeout: 5000 })
+        .then(() => true, () => false);
+      const clickEvidence = await page.evaluate(() =>
+        window.__responsiveQaPageMapLinkClick ?? null
+      );
+      linkClickWorks = linkClickWorks &&
+        clickEvidence?.trusted === true &&
+        clickEvidence?.href === setup.href;
+      evidence.ordinary_link_click = {
+        attempted_href: setup.href,
+        click: clickEvidence,
+        works: linkClickWorks,
+      };
+    } else {
+      evidence.ordinary_link_click = { works: false, reason: 'no ordinary link found' };
+    }
+  } catch (error) {
+    evidence.ordinary_link_click = {
+      works: false,
+      error: error.message.split('\n')[0],
+    };
+  } finally {
+    await page.evaluate((index) => {
+      document.querySelectorAll(
+        '.universe-map-generated .universe-map-group'
+      )[index]?.querySelector('[data-responsive-qa-click-target]')
+        ?.removeAttribute('data-responsive-qa-click-target');
+    }, groupIndex).catch(() => {});
+  }
+  if (!linkClickWorks) {
+    errors.push(
+      `${prefix} ORDINARY LINK DID NOT RESPOND TO A TAP: ` +
+      `${JSON.stringify(evidence.ordinary_link_click)}`
+    );
+  }
+
+  const pageWidthAfterInteraction = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body?.scrollWidth ?? null,
+  })).catch(() => null);
+  evidence.page_width_after_interaction = pageWidthAfterInteraction;
+  if (pageWidthAfterInteraction &&
+      (pageWidthAfterInteraction.document > pageWidthAfterInteraction.viewport ||
+       pageWidthAfterInteraction.body > pageWidthAfterInteraction.viewport)) {
+    errors.push(
+      `${prefix} PAGE OVERFLOW AFTER INTERACTION: ${JSON.stringify(pageWidthAfterInteraction)}`
+    );
+  }
+
+  return { errors, evidence };
+}
+
 async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
   const errors = [];
   const groups = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
@@ -583,6 +816,7 @@ async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
     let released = false;
     let ready = false;
     let after = null;
+    let narrowUsability = null;
     try {
       if (groupCheck.renderScheduled) {
         released = await releaseResponsiveQaMermaidRender(page);
@@ -608,6 +842,10 @@ async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
           `before=${JSON.stringify(groupCheck.before)}; after=${JSON.stringify(after)}`
         );
       }
+      if (page.viewportSize()?.width === 320) {
+        narrowUsability = await checkUniversePageMapNarrowUsability(page, groupIndex);
+        errors.push(...narrowUsability.errors);
+      }
     } catch (error) {
       errors.push(
         `UNIVERSE PAGE MAP GEOMETRY CHECK ERROR: group ${groupIndex + 1} ` +
@@ -632,6 +870,7 @@ async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
       before: groupCheck.before,
       after,
       shifts: comparison.shifts,
+      ...(narrowUsability ? { narrow_usability: narrowUsability.evidence } : {}),
     });
   }
 
@@ -2249,7 +2488,8 @@ async function staticAnalysis() {
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
       'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-360 and mobile-390 on the hub and representative short and long case-study pages.',
       'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
-      'Universe hero and opened page-map shell geometry through Mermaid rendering is checked in dark mode only in Playwright mode at mobile-390 and desktop-1280.',
+      'Universe hero and opened page-map shell geometry through sequential Mermaid rendering is checked in dark mode only in Playwright mode at mobile-320, mobile-390, and desktop-1280.',
+      'Every generated Universe page-map group is checked for page overflow, diagram scrolling, usable summaries, and working ordinary links at mobile-320 in Playwright mode.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
     base_url: BASE_URL,
