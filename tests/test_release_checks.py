@@ -2330,7 +2330,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     assert report["chromium_version"] == runtime.group(2)
     assert warning_only_report["playwright_version"] == runtime.group(1)
     assert warning_only_report["chromium_version"] == runtime.group(2)
-    expected_viewports = 9
+    expected_viewports = 10
     assert report["viewports_checked"] == expected_viewports
     assert report["total_checks"] == 8 * expected_viewports
     lazy_failures = [row for row in rows["/lazy/"] if not row["pass"]]

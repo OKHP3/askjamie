@@ -150,6 +150,32 @@ def test_brandguard_390px_font_tracking_keeps_fallback_line_counts():
         assert drift._last_value(theme, selector, "letter-spacing") == expected
 
 
+def test_brandguard_320px_rules_wrap_breadcrumbs_within_the_viewport():
+    import re
+
+    css_sources = (
+        (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8"),
+        (ROOT / "assets/css/theme.css").read_text(encoding="utf-8"),
+    )
+    media_query = "@media (max-width: 340px)"
+
+    for source in css_sources:
+        match = re.search(
+            rf"{re.escape(media_query)}\s*\{{(.*?)(?=\n@media|\Z)",
+            source,
+            re.DOTALL,
+        )
+        assert match
+        narrow_rules = match.group(1)
+        assert "flex: 1 1 100%;" in narrow_rules
+        assert "min-width: 0;" in narrow_rules
+        assert "white-space: normal;" in narrow_rules
+        assert "overflow-wrap: anywhere;" in narrow_rules
+        assert ".askjamie-breadcrumb .breadcrumb-separator" in narrow_rules
+        assert ".askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb" in narrow_rules
+        assert ".askjamie-main:has(.brandguard-demo-notice)" in narrow_rules
+
+
 def test_brandguard_360px_font_tracking_keeps_fallback_line_counts():
     import re
 
@@ -248,9 +274,12 @@ def test_capability_transition_geometry_drift_is_reported(tmp_path):
 
 
 def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_widths():
+    import re
+
     source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
 
     assert "BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([" in source
+    assert "'mobile-320'" in source
     assert "'mobile-360'" in source
     assert "'mobile-390'" in source
     assert "'mobile-430'" in source
@@ -259,7 +288,17 @@ def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_w
     assert "{ name: 'tablet-768',   width: 768,  height: 1024 }" in source
     assert "{ name: 'tablet-899',   width: 899,  height: 1024 }" in source
     assert "BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)" in source
-    assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set(['mobile-360', 'mobile-390'])" in source
+    assert "{ name: 'mobile-320',   width: 320,  height: 740  }" in source
+    font_viewports = re.search(
+        r"const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set\(\[(.*?)\]\);",
+        source,
+        re.DOTALL,
+    )
+    assert font_viewports
+    assert set(re.findall(r"'([^']+)'", font_viewports.group(1))) == {
+        "mobile-360",
+        "mobile-390",
+    }
     assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name)" in source
     assert "link[data-deferred-styles]" in source
     assert "BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1" in source
@@ -271,6 +310,24 @@ def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_w
     assert "before=${JSON.stringify(beforeRect)}" in source
     assert "after=${JSON.stringify(afterRect)}" in source
     assert "hero_theme_geometry" in source
+
+
+def test_responsive_qa_checks_brandguard_content_at_320px_from_sitemap_routes():
+    source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
+
+    assert "const PUBLIC_PATHS = loadPublicPaths();" in source
+    assert "const BRANDGUARD_NARROW_CONTENT_VIEWPORT = 'mobile-320'" in source
+    assert "path.startsWith(BRANDGUARD_GEOMETRY_PATH)" in source
+    assert "vp.name === BRANDGUARD_NARROW_CONTENT_VIEWPORT" in source
+    assert "BRANDGUARD_NARROW_CONTENT_SELECTORS" in source
+    assert "horizontal_content_clipping" in source
+    assert "vertical_content_clipping" in source
+    assert "outside_viewport" in source
+    assert "breadcrumb_overlaps_heading" in source
+    assert "BRANDGUARD 320PX CONTENT NOT READABLE" in source
+    assert "BRANDGUARD 320PX CONTENT CLIPPED" in source
+    assert "BRANDGUARD 320PX BREADCRUMB OVERLAPS HERO" in source
+    assert "brandguard_320_content" in source
 
 
 def test_responsive_qa_measures_brandguard_geometry_after_branded_fonts_load():

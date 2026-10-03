@@ -3,7 +3,7 @@
  * AskJamie™ responsive QA script.
  *
  * MODE A — Playwright:
- *   Visits each public page at 9 viewport widths and checks:
+ *   Visits each public page at 10 viewport widths and checks:
  *   - No horizontal overflow (scrollWidth > innerWidth)
  *   - No JS console errors
  *   - All images loaded (no broken img src)
@@ -17,7 +17,7 @@
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
  *   Checks that are viewport-agnostic (viewport meta, h1, alt, etc.) are
- *   run once per page and applied to all 9 viewport rows — clearly flagged
+ *   run once per page and applied to all 10 viewport rows — clearly flagged
  *   as `static-lint` so results are not confused with live browser checks.
  *
  * Usage:
@@ -49,6 +49,7 @@ const REQUIRE_RELEASE_HERO_ROUTES =
   process.argv.includes('--require-release-hero-routes');
 
 const VIEWPORTS = [
+  { name: 'mobile-320',   width: 320,  height: 740  },
   { name: 'mobile-360',   width: 360,  height: 780  },
   { name: 'mobile-390',   width: 390,  height: 844  },
   { name: 'mobile-430',   width: 430,  height: 932  },
@@ -92,17 +93,29 @@ const BRANDGUARD_FONT_GEOMETRY_PATHS = new Set([
   '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
 ]);
 const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-320',
   'mobile-360',
   'mobile-390',
   'mobile-430',
   'tablet-768',
   'tablet-899',
 ]);
-const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set(['mobile-360', 'mobile-390']);
+const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-360',
+  'mobile-390',
+]);
+const BRANDGUARD_NARROW_CONTENT_VIEWPORT = 'mobile-320';
 const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
 const BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS = 15000;
 const BRANDGUARD_GEOMETRY_SELECTORS = [
   '.askjamie-main .askjamie-breadcrumb',
+  '.askjamie-main .askjamie-hero-copy h1',
+  '.askjamie-main .askjamie-hero-copy .hero-subtitle',
+  '.askjamie-main .askjamie-hero-copy .hero-tagline',
+];
+const BRANDGUARD_NARROW_CONTENT_SELECTORS = [
+  '.askjamie-main .askjamie-breadcrumb',
+  '.askjamie-main .askjamie-breadcrumb .breadcrumb-label',
   '.askjamie-main .askjamie-hero-copy h1',
   '.askjamie-main .askjamie-hero-copy .hero-subtitle',
   '.askjamie-main .askjamie-hero-copy .hero-tagline',
@@ -969,6 +982,99 @@ async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontRes
   };
 }
 
+async function checkBrandGuardNarrowContent(page) {
+  const evidence = await page.evaluate(({ selectors, tolerancePx }) => {
+    const elements = {};
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) {
+        elements[selector] = null;
+        continue;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const round = value => Math.round(value * 100) / 100;
+      elements[selector] = {
+        text_present: Boolean(element.textContent.trim()),
+        visible: style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          Number.parseFloat(style.opacity) > 0 &&
+          rect.width > 0 &&
+          rect.height > 0,
+        rect: Object.fromEntries(
+          ['left', 'right', 'top', 'bottom', 'width', 'height']
+            .map(property => [property, round(rect[property])])
+        ),
+        client_width: element.clientWidth,
+        scroll_width: element.scrollWidth,
+        client_height: element.clientHeight,
+        scroll_height: element.scrollHeight,
+        horizontal_content_overflow:
+          element.scrollWidth > element.clientWidth + tolerancePx,
+        vertical_content_overflow:
+          element.scrollHeight > element.clientHeight + tolerancePx,
+        horizontal_content_clipping:
+          ['hidden', 'clip'].includes(style.overflowX) &&
+          element.scrollWidth > element.clientWidth + tolerancePx,
+        vertical_content_clipping:
+          ['hidden', 'clip'].includes(style.overflowY) &&
+          element.scrollHeight > element.clientHeight + tolerancePx,
+        outside_viewport:
+          rect.left < -tolerancePx || rect.right > window.innerWidth + tolerancePx,
+      };
+    }
+
+    const breadcrumb = document.querySelector(selectors[0]);
+    const heading = document.querySelector(selectors[2]);
+    const breadcrumbRect = breadcrumb?.getBoundingClientRect();
+    const headingRect = heading?.getBoundingClientRect();
+    return {
+      viewport_width: window.innerWidth,
+      document_scroll_width: document.documentElement.scrollWidth,
+      document_overflow: document.documentElement.scrollWidth > window.innerWidth,
+      breadcrumb_overlaps_heading: Boolean(
+        breadcrumbRect && headingRect &&
+        breadcrumbRect.bottom > headingRect.top + tolerancePx
+      ),
+      elements,
+    };
+  }, {
+    selectors: BRANDGUARD_NARROW_CONTENT_SELECTORS,
+    tolerancePx: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+  });
+
+  const errors = [];
+  for (const [selector, element] of Object.entries(evidence.elements)) {
+    if (!element) {
+      errors.push(`BRANDGUARD 320PX CONTENT MISSING: ${selector}`);
+      continue;
+    }
+    if (!element.text_present || !element.visible) {
+      errors.push(
+        `BRANDGUARD 320PX CONTENT NOT READABLE: ${selector}; ` +
+        `evidence=${JSON.stringify(element)}`
+      );
+    }
+    if (element.horizontal_content_clipping ||
+        element.vertical_content_clipping ||
+        element.outside_viewport) {
+      errors.push(
+        `BRANDGUARD 320PX CONTENT CLIPPED: ${selector}; ` +
+        `evidence=${JSON.stringify(element)}`
+      );
+    }
+  }
+  if (evidence.breadcrumb_overlaps_heading) {
+    errors.push(
+      `BRANDGUARD 320PX BREADCRUMB OVERLAPS HERO: ` +
+      `evidence=${JSON.stringify(evidence.elements)}`
+    );
+  }
+
+  return { errors, evidence };
+}
+
 async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequestSeen) {
   const errors = [];
   let before = null;
@@ -1825,6 +1931,11 @@ async function runWithPlaywright() {
           brandGuardFontResponses
         )
         : null;
+      const brandGuardNarrowContent =
+        path.startsWith(BRANDGUARD_GEOMETRY_PATH) &&
+        vp.name === BRANDGUARD_NARROW_CONTENT_VIEWPORT
+          ? await checkBrandGuardNarrowContent(page)
+          : null;
       const universeDiagramGeometry = checkUniverseDiagram
         ? await checkUniverseDiagramGeometry(
           page,
@@ -1905,6 +2016,7 @@ async function runWithPlaywright() {
         ...(criticalHeroStyles?.errors ?? []),
         ...(heroThemeGeometry?.errors ?? []),
         ...(heroFontGeometry?.errors ?? []),
+        ...(brandGuardNarrowContent?.errors ?? []),
         ...(universeDiagramGeometry?.errors ?? []),
         ...(universeMermaidFailure?.errors ?? []),
         ...(overflow ? [`OVERFLOW: scrollWidth > ${vp.width}px`] : []),
@@ -1932,6 +2044,9 @@ async function runWithPlaywright() {
                      ...(heroFontGeometry
                       ? { hero_font_geometry: heroFontGeometry.evidence }
                       : {}),
+                     ...(brandGuardNarrowContent
+                       ? { brandguard_320_content: brandGuardNarrowContent.evidence }
+                       : {}),
                     ...(universeDiagramGeometry
                       ? { universe_diagram_geometry: universeDiagramGeometry.evidence }
                       : {}),
@@ -2129,10 +2244,11 @@ async function staticAnalysis() {
     generated: new Date().toISOString(),
     mode: 'static-lint',
     note: [
-      'Static-lint mode: 10 structural checks per page, applied uniformly to all 9 viewport rows.',
+      'Static-lint mode: 10 structural checks per page, applied uniformly to all 10 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
-      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
+      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
       'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-360 and mobile-390 on the hub and representative short and long case-study pages.',
+      'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
       'Universe hero and opened page-map shell geometry through Mermaid rendering is checked in dark mode only in Playwright mode at mobile-390 and desktop-1280.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),

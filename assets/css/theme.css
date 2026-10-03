@@ -7604,6 +7604,21 @@ html[data-theme="light"] .askjamie-main {
   }
 }
 
+@media (max-width: 340px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-label {
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-separator,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-separator {
+    display: none;
+  }
+}
+
 /* At 360px, keep fallback and deferred BrandGuard text on the same line counts
    without applying the 390px-specific tracking across narrower phone widths. */
 @media (min-width: 350px) and (max-width: 370px) {
