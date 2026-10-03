@@ -12,6 +12,7 @@
  *   - BrandGuard hero geometry stays stable after its branded web fonts load
  *   - Universe diagram shell stays stable while its rendered SVG initializes
  *   - Universe caption and links remain usable when Mermaid fails or JavaScript is off
+ *   - Every generated Universe page-map group keeps its caption and links usable when Mermaid is blocked
  *   - Every opened Universe page-map group keeps its shell and adjacent summaries stable across light/dark switches
  *   - Every Universe page-map group remains usable at 320px with a locally scrollable diagram
  *
@@ -1824,138 +1825,216 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
   };
 
   const checkGeneratedPageMapFallback = async targetPage => {
-    const group = targetPage.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).first();
-    const groupCount = await targetPage.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).count();
+    const groups = targetPage.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
+    const groupCount = await groups.count();
     if (groupCount === 0) {
       return {
         errors: ['UNIVERSE MERMAID FAILURE PAGE MAP MISSING: no generated page-map group was found'],
-        evidence: null,
+        evidence: { group_count: 0, groups: [] },
       };
     }
-
-    const renderWarning = targetPage.waitForEvent('console', {
-      predicate: message =>
-        message.type() === 'warning' &&
-        message.text().startsWith('[mermaid-init] render error:'),
-      timeout: 10000,
-    }).then(message => message.text(), () => null);
 
     const errors = [];
-    await group.locator('summary').click({ timeout: 5000 });
-    const opened = await group.evaluate(element => element.open);
-    if (!opened) {
-      errors.push('UNIVERSE MERMAID FAILURE PAGE MAP DID NOT OPEN: generated group stayed closed');
-    }
+    const groupEvidence = [];
+    for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+      const groupLabel = `group ${groupIndex + 1}`;
+      const group = targetPage.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).nth(groupIndex);
+      const renderWarning = targetPage.waitForEvent('console', {
+        predicate: message =>
+          message.type() === 'warning' &&
+          message.text().startsWith('[mermaid-init] render error:'),
+        timeout: 10000,
+      }).then(message => message.text(), () => null);
 
-    await group.locator('.mermaid').scrollIntoViewIfNeeded();
-    const renderStarted = await targetPage.waitForFunction(() => {
-      const diagram = document.querySelector(
-        '.universe-map-generated .universe-map-group .mermaid'
-      );
-      return diagram?.dataset.mermaidRendered === '1';
-    }, undefined, { timeout: 10000 }).then(() => true, () => false);
-    if (!renderStarted) {
-      errors.push('UNIVERSE MERMAID FAILURE PAGE MAP NOT ATTEMPTED: generated group did not start rendering');
-    }
+      await group.locator('summary').click({ timeout: 5000 });
+      const opened = await group.evaluate(element => element.open);
+      if (!opened) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE PAGE MAP DID NOT OPEN: ${groupLabel} stayed closed`
+        );
+      }
 
-    const renderFailureCaught = await renderWarning;
-    if (!renderFailureCaught) {
-      errors.push('UNIVERSE MERMAID FAILURE PAGE MAP NOT CAUGHT: generated group render failure was not observed');
-    }
+      await group.locator('.mermaid').scrollIntoViewIfNeeded();
+      const renderStarted = await targetPage.waitForFunction(index => {
+        const currentGroup = document.querySelectorAll(
+          '.universe-map-generated .universe-map-group'
+        )[index];
+        return currentGroup?.querySelector('.mermaid')
+          ?.dataset.mermaidRendered === '1';
+      }, groupIndex, { timeout: 10000 }).then(() => true, () => false);
+      if (!renderStarted) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE PAGE MAP NOT ATTEMPTED: ${groupLabel} did not start rendering`
+        );
+      }
 
-    const state = await targetPage.evaluate(() => {
-      const group = document.querySelector(
-        '.universe-map-generated .universe-map-group'
-      );
-      const diagram = group?.querySelector('.mermaid');
-      const status = group?.querySelector('[data-mermaid-failure-status]');
-      const visible = element => Boolean(
-        element &&
-        element.getClientRects().length > 0 &&
-        getComputedStyle(element).visibility !== 'hidden' &&
-        getComputedStyle(element).display !== 'none'
-      );
-      const caption = group?.querySelector('figcaption');
-      const links = [...(group?.querySelectorAll('.link-list a') ?? [])];
-      return {
-        open: Boolean(group?.open),
-        summary: group?.querySelector('summary')?.textContent.trim() ?? '',
-        summary_visible: visible(group?.querySelector('summary')),
-        caption: caption?.textContent.trim() ?? '',
-        caption_visible: visible(caption),
-        failure_status_visible: visible(status),
-        failure_status_text: status?.textContent.trim() ?? '',
-        failure_status_role: status?.getAttribute('role') ?? null,
-        failure_status_live: status?.getAttribute('aria-live') ?? null,
-        links: links.map(link => ({
-          text: link.textContent.trim(),
-          href: link.getAttribute('href'),
-          visible: visible(link),
-        })),
-        render_started: diagram?.dataset.mermaidRendered === '1',
-        ready_state: diagram?.dataset.universeReady ?? null,
-        has_svg_node: Boolean(diagram?.querySelector('svg .node')),
-      };
-    });
+      const renderFailureCaught = await renderWarning;
+      if (!renderFailureCaught) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE PAGE MAP NOT CAUGHT: ${groupLabel} render failure was not observed`
+        );
+      }
 
-    if (!state.open || !state.summary_visible || !state.summary) {
-      errors.push(`UNIVERSE MERMAID FAILURE PAGE MAP SUMMARY UNAVAILABLE: ${JSON.stringify(state)}`);
-    }
-    if (!state.caption_visible || !state.caption) {
-      errors.push(`UNIVERSE MERMAID FAILURE HID PAGE MAP CAPTION: ${JSON.stringify(state)}`);
-    }
-    if (!state.failure_status_visible ||
-        !state.failure_status_text.includes('could not be displayed') ||
-        state.failure_status_role !== 'status' ||
-        state.failure_status_live !== 'polite') {
-      errors.push(
-        `UNIVERSE MERMAID FAILURE STATUS UNAVAILABLE OR INACCESSIBLE: ${JSON.stringify(state)}`
-      );
-    }
-    if (state.links.length < 3 || state.links.some(link => !link.visible || !link.href)) {
-      errors.push(`UNIVERSE MERMAID FAILURE MADE GENERATED PAGE LINKS UNAVAILABLE: ${JSON.stringify(state.links)}`);
-    }
-    if (state.ready_state === '1' || state.has_svg_node) {
-      errors.push(
-        'UNIVERSE MERMAID FAILURE PAGE MAP REPORTED READY WITHOUT A VALID FALLBACK: ' +
-        JSON.stringify({
-          ready_state: state.ready_state,
-          has_svg_node: state.has_svg_node,
-        })
-      );
-    }
+      const state = await targetPage.evaluate(index => {
+        const isVisible = element => Boolean(
+          element &&
+          element.getClientRects().length > 0 &&
+          getComputedStyle(element).visibility !== 'hidden' &&
+          getComputedStyle(element).display !== 'none'
+        );
+        const group = document.querySelectorAll(
+          '.universe-map-generated .universe-map-group'
+        )[index];
+        const diagram = group?.querySelector('.mermaid');
+        const status = group?.querySelector('[data-mermaid-failure-status]');
+        const caption = group?.querySelector('figcaption');
+        const links = [...(group?.querySelectorAll('.link-list a') ?? [])];
+        return {
+          open: Boolean(group?.open),
+          summary: group?.querySelector('summary')?.textContent.trim() ?? '',
+          summary_visible: isVisible(group?.querySelector('summary')),
+          caption: caption?.textContent.trim() ?? '',
+          caption_visible: isVisible(caption),
+          failure_status_visible: isVisible(status),
+          failure_status_text: status?.textContent.trim() ?? '',
+          failure_status_role: status?.getAttribute('role') ?? null,
+          failure_status_live: status?.getAttribute('aria-live') ?? null,
+          links: links.map(link => ({
+            text: link.textContent.trim(),
+            href: link.getAttribute('href'),
+            visible: isVisible(link),
+          })),
+          render_started: diagram?.dataset.mermaidRendered === '1',
+          ready_state: diagram?.dataset.universeReady ?? null,
+          has_svg_node: Boolean(diagram?.querySelector('svg .node')),
+        };
+      }, groupIndex);
 
-    let ordinaryPageLinkWorks = false;
-    const ordinaryPageLink = group.locator('.link-list a[href="/about/"]');
-    try {
-      if (await ordinaryPageLink.count() === 1 && await ordinaryPageLink.isVisible()) {
+      if (!state.open || !state.summary_visible || !state.summary) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE PAGE MAP SUMMARY UNAVAILABLE: ${groupLabel} ` +
+          JSON.stringify(state)
+        );
+      }
+      if (!state.caption_visible || !state.caption) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE HID PAGE MAP CAPTION: ${groupLabel} ` +
+          JSON.stringify(state)
+        );
+      }
+      if (!state.failure_status_visible ||
+          !state.failure_status_text.includes('could not be displayed') ||
+          state.failure_status_role !== 'status' ||
+          state.failure_status_live !== 'polite') {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE STATUS UNAVAILABLE OR INACCESSIBLE: ${groupLabel} ` +
+          JSON.stringify(state)
+        );
+      }
+      if (state.links.length < 1 || state.links.some(link => !link.visible || !link.href)) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE MADE GENERATED PAGE LINKS UNAVAILABLE: ${groupLabel} ` +
+          JSON.stringify(state.links)
+        );
+      }
+      if (state.ready_state === '1' && !state.has_svg_node) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE MARKED PAGE MAP READY WITHOUT A RENDERED SVG: ${groupLabel} ` +
+          JSON.stringify({
+            ready_state: state.ready_state,
+            has_svg_node: state.has_svg_node,
+          })
+        );
+      }
+
+      const currentUrl = new URL(url);
+      const navigableLinkIndex = state.links.findIndex(link => {
+        try {
+          const destination = new URL(link.href, targetPage.url());
+          return destination.origin === currentUrl.origin &&
+            destination.pathname !== currentUrl.pathname;
+        } catch {
+          return false;
+        }
+      });
+      let ordinaryPageLinkWorks = false;
+      let ordinaryPageLinkEvidence = null;
+      if (navigableLinkIndex >= 0) {
+        const ordinaryPageLink = group.locator('.link-list a').nth(navigableLinkIndex);
         const targetPath = new URL(
-          await ordinaryPageLink.getAttribute('href'),
+          state.links[navigableLinkIndex].href,
           targetPage.url()
         ).pathname;
-        await Promise.all([
-          targetPage.waitForURL(
-            url => url.pathname === targetPath,
-            { timeout: 10000 }
-          ),
-          ordinaryPageLink.click({ timeout: 5000 }),
-        ]);
-        ordinaryPageLinkWorks = new URL(targetPage.url()).pathname === targetPath;
+        try {
+          const response = await Promise.all([
+            targetPage.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+            ordinaryPageLink.click({ timeout: 5000 }),
+          ]).then(([navigationResponse]) => navigationResponse);
+          ordinaryPageLinkWorks =
+            new URL(targetPage.url()).pathname === targetPath &&
+            Boolean(response && response.status() < 400);
+          ordinaryPageLinkEvidence = {
+            href: state.links[navigableLinkIndex].href,
+            target_path: targetPath,
+            http_status: response?.status() ?? null,
+          };
+        } catch {
+          ordinaryPageLinkWorks = false;
+        }
       }
-    } catch {
-      ordinaryPageLinkWorks = false;
-    }
-    if (!ordinaryPageLinkWorks) {
-      errors.push('UNIVERSE MERMAID FAILURE BROKE GENERATED PAGE LINK: ordinary link did not reach its page');
+      if (!ordinaryPageLinkWorks) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE BROKE GENERATED PAGE LINK: ${groupLabel} ` +
+          'ordinary link did not reach a successful page'
+        );
+      }
+
+      groupEvidence.push({
+        group_index: groupIndex + 1,
+        render_started: renderStarted,
+        render_failure_caught: Boolean(renderFailureCaught),
+        state,
+        ordinary_page_link_works: ordinaryPageLinkWorks,
+        ordinary_page_link: ordinaryPageLinkEvidence,
+      });
+
+      if (ordinaryPageLinkWorks) {
+        try {
+          await targetPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          const transitionDismiss = targetPage.locator(
+            '[data-transition-dialog][open] [data-transition-dismiss]'
+          );
+          if (await transitionDismiss.isVisible()) await transitionDismiss.click();
+        } catch (error) {
+          errors.push(
+            `UNIVERSE MERMAID FAILURE PAGE MAP CHECK COULD NOT RETURN TO UNIVERSE: ` +
+            `${error.message.split('\n')[0]}`
+          );
+          break;
+        }
+      } else {
+        await group.evaluate(element => { element.open = false; }).catch(() => {});
+      }
     }
 
     return {
       errors,
       evidence: {
-        render_started: renderStarted,
-        render_failure_caught: Boolean(renderFailureCaught),
-        state,
-        ordinary_page_link_works: ordinaryPageLinkWorks,
+        group_count: groupCount,
+        all_groups_checked: groupEvidence.length === groupCount,
+        all_groups_render_failures_caught:
+          groupEvidence.length === groupCount &&
+          groupEvidence.every(group => group.render_failure_caught),
+        all_group_links_visible:
+          groupEvidence.length === groupCount &&
+          groupEvidence.every(group =>
+            group.state.links.length > 0 &&
+            group.state.links.every(link => link.visible && link.href)
+          ),
+        all_groups_navigated:
+          groupEvidence.length === groupCount &&
+          groupEvidence.every(group => group.ordinary_page_link_works),
+        groups: groupEvidence,
       },
     };
   };
