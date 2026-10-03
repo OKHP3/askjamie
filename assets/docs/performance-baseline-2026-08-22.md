@@ -93,6 +93,54 @@ Do not change that status to `"owner-approved"` unless the approval record,
 approver, and approval date are recorded in the desktop reference JSON. This
 approval metadata does not affect the mobile comparison or its review gate.
 
+### Desktop repeatability check — 2026-10-03
+
+Three independent four-route desktop passes were captured with the same
+Lighthouse 12.8.2 / Chromium 148.0.7778.96 stack and the recorded desktop
+conditions: 1350×940 screen emulation, 1× scale, simulated 40 ms RTT and
+10,240 Kbps throughput, no CPU slowdown, no blocked URLs, and the recorded
+collection timing, locale, and storage-reset settings. Every report passed
+both stack and run-condition review. These are desktop-only lab measurements;
+they are separate from mobile evidence and are not field data.
+
+The compact summaries and raw reports are in
+`assets/audit/lighthouse-2026-10-03-desktop-repeat-1/`,
+`assets/audit/lighthouse-2026-10-03-desktop-repeat-2/`, and
+`assets/audit/lighthouse-2026-10-03-desktop-repeat-3/`.
+Each directory contains one report for each of the four routes.
+
+| Page | Sep 7 candidate performance | Repeat performance range | Sep 7 candidate LCP | Repeat LCP range | Repeat FCP range | Repeat Speed Index range | Repeat TBT range |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Homepage `/` | 88 | 87–89 | 1,686 ms | 1,523–1,524 ms | 522–563 ms | 551–563 ms | 11–58 ms |
+| BrandGuard hub | 99 | 76 | 729 ms | 644–686 ms | 407–435 ms | 407–435 ms | 0 ms |
+| Universe `/universe/` | 99 | 77 | 728 ms | 647–686 ms | 329–345 ms | 501–569 ms | 6–41 ms |
+| Search `/search/` | 96 | 94–96 | 1,284 ms | 1,203–1,485 ms | 542–784 ms | 542–784 ms | 0 ms |
+
+CLS differs substantially on two routes:
+
+| Page | Sep 7 candidate CLS | Repeat CLS range |
+| --- | ---: | ---: |
+| Homepage `/` | 0.067939 | 0.149804–0.177419 |
+| BrandGuard hub | 0.044265 | 0.847435–0.930270 |
+| Universe `/universe/` | 0.056094 | 0.640679–0.640760 |
+| Search `/search/` | 0.060982 | 0.043371–0.093249 |
+
+Homepage and Search performance scores vary by at most two points; Search LCP
+varies by 282 ms. BrandGuard and Universe are consistent across the three new
+passes (scores 76 and 77 respectively; LCP spreads of 42 ms and 39 ms), but
+they do not reproduce the candidate's scores of 99. Their CLS ranges are also
+far above the candidate values. The raw shift audits identify the page's
+`main` element as the dominant shifting content, with web-font loads recorded
+among the shift contributors.
+
+The new runs used the clean checkout at revision `b8179b56e6b0`; the September
+candidate does not record its source revision. Therefore, the measured
+difference cannot be attributed to Lighthouse run-to-run variance alone or
+treated as a same-source repeatability comparison. The evidence does not
+establish that the September candidate is representative. Its JSON, including
+`approval.status: "not-recorded"`, was left unchanged; owner approval remains
+unrecorded pending an owner decision.
+
 Normal and controlled mobile runs are separate conditions in the summary.
 Controlled runs continue to block third-party fonts and analytics as an
 explicit isolation measure; they are not merged with normal results. The
