@@ -852,7 +852,9 @@ report.configSettings = {
   ...conditions.collectionTiming,
   locale: conditions.locale,
   disableStorageReset: conditions.storage.disableStorageReset,
-  clearStorageTypes: conditions.storage.clearStorageTypes
+  clearStorageTypes: conditions.storage.clearStorageTypes,
+  output: ["json"],
+  ...conditions.additionalConfigSettings
 };
 fs.writeFileSync(reportPath, JSON.stringify(report));
 """,
@@ -908,9 +910,16 @@ def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without
     runner.write_text(
         """
 import { readFileSync } from "node:fs";
-import { CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
+import { defaultSettings as lighthouseDefaultSettings } from "./node_modules/lighthouse/core/config/constants.js";
+import { CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
+const fixtureConfigSettingKeys = Object.keys(report.configSettings).sort();
+const inventoriedConfigSettingKeys = [
+  ...LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.tracked,
+  ...Object.keys(LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.recordedWithoutComparison)
+].sort();
+const lighthouseSchemaConfigSettingKeys = Object.keys(lighthouseDefaultSettings).sort();
 const baseline = { pages: {
   homepage: { performance: 80, lcpMs: 1000 },
   brandguard: { performance: 88, lcpMs: 2000 },
@@ -930,7 +939,8 @@ const controlledRunConditions = Object.fromEntries(
 const emit = (
   controlled,
   measurementStack,
-  runConditionsReports = controlled ? controlledRunConditions : allBaselineRunConditions
+  runConditionsReports = controlled ? controlledRunConditions : allBaselineRunConditions,
+  referenceRunConditions = HISTORICAL_REFERENCE_RUN_CONDITIONS
 ) => {
   const summary = createSummary({
     date: "2099-01-02",
@@ -940,7 +950,7 @@ const emit = (
     measurementStack,
     baselineMeasurementStack: baseline.measurementStack,
     runConditionsReports,
-    baselineRunConditions: HISTORICAL_REFERENCE_RUN_CONDITIONS
+    baselineRunConditions: referenceRunConditions
   });
   for (const [name, path] of Object.entries(LIGHTHOUSE_ROUTES)) {
     summary.pages[name] = summarizePage({
@@ -965,10 +975,35 @@ const changedRunConditions = {
   throttling: {
     ...baselineRunConditions.throttling,
     cpuSlowdownMultiplier: 5
+  },
+  additionalConfigSettings: {
+    ...baselineRunConditions.additionalConfigSettings,
+    channel: "node"
   }
+};
+const outputFormatChange = {
+  ...allBaselineRunConditions,
+  "homepage.json": {
+    ...baselineRunConditions,
+    nonComparabilitySettings: { output: ["html"] }
+  }
+};
+const reportWithUnknownSetting = {
+  ...report,
+  configSettings: {
+    ...report.configSettings,
+    futureNetworkSetting: "fast"
+  }
+};
+const unknownSettingChange = {
+  ...allBaselineRunConditions,
+  "homepage.json": summarizeRunConditions(reportWithUnknownSetting)
 };
 process.stdout.write(JSON.stringify({
   routes: LIGHTHOUSE_ROUTES,
+  fixtureConfigSettingKeys,
+  inventoriedConfigSettingKeys,
+  lighthouseSchemaConfigSettingKeys,
   parsedChromiumVersion: parseChromiumVersion("Google Chrome for Testing 153.0.8010.12"),
   normal: emit(false, baseline.measurementStack),
   lighthouseUpgrade: emit(false, {
@@ -992,6 +1027,17 @@ process.stdout.write(JSON.stringify({
       formFactor: "desktop"
     }
   }),
+  outputFormatChange: emit(false, baseline.measurementStack, outputFormatChange),
+  unknownSettingChange: emit(false, baseline.measurementStack, unknownSettingChange),
+  unknownSettingWithMatchingReference: emit(
+    false,
+    baseline.measurementStack,
+    unknownSettingChange,
+    {
+      ...HISTORICAL_REFERENCE_RUN_CONDITIONS,
+      unclassifiedConfigSettings: { futureNetworkSetting: "fast" }
+    }
+  ),
   missingRunConditions: emit(false, baseline.measurementStack, {
     "homepage.json": summarizeRunConditions({})
   }),
@@ -1019,8 +1065,10 @@ process.stdout.write(JSON.stringify({
 
     normal = emitted["normal"]
     assert emitted["parsedChromiumVersion"] == "153.0.8010.12"
-    assert normal["schemaVersion"] == 5
+    assert normal["schemaVersion"] == 6
     assert normal["capturedAt"] == "2099-01-02"
+    assert emitted["fixtureConfigSettingKeys"] == emitted["inventoriedConfigSettingKeys"]
+    assert emitted["lighthouseSchemaConfigSettingKeys"] == emitted["inventoriedConfigSettingKeys"]
     assert normal["tool"] == "Lighthouse 12.8.2"
     assert normal["measurementStack"] == {
         "lighthouseVersion": "12.8.2",
@@ -1072,6 +1120,27 @@ process.stdout.write(JSON.stringify({
             "cache_storage",
         ],
     }
+    assert normal["runConditions"]["reports"]["homepage.json"]["additionalConfigSettings"] == {
+        "auditMode": False,
+        "gatherMode": False,
+        "debugNavigation": False,
+        "channel": "cli",
+        "usePassiveGathering": False,
+        "disableFullPageScreenshot": False,
+        "skipAboutBlank": False,
+        "blankPage": "about:blank",
+        "ignoreStatusCode": False,
+        "additionalTraceCategories": None,
+        "extraHeaders": None,
+        "precomputedLanternData": None,
+        "onlyAudits": None,
+        "onlyCategories": None,
+        "skipAudits": None,
+    }
+    assert normal["runConditions"]["reports"]["homepage.json"]["nonComparabilitySettings"] == {
+        "output": ["json"]
+    }
+    assert normal["runConditions"]["reports"]["homepage.json"]["unclassifiedConfigSettings"] == {}
     assert normal["runConditionsReview"]["status"] == "not-required"
     assert normal["runConditionsReview"]["changedComponents"] == []
     assert normal["runConditionsReview"]["changedReports"] == []
@@ -1101,6 +1170,7 @@ process.stdout.write(JSON.stringify({
     assert run_condition_change["measurementStackReview"]["status"] == "not-required"
     assert run_condition_change["runConditionsReview"]["status"] == "required"
     assert run_condition_change["runConditionsReview"]["changedComponents"] == [
+        "additionalConfigSettings.channel",
         "collectionTiming.pauseAfterFcpMs",
         "formFactor",
         "locale",
@@ -1110,6 +1180,7 @@ process.stdout.write(JSON.stringify({
     assert run_condition_change["runConditionsReview"]["changedReports"] == [{
         "report": "brandguard.json",
         "changedComponents": [
+            "additionalConfigSettings.channel",
             "collectionTiming.pauseAfterFcpMs",
             "locale",
             "storage.disableStorageReset",
@@ -1121,6 +1192,24 @@ process.stdout.write(JSON.stringify({
     }]
     assert "Owner review is required" in run_condition_change["runConditionsReview"]["action"]
 
+    output_change = emitted["outputFormatChange"]
+    assert output_change["runConditionsReview"]["status"] == "not-required"
+    assert output_change["runConditionsReview"]["changedComponents"] == []
+    assert output_change["runConditions"]["reports"]["homepage.json"]["nonComparabilitySettings"] == {
+        "output": ["html"]
+    }
+
+    unknown_setting_change = emitted["unknownSettingChange"]
+    assert unknown_setting_change["runConditionsReview"]["status"] == "required"
+    assert unknown_setting_change["runConditionsReview"]["changedComponents"] == [
+        "unclassifiedConfigSettings.futureNetworkSetting"
+    ]
+    unknown_with_matching_reference = emitted["unknownSettingWithMatchingReference"]
+    assert unknown_with_matching_reference["runConditionsReview"]["status"] == "required"
+    assert unknown_with_matching_reference["runConditionsReview"]["changedComponents"] == [
+        "unclassifiedConfigSettings.futureNetworkSetting"
+    ]
+
     missing_run_conditions = emitted["missingRunConditions"]
     assert missing_run_conditions["runConditionsReview"]["status"] == "required"
     assert "formFactor" in missing_run_conditions["runConditionsReview"]["changedComponents"]
@@ -1129,6 +1218,8 @@ process.stdout.write(JSON.stringify({
     assert "locale" in missing_run_conditions["runConditionsReview"]["changedComponents"]
     assert "storage.clearStorageTypes" in missing_run_conditions["runConditionsReview"]["changedComponents"]
     assert "storage.disableStorageReset" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+    assert "additionalConfigSettings.auditMode" in missing_run_conditions["runConditionsReview"]["changedComponents"]
+    assert missing_run_conditions["runConditions"]["reports"]["homepage.json"]["additionalConfigSettings"]["channel"] == "unavailable"
     assert missing_run_conditions["runConditions"]["reports"]["homepage.json"]["collectionTiming"] == {
         "maxWaitForFcp": "unavailable",
         "maxWaitForLoad": "unavailable",
@@ -1170,7 +1261,7 @@ process.stdout.write(JSON.stringify({
         "search": {"performance": 91, "lcpMs": 3000},
     }}
     for summary in (normal, controlled):
-        assert summary["schemaVersion"] == 5
+        assert summary["schemaVersion"] == 6
         assert summary["property"] == "https://fixture.invalid"
         assert summary["baseline"] == "assets/audit/lighthouse-baseline-2026-08-22.json"
         assert set(summary["pages"]) == set(expected_routes)
@@ -1661,6 +1752,21 @@ const report = {
     locale: "en-US",
     disableStorageReset: false,
     clearStorageTypes: ["file_systems", "shader_cache", "service_workers", "cache_storage"],
+    auditMode: false,
+    gatherMode: false,
+    debugNavigation: false,
+    channel: "cli",
+    usePassiveGathering: false,
+    disableFullPageScreenshot: false,
+    skipAboutBlank: false,
+    blankPage: "about:blank",
+    ignoreStatusCode: false,
+    additionalTraceCategories: null,
+    extraHeaders: null,
+    precomputedLanternData: null,
+    onlyAudits: null,
+    onlyCategories: null,
+    skipAudits: null,
     blockedUrlPatterns: args.some((arg) => arg.startsWith("--blocked-url-patterns="))
       ? args
         .filter((arg) => arg.startsWith("--blocked-url-patterns="))

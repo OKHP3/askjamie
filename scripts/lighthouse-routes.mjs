@@ -39,6 +39,72 @@ export const CONTROLLED_BLOCKED_URL_PATTERNS = Object.freeze([
   "https://*.google-analytics.com/*",
 ]);
 
+// Inventory of configSettings emitted by supported Lighthouse 12.8.2 reports
+// and the installed Lighthouse 13.5.0 settings schema. Measurement-affecting
+// values are compared against each explicit reference. New, unclassified keys
+// are retained and therefore require review until deliberately classified.
+export const LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY = Object.freeze({
+  tracked: Object.freeze([
+    "formFactor",
+    "throttlingMethod",
+    "throttling",
+    "screenEmulation",
+    "emulatedUserAgent",
+    "blockedUrlPatterns",
+    "maxWaitForFcp",
+    "maxWaitForLoad",
+    "pauseAfterFcpMs",
+    "pauseAfterLoadMs",
+    "networkQuietThresholdMs",
+    "cpuQuietThresholdMs",
+    "locale",
+    "disableStorageReset",
+    "clearStorageTypes",
+    "auditMode",
+    "gatherMode",
+    "debugNavigation",
+    "channel",
+    "usePassiveGathering",
+    "disableFullPageScreenshot",
+    "skipAboutBlank",
+    "blankPage",
+    "ignoreStatusCode",
+    "additionalTraceCategories",
+    "extraHeaders",
+    "precomputedLanternData",
+    "onlyAudits",
+    "onlyCategories",
+    "skipAudits",
+  ]),
+  recordedWithoutComparison: Object.freeze({
+    output: "Selects report serialization only; it does not change page navigation, collection, or audits.",
+  }),
+});
+
+const knownConfigSettings = new Set([
+  ...LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.tracked,
+  ...Object.keys(LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.recordedWithoutComparison),
+]);
+const summarizedConfigSettings = new Set([
+  "formFactor",
+  "throttlingMethod",
+  "throttling",
+  "screenEmulation",
+  "emulatedUserAgent",
+  "blockedUrlPatterns",
+  "maxWaitForFcp",
+  "maxWaitForLoad",
+  "pauseAfterFcpMs",
+  "pauseAfterLoadMs",
+  "networkQuietThresholdMs",
+  "cpuQuietThresholdMs",
+  "locale",
+  "disableStorageReset",
+  "clearStorageTypes",
+]);
+const additionalTrackedConfigSettings = LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.tracked
+  .filter((field) => !summarizedConfigSettings.has(field));
+
 // Historical mobile reference is independent of the ignored, regenerable
 // files under assets/audit/. Historical reports establish Chromium major 148;
 // the exact patch build below is inferred from Playwright 1.60.0 metadata, not
@@ -90,6 +156,24 @@ export const HISTORICAL_REFERENCE_RUN_CONDITIONS = Object.freeze({
       "cache_storage",
     ]),
   }),
+  additionalConfigSettings: Object.freeze({
+    auditMode: false,
+    gatherMode: false,
+    debugNavigation: false,
+    channel: "cli",
+    usePassiveGathering: false,
+    disableFullPageScreenshot: false,
+    skipAboutBlank: false,
+    blankPage: "about:blank",
+    ignoreStatusCode: false,
+    additionalTraceCategories: null,
+    extraHeaders: null,
+    precomputedLanternData: null,
+    onlyAudits: null,
+    onlyCategories: null,
+    skipAudits: null,
+  }),
+  unclassifiedConfigSettings: Object.freeze({}),
 });
 
 export const DESKTOP_REFERENCE_PATH = "assets/docs/performance-baseline-desktop-2026-09-07.json";
@@ -138,6 +222,9 @@ export function getLighthouseReference(preset, baseline) {
 
 export function summarizeRunConditions(report) {
   const settings = report.configSettings ?? {};
+  const settingValue = (field) => (
+    Object.hasOwn(settings, field) ? settings[field] : "unavailable"
+  );
   const pickFields = (value, fields) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     return Object.fromEntries(fields.map((field) => [
@@ -183,13 +270,21 @@ export function summarizeRunConditions(report) {
     ])),
     locale: Object.hasOwn(settings, "locale") ? settings.locale : "unavailable",
     storage: {
-      disableStorageReset: Object.hasOwn(settings, "disableStorageReset")
-        ? settings.disableStorageReset
-        : "unavailable",
-      clearStorageTypes: Object.hasOwn(settings, "clearStorageTypes")
-        ? settings.clearStorageTypes
-        : "unavailable",
+      disableStorageReset: settingValue("disableStorageReset"),
+      clearStorageTypes: settingValue("clearStorageTypes"),
     },
+    additionalConfigSettings: Object.fromEntries(
+      additionalTrackedConfigSettings.map((field) => [field, settingValue(field)]),
+    ),
+    nonComparabilitySettings: Object.fromEntries(
+      Object.keys(LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.recordedWithoutComparison)
+        .map((field) => [field, settingValue(field)]),
+    ),
+    unclassifiedConfigSettings: Object.fromEntries(
+      Object.keys(settings)
+        .filter((field) => !knownConfigSettings.has(field))
+        .map((field) => [field, settings[field]]),
+    ),
   };
 }
 
@@ -207,6 +302,21 @@ function changedRunConditionComponents(actual, expected, prefix = "") {
   return JSON.stringify(actual) === JSON.stringify(expected) ? [] : [prefix || "run conditions"];
 }
 
+function comparableRunConditionSnapshot(conditions) {
+  if (!conditions || typeof conditions !== "object" || Array.isArray(conditions)) {
+    return conditions;
+  }
+  return Object.fromEntries(
+    Object.entries(conditions).filter(([field]) => field !== "nonComparabilitySettings"),
+  );
+}
+
+function unclassifiedConfigSettingComponents(conditions) {
+  const values = conditions?.unclassifiedConfigSettings;
+  if (!values || typeof values !== "object" || Array.isArray(values)) return [];
+  return Object.keys(values).map((field) => `unclassifiedConfigSettings.${field}`);
+}
+
 export function createRunConditionsReview(
   reports,
   {
@@ -222,10 +332,17 @@ export function createRunConditionsReview(
     : baselineRunConditions;
   const entries = Object.entries(reports ?? {});
   const changedReports = entries
-    .map(([report, conditions]) => ({
-      report,
-      changedComponents: changedRunConditionComponents(conditions, expectedConditions),
-    }))
+    .map(([report, conditions]) => {
+      const changed = changedRunConditionComponents(
+        comparableRunConditionSnapshot(conditions),
+        comparableRunConditionSnapshot(expectedConditions),
+      );
+      const unclassified = unclassifiedConfigSettingComponents(conditions);
+      return {
+        report,
+        changedComponents: [...new Set([...changed, ...unclassified])].sort(),
+      };
+    })
     .filter(({ changedComponents }) => changedComponents.length > 0);
   const changedComponents = [...new Set(
     changedReports.flatMap(({ changedComponents: changed }) => changed),
@@ -241,8 +358,8 @@ export function createRunConditionsReview(
     changedReports,
     action: reviewRequired
       ? desktopReference
-        ? "Owner review is required before interpreting desktop trends because Lighthouse collection, locale, storage, emulation, or throttling settings differ from or are missing in the desktop reference."
-        : "Owner review is required before interpreting or changing the BrandGuard lab budget because Lighthouse collection, locale, storage, emulation, or throttling settings differ from or are missing in the historical reference."
+        ? "Owner review is required before interpreting desktop trends because Lighthouse measurement settings differ from or are missing in the desktop reference."
+        : "Owner review is required before interpreting or changing the BrandGuard lab budget because Lighthouse measurement settings differ from or are missing in the historical reference."
       : desktopReference
         ? "No Lighthouse run-condition change from the desktop reference."
         : "No Lighthouse run-condition change from the historical reference.",
@@ -278,7 +395,7 @@ export function createSummary({
   const reviewRequired = changedComponents.length > 0;
 
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     capturedAt: date,
     tool: `Lighthouse ${measurementStack.lighthouseVersion}`,
     measurementStack,

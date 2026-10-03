@@ -57,10 +57,23 @@ Each mobile report's effective settings are compared with the approved
 historical mobile conditions. Controlled runs are checked against their
 explicit blocked-URL profile; normal runs are checked for no blocked-URL
 patterns. A difference or missing setting marks `runConditionsReview.status`
-as `required` and names the changed setting. Collection timing, locale, and
-storage changes are included in this gate. It is separate from
-`measurementStackReview`, so tool-version changes and condition changes remain
-independently visible.
+as `required` and names the changed setting. The gate also compares Lighthouse
+execution mode (`auditMode`, `gatherMode`), channel, navigation and gathering
+behavior, extra trace categories, request headers, Lantern input, and explicit
+audit/category filters. These values can change which page state is loaded,
+which data is gathered, or which measurements and audits are produced. An
+unrecognized `configSettings` field is recorded and requires review until it is
+explicitly classified in the inventory, even if it matches a copied reference
+value. This prevents a new Lighthouse setting from silently escaping the gate.
+
+The supported-report inventory was checked against the saved Lighthouse
+12.8.2 mobile and desktop reports and the installed Lighthouse 13.5.0 settings
+schema. `output` is recorded separately but not compared: it selects report
+serialization (the route runner requires JSON) and does not change navigation,
+collection, or audit measurements. Collection timing, locale, storage, and all
+other tracked settings remain compared. A changed or unavailable tracked
+setting requires review. This is separate from `measurementStackReview`, so
+tool-version changes and condition changes remain independently visible.
 
 ## Desktop comparison reference
 
@@ -84,8 +97,9 @@ Normal and controlled mobile runs are separate conditions in the summary.
 Controlled runs continue to block third-party fonts and analytics as an
 explicit isolation measure; they are not merged with normal results. The
 condition review compares Lighthouse emulation, throttling, collection timing,
-locale, storage, and blocked-URL settings, while the run label and `controls`
-field preserve the normal-versus-controlled distinction.
+locale, storage, blocked-URL settings, and the remaining effective
+`configSettings` inventory. The run label and `controls` field preserve the
+normal-versus-controlled distinction.
 
 ## Lighthouse summary
 

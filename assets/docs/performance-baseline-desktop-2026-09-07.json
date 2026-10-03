@@ -47,7 +47,25 @@
         "service_workers",
         "cache_storage"
       ]
-    }
+    },
+    "additionalConfigSettings": {
+      "auditMode": false,
+      "gatherMode": false,
+      "debugNavigation": false,
+      "channel": "cli",
+      "usePassiveGathering": false,
+      "disableFullPageScreenshot": false,
+      "skipAboutBlank": false,
+      "blankPage": "about:blank",
+      "ignoreStatusCode": false,
+      "additionalTraceCategories": null,
+      "extraHeaders": null,
+      "precomputedLanternData": null,
+      "onlyAudits": null,
+      "onlyCategories": null,
+      "skipAudits": null
+    },
+    "unclassifiedConfigSettings": {}
   },
   "environment": "Local or supplied static server, desktop preset",
   "property": "http://127.0.0.1:5000",
