@@ -7625,6 +7625,24 @@ html[data-theme="light"] .askjamie-main {
   }
 }
 
+/* Case-study copy uses an active Google Fonts stylesheet. Match fallback line
+   counts before those faces load so each measured hero keeps its geometry. */
+@media (min-width: 381px) and (max-width: 400px) {
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy h1 {
+    font-size: 2.125rem;
+    letter-spacing: -0.04em;
+  }
+
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-subtitle {
+    font-size: 1rem;
+    letter-spacing: -0.04em;
+  }
+
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-tagline {
+    letter-spacing: -0.04em;
+  }
+}
+
 /* ===================================================================== */
 /* AskJamie – Mermaid layout + mid‑century teal skin                     */
 /* ===================================================================== */

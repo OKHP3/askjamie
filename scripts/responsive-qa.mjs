@@ -85,6 +85,11 @@ const RESULTS_DIR    = resolve(ROOT, 'assets/audit/responsive-qa');
 const RESULTS_FILE   = resolve(RESULTS_DIR, 'results.json');
 const SCREENSHOTS_DIR = resolve(RESULTS_DIR, 'screenshots');
 const BRANDGUARD_GEOMETRY_PATH = '/lens-system/okhp3-brandguard/';
+const BRANDGUARD_FONT_GEOMETRY_PATHS = new Set([
+  BRANDGUARD_GEOMETRY_PATH,
+  '/lens-system/okhp3-brandguard/lvmh/',
+  '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
+]);
 const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
   'mobile-360',
   'mobile-390',
@@ -94,15 +99,15 @@ const BRANDGUARD_FONT_GEOMETRY_VIEWPORT = 'mobile-390';
 const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
 const BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS = 15000;
 const BRANDGUARD_GEOMETRY_SELECTORS = [
-  '.askjamie-brandguard-page .askjamie-breadcrumb',
-  '.askjamie-brandguard-page .askjamie-hero-copy h1',
-  '.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle',
-  '.askjamie-brandguard-page .askjamie-hero-copy .hero-tagline',
+  '.askjamie-main .askjamie-breadcrumb',
+  '.askjamie-main .askjamie-hero-copy h1',
+  '.askjamie-main .askjamie-hero-copy .hero-subtitle',
+  '.askjamie-main .askjamie-hero-copy .hero-tagline',
 ];
 const BRANDGUARD_FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
 const BRANDGUARD_FONT_FAMILIES = ['Kalam', 'Baloo 2', 'Kalam', 'Open Sans'];
 const BRANDGUARD_LOGO_SELECTOR =
-  '.askjamie-brandguard-page .askjamie-logo--crumb img';
+  '.askjamie-main .askjamie-logo--crumb img';
 const CRITICAL_HERO_STYLESHEET_PATH = '/assets/css/critical-hero.css';
 const BRANDGUARD_CRITICAL_STYLE_VIEWPORT = 'mobile-390';
 const UNIVERSE_DIAGRAM_GEOMETRY_PATH = '/universe/';
@@ -756,6 +761,29 @@ async function checkBrandGuardHeroGeometry(page) {
 
 async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontResponses) {
   const errors = [];
+  const fontStylesheetMode = await page.evaluate(() =>
+    document.querySelector('link[data-deferred-fonts]') ? 'deferred' : 'active'
+  );
+  if (fontStylesheetMode === 'active') {
+    try {
+      await page.waitForFunction(() => {
+        const fontStylesheet = [...document.querySelectorAll('link[rel~="stylesheet"]')]
+          .find(link => {
+            const url = new URL(link.href);
+            return url.hostname === 'fonts.googleapis.com' &&
+              url.pathname === '/css2' &&
+              link.media !== 'not all';
+          });
+        return Boolean(fontStylesheet?.sheet);
+      }, undefined, { timeout: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS });
+    } catch (error) {
+      errors.push(
+        `BRANDGUARD WEB FONT STYLESHEET NOT READY: ${error.message.split('\n')[0]}; ` +
+        `measurements will continue`
+      );
+    }
+  }
+
   const capture = () => page.evaluate((selectors) => {
     const geometry = {};
     for (const selector of selectors) {
@@ -781,13 +809,30 @@ async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontRes
   try {
     await page.waitForFunction(() => {
       const fontLink = document.querySelector('link[data-deferred-fonts]');
-      return fontLink?.media === 'all' && Boolean(fontLink.sheet);
+      if (fontLink) return fontLink.media === 'all' && Boolean(fontLink.sheet);
+
+      const fontStylesheet = [...document.querySelectorAll('link[rel~="stylesheet"]')]
+        .find(link => {
+          const url = new URL(link.href);
+          return url.hostname === 'fonts.googleapis.com' &&
+            url.pathname === '/css2' &&
+            link.media !== 'not all';
+        });
+      return Boolean(fontStylesheet?.sheet);
     }, undefined, { timeout: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS });
     fontLoading = await page.evaluate(async ({ selectors, expectedFamilies, timeoutMs }) => {
       const fontLink = document.querySelector('link[data-deferred-fonts]');
-      if (fontLink?.media !== 'all' || !fontLink.sheet) {
+      const activeFontStylesheet = fontLink ?? [...document.querySelectorAll('link[rel~="stylesheet"]')]
+        .find(link => {
+          const url = new URL(link.href);
+          return url.hostname === 'fonts.googleapis.com' &&
+            url.pathname === '/css2' &&
+            link.media !== 'not all';
+        });
+      if (!activeFontStylesheet?.sheet || (fontLink && fontLink.media !== 'all')) {
         throw new Error(
-          `link[data-deferred-fonts] was not active (media=${JSON.stringify(fontLink?.media ?? null)})`
+          `Google Fonts stylesheet was not active (mode=${fontLink ? 'deferred' : 'active'}, ` +
+          `media=${JSON.stringify(activeFontStylesheet?.media ?? null)})`
         );
       }
 
@@ -838,7 +883,7 @@ async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontRes
         ));
         return {
           status: document.fonts.status,
-          link_media: fontLink.media,
+          link_media: activeFontStylesheet.media,
           fonts,
         };
       } finally {
@@ -853,7 +898,7 @@ async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontRes
     errors.push(
       `BRANDGUARD WEB FONTS NOT READY: ${error.message.split('\n')[0]}; ` +
       `selectors=${JSON.stringify(BRANDGUARD_GEOMETRY_SELECTORS)}; ` +
-      `before=${JSON.stringify(before)}; after=not-measured`
+      `before=${JSON.stringify(before)}; after will still be measured`
     );
   }
 
@@ -911,6 +956,7 @@ async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontRes
     evidence: {
       threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
       timeout_ms: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+      font_stylesheet_mode: fontStylesheetMode,
       before,
       after,
       font_loading: fontLoading,
@@ -1558,7 +1604,8 @@ async function runWithPlaywright() {
     const { vp, ctx } = worker;
     const page = await ctx.newPage();
     const checkBrandGuardFonts =
-      path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_FONT_GEOMETRY_VIEWPORT;
+      BRANDGUARD_FONT_GEOMETRY_PATHS.has(path) &&
+      vp.name === BRANDGUARD_FONT_GEOMETRY_VIEWPORT;
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
@@ -2082,7 +2129,7 @@ async function staticAnalysis() {
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 8 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-360, mobile-390, and mobile-430.',
-      'BrandGuard hero geometry after deferred web fonts load is checked only in Playwright mode at mobile-390.',
+      'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-390 on the hub and representative short and long case-study pages.',
       'Universe hero and opened page-map shell geometry through Mermaid rendering is checked in dark mode only in Playwright mode at mobile-390 and desktop-1280.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
