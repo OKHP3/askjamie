@@ -82,6 +82,55 @@ def test_brandguard_breadcrumb_typography_and_vertical_rhythm_match():
         assert drift._last_value(theme, selector, property_name) == expected
 
 
+def test_brandguard_tablet_critical_shell_matches_theme_layout_contracts():
+    critical = drift.parse_rules(
+        (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
+    )
+    theme = drift.parse_rules(
+        (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+    )
+    tagline_selector = ".askjamie-brandguard-page .askjamie-hero-copy .hero-tagline"
+    submenu_selector = ".askjamie-main .primary-nav .has-submenu > .submenu"
+    submenu_item_selector = ".askjamie-main .primary-nav .has-submenu"
+    submenu_open_selector = (
+        ".askjamie-main .primary-nav .has-submenu:hover > .submenu"
+    )
+    theme_submenu_selector = ".primary-nav .has-submenu > .submenu"
+    theme_submenu_open_selector = ".primary-nav .has-submenu:hover > .submenu"
+    toggle_selector = ".askjamie-main .glee-color-toggle"
+    toggle_properties = {
+        "width": "2.25rem",
+        "height": "2.25rem",
+        "min-width": "44px",
+        "min-height": "44px",
+        "padding": "0",
+        "flex-shrink": "0",
+    }
+
+    assert drift._last_value(critical, tagline_selector, "max-width") == "32rem"
+    assert drift._last_value(theme, ".hero-tagline", "max-width") == "32rem"
+    assert drift._last_value(critical, submenu_item_selector, "position") == "relative"
+    assert any(
+        declarations.get("position") == "relative"
+        for declarations in theme.get(".primary-nav .has-submenu", [])
+    )
+    assert drift._last_value(critical, submenu_selector, "position") == "absolute"
+    assert drift._last_value(critical, submenu_selector, "display") == "none"
+    assert any(
+        declarations.get("position") == "absolute"
+        and declarations.get("display") == "none"
+        for declarations in theme.get(theme_submenu_selector, [])
+    )
+    assert drift._last_value(critical, submenu_open_selector, "display") == "block"
+    assert any(
+        declarations.get("display") == "block"
+        for declarations in theme.get(theme_submenu_open_selector, [])
+    )
+    for property_name, expected in toggle_properties.items():
+        assert drift._last_value(critical, toggle_selector, property_name) == expected
+        assert drift._last_value(theme, ".glee-color-toggle", property_name) == expected
+
+
 def test_brandguard_390px_font_tracking_keeps_fallback_line_counts():
     critical = drift.parse_rules(
         (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
@@ -198,17 +247,26 @@ def test_capability_transition_geometry_drift_is_reported(tmp_path):
     assert any("capability transition panel: padding drifted" in finding for finding in findings)
 
 
-def test_responsive_qa_measures_brandguard_mobile_theme_geometry():
+def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_widths():
     source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
 
     assert "BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([" in source
     assert "'mobile-360'" in source
     assert "'mobile-390'" in source
     assert "'mobile-430'" in source
+    assert "'tablet-768'" in source
+    assert "'tablet-899'" in source
+    assert "{ name: 'tablet-768',   width: 768,  height: 1024 }" in source
+    assert "{ name: 'tablet-899',   width: 899,  height: 1024 }" in source
     assert "BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)" in source
     assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set(['mobile-360', 'mobile-390'])" in source
     assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name)" in source
     assert "link[data-deferred-styles]" in source
+    assert "BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1" in source
+    assert "'.askjamie-main .askjamie-breadcrumb'" in source
+    assert "'.askjamie-main .askjamie-hero-copy h1'" in source
+    assert "'.askjamie-main .askjamie-hero-copy .hero-subtitle'" in source
+    assert "'.askjamie-main .askjamie-hero-copy .hero-tagline'" in source
     assert "BRANDGUARD HERO GEOMETRY SHIFT" in source
     assert "before=${JSON.stringify(beforeRect)}" in source
     assert "after=${JSON.stringify(afterRect)}" in source

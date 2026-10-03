@@ -16,3 +16,9 @@ When deferred fonts move a hero, measure the content above it and the breadcrumb
 **How to apply:** Compare the same viewport before and after font release, inspect preceding text-block heights and breadcrumb wrapping, and keep the geometry gate enabled while resolving the underlying wrap difference.
 
 Font-swap checks must use each route's actual page root and active stylesheet mode. A hub and its case studies can have different root classes, so a hub-only pass does not prove case-study rules took effect. **Why:** font tuning that is correct for one route can silently miss the same-looking content on another route. **How to apply:** Verify computed styles and before/after boxes on each representative route, then run the full browser gate rather than relying only on a simulated font-family swap.
+
+Deferred theme activation can also move hero content when shared scripts inject header controls before the deferred styles apply. Compare direct header children across activation; a color-scheme control missing its reserved 44px target can grow a wrapped header row and make downstream hero copy look responsible.
+
+**Why:** Header controls can exist before their theme-specific styles, so the first-paint header may be shorter than the settled header even when the hero text styles are unchanged.
+
+**How to apply:** Inspect the header's direct-child boxes at the failing viewport, mirror only geometry-driving control styles in critical CSS, and keep deferred-theme evidence separate from font-loading evidence.

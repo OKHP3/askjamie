@@ -3,7 +3,7 @@
  * AskJamie™ responsive QA script.
  *
  * MODE A — Playwright:
- *   Visits each public page at 8 viewport widths and checks:
+ *   Visits each public page at 9 viewport widths and checks:
  *   - No horizontal overflow (scrollWidth > innerWidth)
  *   - No JS console errors
  *   - All images loaded (no broken img src)
@@ -17,7 +17,7 @@
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
  *   Checks that are viewport-agnostic (viewport meta, h1, alt, etc.) are
- *   run once per page and applied to all 8 viewport rows — clearly flagged
+ *   run once per page and applied to all 9 viewport rows — clearly flagged
  *   as `static-lint` so results are not confused with live browser checks.
  *
  * Usage:
@@ -53,6 +53,7 @@ const VIEWPORTS = [
   { name: 'mobile-390',   width: 390,  height: 844  },
   { name: 'mobile-430',   width: 430,  height: 932  },
   { name: 'tablet-768',   width: 768,  height: 1024 },
+  { name: 'tablet-899',   width: 899,  height: 1024 },
   { name: 'desktop-1024', width: 1024, height: 768  },
   { name: 'desktop-1280', width: 1280, height: 800  },
   { name: 'desktop-1440', width: 1440, height: 900  },
@@ -94,6 +95,8 @@ const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
   'mobile-360',
   'mobile-390',
   'mobile-430',
+  'tablet-768',
+  'tablet-899',
 ]);
 const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set(['mobile-360', 'mobile-390']);
 const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
@@ -1809,8 +1812,8 @@ async function runWithPlaywright() {
           : null;
 
       // Compare the critical shell with the live deferred theme on the supported
-      // phone BrandGuard viewports. Do this before scrolling lazy images so the
-      // two geometry samples cover only theme activation, not later page work.
+      // phone and tablet BrandGuard viewports before scrolling lazy images, so
+      // both geometry samples cover theme activation rather than later page work.
       const heroThemeGeometry =
         path === BRANDGUARD_GEOMETRY_PATH && BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)
           ? await checkBrandGuardHeroGeometry(page)
@@ -2126,9 +2129,9 @@ async function staticAnalysis() {
     generated: new Date().toISOString(),
     mode: 'static-lint',
     note: [
-      'Static-lint mode: 10 structural checks per page, applied uniformly to all 8 viewport rows.',
+      'Static-lint mode: 10 structural checks per page, applied uniformly to all 9 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
-      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-360, mobile-390, and mobile-430.',
+      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
       'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-360 and mobile-390 on the hub and representative short and long case-study pages.',
       'Universe hero and opened page-map shell geometry through Mermaid rendering is checked in dark mode only in Playwright mode at mobile-390 and desktop-1280.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',

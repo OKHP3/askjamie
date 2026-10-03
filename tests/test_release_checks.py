@@ -2330,7 +2330,9 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     assert report["chromium_version"] == runtime.group(2)
     assert warning_only_report["playwright_version"] == runtime.group(1)
     assert warning_only_report["chromium_version"] == runtime.group(2)
-    assert report["total_checks"] == 64
+    expected_viewports = 9
+    assert report["viewports_checked"] == expected_viewports
+    assert report["total_checks"] == 8 * expected_viewports
     lazy_failures = [row for row in rows["/lazy/"] if not row["pass"]]
     assert not lazy_failures, json.dumps(lazy_failures, indent=2)
     lazy_warnings = [row for row in rows["/lazy/"] if row["warnings"]]
@@ -2369,7 +2371,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
         event for event in events
         if event[0] == "start" and event[1] == "/late-lazy.png"
     ]
-    assert len(late_lazy_starts) == len(rows["/lazy-late/"]) == 8
+    assert len(late_lazy_starts) == len(rows["/lazy-late/"]) == expected_viewports
     assert all(row["pass"] for row in rows["/clean/"])
     assert all(any("REQUEST FAILED" in error or "BROKEN IMG" in error for error in row["errors"])
                for row in rows["/abort/"])
@@ -2388,7 +2390,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     assert third_party_warning in result.stdout
     assert state["page_max_active"] <= 4
     lazy_starts = [event for event in events if event[0] == "start" and event[1] == "/slow-lazy.png"]
-    assert len(lazy_starts) == len(rows["/lazy/"]) == 8
+    assert len(lazy_starts) == len(rows["/lazy/"]) == expected_viewports
 
 
 def test_index_freshness_checks_content_instead_of_checkout_times(tmp_path, monkeypatch):

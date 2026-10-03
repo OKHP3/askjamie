@@ -194,6 +194,27 @@ body.askjamie-main a {
   flex: 0 0 auto;
 }
 
+.askjamie-main .glee-color-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.askjamie-main .glee-color-toggle .tt-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
 @media (max-width: 720px) {
   .askjamie-main .okh-search-trigger kbd,
   .askjamie-main .okh-search-trigger .okh-search-label {
@@ -466,6 +487,21 @@ body.askjamie-main a {
     letter-spacing: 0.08em;
   }
 
+  /* Keep the desktop dropdown out of header flow before the shared theme loads. */
+  .askjamie-main .primary-nav .has-submenu {
+    position: relative;
+  }
+
+  .askjamie-main .primary-nav .has-submenu > .submenu {
+    position: absolute;
+    display: none;
+  }
+
+  .askjamie-main .primary-nav .has-submenu:hover > .submenu,
+  .askjamie-main .primary-nav .has-submenu:focus-within > .submenu {
+    display: block;
+  }
+
   .askjamie-main .nav-toggle {
     display: none;
   }
@@ -494,6 +530,10 @@ body.askjamie-main a {
 
   .askjamie-brandguard-page .askjamie-hero-copy {
     padding-inline: 0;
+  }
+
+  .askjamie-brandguard-page .askjamie-hero-copy .hero-tagline {
+    max-width: 32rem;
   }
 
   .askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label {
