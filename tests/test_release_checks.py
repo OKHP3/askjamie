@@ -79,6 +79,27 @@ def test_release_command_guard_names_archived_script_and_command():
         )
 
 
+def test_lazy_image_browser_boundary_records_deferred_engine_expansion():
+    policy = " ".join(
+        (ROOT / "docs/technology-update-policy.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    workflow = (ROOT / ".github/workflows/validate.yml").read_text(encoding="utf-8")
+
+    assert "The current intended support target for this check is Chromium only." in policy
+    assert (
+        "Firefox and WebKit checks are deferred until a separate reviewed "
+        "compatibility decision explicitly names any additional target engines."
+    ) in policy
+    assert "Verify lazy-image behavior on locked Playwright and Chromium" in workflow
+    assert (
+        "tests/test_release_checks.py::"
+        "test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures"
+    ) in workflow
+    assert "npx playwright install --with-deps chromium" in workflow
+
+
 def test_search_index_check_does_not_rewrite_timestamp():
     index = ROOT / "assets/data/search-index.json"
     before = json.loads(index.read_text(encoding="utf-8"))

@@ -36,6 +36,10 @@ is supported only after this check passes on the new locked package/browser
 pair; this does not claim compatibility with Firefox, WebKit, or separately
 installed Chromium versions.
 
+The current intended support target for this check is Chromium only. Firefox
+and WebKit checks are deferred until a separate reviewed compatibility decision
+explicitly names any additional target engines.
+
 Dependabot groups minor and patch updates by ecosystem. Major updates remain
 individual PRs. Five open version PRs per ecosystem allow major proposals to
 coexist with a maintenance group. There are no major-version ignore rules.
