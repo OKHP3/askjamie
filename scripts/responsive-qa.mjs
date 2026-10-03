@@ -2039,6 +2039,119 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
     };
   };
 
+  const checkGeneratedPageMapWithoutJavaScript = async targetPage => {
+    const groups = targetPage.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
+    const groupCount = await groups.count();
+    if (groupCount === 0) {
+      return {
+        errors: ['UNIVERSE NO-JAVASCRIPT PAGE MAP MISSING: no generated page-map group was found'],
+        evidence: { group_count: 0, group: null, ordinary_page_link_works: false },
+      };
+    }
+
+    const errors = [];
+    const group = groups.first();
+    try {
+      await group.locator('summary').click({ timeout: 5000 });
+    } catch (error) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT PAGE MAP DID NOT OPEN: ${error.message.split('\n')[0]}`
+      );
+    }
+
+    const state = await group.evaluate(element => {
+      const isVisible = node => Boolean(
+        node &&
+        node.getClientRects().length > 0 &&
+        getComputedStyle(node).visibility !== 'hidden' &&
+        getComputedStyle(node).display !== 'none'
+      );
+      const summary = element.querySelector('summary');
+      const caption = element.querySelector('figcaption');
+      const links = [...element.querySelectorAll('.link-list a')];
+      return {
+        open: element.open,
+        summary: summary?.textContent.trim() ?? '',
+        summary_visible: isVisible(summary),
+        caption: caption?.textContent.trim() ?? '',
+        caption_visible: isVisible(caption),
+        links: links.map(link => ({
+          text: link.textContent.trim(),
+          href: link.getAttribute('href'),
+          visible: isVisible(link),
+        })),
+      };
+    });
+
+    if (!state.open || !state.summary_visible || !state.summary) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT PAGE MAP SUMMARY UNAVAILABLE: ${JSON.stringify(state)}`
+      );
+    }
+    if (!state.caption_visible || !state.caption) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT PAGE MAP CAPTION UNAVAILABLE: ${JSON.stringify(state)}`
+      );
+    }
+    if (state.links.length < 1 || state.links.some(link => !link.visible || !link.href)) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT GENERATED PAGE LINKS UNAVAILABLE: ${JSON.stringify(state.links)}`
+      );
+    }
+
+    const currentUrl = new URL(targetPage.url());
+    const navigableLinkIndex = state.links.findIndex(link => {
+      try {
+        const destination = new URL(link.href, targetPage.url());
+        return destination.origin === currentUrl.origin &&
+          destination.pathname !== currentUrl.pathname;
+      } catch {
+        return false;
+      }
+    });
+    let ordinaryPageLinkWorks = false;
+    let ordinaryPageLinkEvidence = null;
+    if (navigableLinkIndex >= 0) {
+      const ordinaryPageLink = group.locator('.link-list a').nth(navigableLinkIndex);
+      const targetPath = new URL(
+        state.links[navigableLinkIndex].href,
+        targetPage.url()
+      ).pathname;
+      try {
+        const response = await Promise.all([
+          targetPage.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+          ordinaryPageLink.click({ timeout: 5000 }),
+        ]).then(([navigationResponse]) => navigationResponse);
+        ordinaryPageLinkWorks =
+          new URL(targetPage.url()).pathname === targetPath &&
+          Boolean(response && response.status() < 400);
+        ordinaryPageLinkEvidence = {
+          href: state.links[navigableLinkIndex].href,
+          target_path: targetPath,
+          http_status: response?.status() ?? null,
+        };
+      } catch {
+        ordinaryPageLinkWorks = false;
+      }
+    }
+    if (!ordinaryPageLinkWorks) {
+      errors.push(
+        'UNIVERSE NO-JAVASCRIPT GENERATED PAGE LINK BROKE: ' +
+        'ordinary link did not reach a successful local page'
+      );
+    }
+
+    return {
+      errors,
+      evidence: {
+        group_count: groupCount,
+        state,
+        ordinary_page_link_works: ordinaryPageLinkWorks,
+        ordinary_page_link: ordinaryPageLinkEvidence,
+      },
+    };
+  };
+
   try {
     await page.route('**/*', route => {
       const requestUrl = new URL(route.request().url());
@@ -2135,6 +2248,8 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
     if (!noJsPageMapLinkWorks) {
       errors.push('UNIVERSE NO-JAVASCRIPT LINK BROKE: page-map link did not reach its in-page target');
     }
+    const noJsGeneratedPageMap = await checkGeneratedPageMapWithoutJavaScript(noJsPage);
+    errors.push(...noJsGeneratedPageMap.errors);
 
     return {
       errors,
@@ -2147,6 +2262,7 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
         generated_page_map: generatedPageMap.evidence,
         no_javascript_state: noJsState,
         no_javascript_page_map_link_works: noJsPageMapLinkWorks,
+        no_javascript_generated_page_map: noJsGeneratedPageMap.evidence,
       },
     };
   } catch (error) {
