@@ -14,4 +14,5 @@
 - [Mobile critical-rendering evidence](mobile-critical-rendering-evidence.md) — isolate deferred theme/font gains from lab variance and keep the 2.5-second claim evidence-bound
 - [Lighthouse LCP lab constraint](lighthouse-lcp-lab-constraint.md) — separate emulated mobile LCP from much earlier observed paint when the runner reports zero blocking
 - [Post-merge timeout diagnosis](post-merge-timeout-diagnosis.md) — a Playwright page-closed stack at the hook limit may be timeout fallout; size from observed end-to-end runtime
+- [Post-merge port settings](post-merge-port-settings.md) — inspect unexpected `.replit` port changes after reconciliation before reverting them
 - [Retirement retention scope](retirement-retention-scope.md) — mainline baselines avoid treating pre-ledger side-branch states as deleted decisions.
