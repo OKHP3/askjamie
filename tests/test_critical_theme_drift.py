@@ -410,11 +410,16 @@ def test_responsive_qa_measures_universe_page_map_geometry_with_dark_theme_and_3
     assert "UNIVERSE PAGE MAP KEYBOARD OPEN FAILED" in source
     assert "UNIVERSE PAGE MAP KEYBOARD CLOSE FAILED" in source
     assert "UNIVERSE PAGE MAP COLLAPSED STATE INVALID" in source
+    assert "async function checkUniversePageMapThemeSwitch" in source
+    assert "await checkUniversePageMapThemeSwitch(" in source
+    assert "UNIVERSE PAGE MAP THEME SWITCH GEOMETRY SHIFT" in source
+    assert "UNIVERSE PAGE MAP THEME SWITCH KEYBOARD FAILED" in source
     assert "dark_theme_active_before_render" in source
     assert "dark_theme_active_after_render" in source
     assert (
-        "checked in dark mode only in Playwright mode at mobile-320, mobile-390, "
-        "tablet-768, and desktop-1280."
+        "checked in dark mode in Playwright mode at mobile-320, mobile-390, "
+        "tablet-768, and desktop-1280; each ready page-map group is also measured "
+        "through light and dark color-scheme switches."
     ) in source
     assert "async function checkUniversePageMapNarrowUsability" in source
     assert "UNIVERSE PAGE MAP 320PX" in source

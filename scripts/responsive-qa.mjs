@@ -12,7 +12,7 @@
  *   - BrandGuard hero geometry stays stable after its branded web fonts load
  *   - Universe diagram shell stays stable while its rendered SVG initializes
  *   - Universe caption and links remain usable when Mermaid fails or JavaScript is off
- *   - Every opened Universe page-map group keeps its shell and nearby content stable in dark mode
+ *   - Every opened Universe page-map group keeps its shell and adjacent summaries stable across light/dark switches
  *   - Every Universe page-map group remains usable at 320px with a locally scrollable diagram
  *
  * MODE B — Static lint (`--static` only):
@@ -555,6 +555,163 @@ async function compareUniversePageMapGeometry(page, groupCheck, after) {
   return { errors, shifts, closedByKeyboard };
 }
 
+async function checkUniversePageMapThemeSwitch(page, groupCheck, renderedState, waitForTwoFrames) {
+  const { groupIndex, groupCount, before } = groupCheck;
+  const errors = [];
+  const transitions = [];
+  const target = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).nth(groupIndex);
+  const toggle = page.locator('.askjamie-main .glee-color-toggle');
+  const baseline = renderedState;
+  const label = before?.title ? `"${before.title}"` : `group ${groupIndex + 1}`;
+  const geometrySelectors = [
+    'group',
+    'summary',
+    'figure',
+    'reserved_shell',
+    'previous_group_summary',
+    'next_group_summary',
+  ];
+
+  const compareState = (state, expectedTheme) => {
+    if (state?.color_scheme !== expectedTheme ||
+        state?.prefers_dark !== true ||
+        !state?.open ||
+        !state?.other_groups_collapsed ||
+        !state?.svg_ready) {
+      errors.push(
+        `UNIVERSE PAGE MAP THEME SWITCH STATE INVALID: expected ${label} to remain open with ` +
+        `a ready SVG, all other generated groups collapsed, and ${expectedTheme} color scheme; ` +
+        `state=${JSON.stringify({
+          color_scheme: state?.color_scheme,
+          prefers_dark: state?.prefers_dark,
+          open: state?.open,
+          other_groups_collapsed: state?.other_groups_collapsed,
+          svg_ready: state?.svg_ready,
+        })}`
+      );
+    }
+
+    for (const selector of geometrySelectors) {
+      const baselineRect = baseline?.geometry?.[selector];
+      const stateRect = state?.geometry?.[selector];
+      if (!baselineRect || !stateRect) {
+        if ((selector === 'previous_group_summary' && groupIndex === 0) ||
+            (selector === 'next_group_summary' && groupIndex === groupCount - 1)) {
+          continue;
+        }
+        errors.push(
+          `UNIVERSE PAGE MAP THEME SWITCH GEOMETRY MISSING: group ${groupIndex + 1} ` +
+          `${selector}; baseline=${JSON.stringify(baselineRect)}; state=${JSON.stringify(stateRect)}`
+        );
+        continue;
+      }
+
+      const changedProperties = ['x', 'y', 'width', 'height'].flatMap(property => {
+        const delta = Math.round((stateRect[property] - baselineRect[property]) * 100) / 100;
+        return Math.abs(delta) > UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX
+          ? [`${property}=${delta}px`]
+          : [];
+      });
+      if (changedProperties.length > 0) {
+        errors.push(
+          `UNIVERSE PAGE MAP THEME SWITCH GEOMETRY SHIFT: group ${groupIndex + 1} ${label} ` +
+          `${selector} changed ${changedProperties.join(', ')} with ` +
+          `${UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+          `baseline=${JSON.stringify(baselineRect)}; state=${JSON.stringify(stateRect)}`
+        );
+      }
+    }
+  };
+
+  if (!baseline?.svg_ready || !baseline?.open || !baseline?.other_groups_collapsed) {
+    errors.push(
+      `UNIVERSE PAGE MAP THEME SWITCH BASELINE INVALID: expected ready open SVG for ${label}; ` +
+      `baseline=${JSON.stringify(baseline)}`
+    );
+  }
+
+  const initialToggleState = await toggle.getAttribute('data-state').catch(() => null);
+  if (initialToggleState !== 'dark') {
+    errors.push(
+      `UNIVERSE PAGE MAP THEME SWITCH CONTROL INVALID: expected the color-scheme control to start ` +
+      `pinned dark; state=${JSON.stringify(initialToggleState)}`
+    );
+  }
+
+  if (initialToggleState === 'dark') {
+    for (const transition of [
+      { theme: 'light', clicks: 2 },
+      { theme: 'dark', clicks: 1 },
+    ]) {
+      try {
+        for (let clickIndex = 0; clickIndex < transition.clicks; clickIndex += 1) {
+          await toggle.click();
+        }
+        await page.waitForFunction(
+          theme => document.documentElement.getAttribute('data-color-scheme') === theme,
+          transition.theme,
+          { timeout: 5000 }
+        );
+        await waitForTwoFrames();
+        const state = await captureUniversePageMapGeometry(page, groupIndex);
+        compareState(state, transition.theme);
+        transitions.push({ theme: transition.theme, state });
+      } catch (error) {
+        errors.push(
+          `UNIVERSE PAGE MAP THEME SWITCH FAILED: group ${groupIndex + 1} ${label} ` +
+          `could not reach ${transition.theme}; ${error.message.split('\n')[0]}`
+        );
+      }
+    }
+  }
+
+  let keyboardClosed = false;
+  let keyboardReopened = false;
+  try {
+    const summary = target.locator('summary');
+    await summary.focus();
+    const summaryFocused = await summary.evaluate(element => element === document.activeElement);
+    await page.keyboard.press('Enter');
+    keyboardClosed = !(await target.evaluate(group => group.open));
+    const closedGroups = await page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).evaluateAll(
+      groups => groups.every(group => !group.open)
+    );
+    await page.keyboard.press('Enter');
+    keyboardReopened = await target.evaluate(group => group.open);
+    const openState = await captureUniversePageMapGeometry(page, groupIndex);
+    if (!summaryFocused || !keyboardClosed || !closedGroups ||
+        !keyboardReopened || !openState?.other_groups_collapsed || !openState?.svg_ready) {
+      errors.push(
+        `UNIVERSE PAGE MAP THEME SWITCH KEYBOARD FAILED: expected ${label} to close and reopen ` +
+        `with Enter after theme changes; ${JSON.stringify({
+          summary_focused: summaryFocused,
+          closed_by_keyboard: keyboardClosed,
+          all_groups_closed_after_toggle: closedGroups,
+          reopened_by_keyboard: keyboardReopened,
+          other_groups_collapsed: openState?.other_groups_collapsed,
+          svg_ready: openState?.svg_ready,
+        })}`
+      );
+    }
+  } catch (error) {
+    errors.push(
+      `UNIVERSE PAGE MAP THEME SWITCH KEYBOARD ERROR: group ${groupIndex + 1} ` +
+      `${error.message.split('\n')[0]}`
+    );
+  }
+
+  return {
+    errors,
+    evidence: {
+      initial_toggle_state: initialToggleState,
+      baseline,
+      transitions,
+      keyboard_closed: keyboardClosed,
+      keyboard_reopened: keyboardReopened,
+    },
+  };
+}
+
 async function checkUniversePageMapNarrowUsability(page, groupIndex) {
   const errors = [];
   const groupLabel = `group ${groupIndex + 1}`;
@@ -818,6 +975,7 @@ async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
     let ready = false;
     let after = null;
     let narrowUsability = null;
+    let themeSwitch = null;
     try {
       if (groupCheck.renderScheduled) {
         released = await releaseResponsiveQaMermaidRender(page);
@@ -842,6 +1000,15 @@ async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
           `${groupCheck.before?.title ? `"${groupCheck.before.title}"` : ''}; ` +
           `before=${JSON.stringify(groupCheck.before)}; after=${JSON.stringify(after)}`
         );
+      }
+      if (ready && after?.svg_ready) {
+        themeSwitch = await checkUniversePageMapThemeSwitch(
+          page,
+          groupCheck,
+          after,
+          waitForTwoFrames
+        );
+        errors.push(...themeSwitch.errors);
       }
       if (page.viewportSize()?.width === 320) {
         narrowUsability = await checkUniversePageMapNarrowUsability(page, groupIndex);
@@ -871,6 +1038,7 @@ async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
       before: groupCheck.before,
       after,
       shifts: comparison.shifts,
+      ...(themeSwitch ? { theme_switch: themeSwitch.evidence } : {}),
       ...(narrowUsability ? { narrow_usability: narrowUsability.evidence } : {}),
     });
   }
@@ -2489,7 +2657,7 @@ async function staticAnalysis() {
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
       'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-360 and mobile-390 on the hub and representative short and long case-study pages.',
       'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
-      'Universe hero and opened page-map shell geometry through sequential Mermaid rendering is checked in dark mode only in Playwright mode at mobile-320, mobile-390, tablet-768, and desktop-1280.',
+      'Universe hero geometry and page-map shell geometry during sequential Mermaid rendering are checked in dark mode in Playwright mode at mobile-320, mobile-390, tablet-768, and desktop-1280; each ready page-map group is also measured through light and dark color-scheme switches.',
       'Every generated Universe page-map group is checked for page overflow, diagram scrolling, usable summaries, and working ordinary links at mobile-320 in Playwright mode.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
