@@ -424,3 +424,5 @@ before making cross-repository changes.
 
 At the end of work, summarize what changed, why it changed, which checks ran,
 and any unresolved questions.
+
+## Imported Claude Cowork project instructions
