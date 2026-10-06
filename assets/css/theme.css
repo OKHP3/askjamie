@@ -7636,6 +7636,23 @@ html body.askjamie-main {
 /* At 360px, keep fallback and deferred BrandGuard text on the same line counts
    without applying the 390px-specific tracking across narrower phone widths. */
 @media (min-width: 350px) and (max-width: 370px) {
+  /* Reserve the loaded font's line counts across narrower system fallbacks. */
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2) {
+    min-height: 9.6rem;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:last-of-type {
+    min-height: 3.2rem;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .capability-transition > p:last-of-type {
+    min-height: 3.2rem;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy .hero-tagline {
+    min-height: 4.8rem;
+  }
+
   .askjamie-main.askjamie-brandguard-page .capability-transition h2 {
     letter-spacing: -0.05em;
   }

@@ -19,7 +19,7 @@
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
  *   Checks that are viewport-agnostic (viewport meta, h1, alt, etc.) are
- *   run once per page and applied to all 10 viewport rows — clearly flagged
+ *   run once per page and applied to all 10 viewport rows, clearly flagged
  *   as `static-lint` so results are not confused with live browser checks.
  *
  * Usage:

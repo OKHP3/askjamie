@@ -93,7 +93,7 @@ Do not change that status to `"owner-approved"` unless the approval record,
 approver, and approval date are recorded in the desktop reference JSON. This
 approval metadata does not affect the mobile comparison or its review gate.
 
-### Desktop repeatability check — 2026-10-03
+### Desktop repeatability check, 2026-10-03
 
 Three independent four-route desktop passes were captured with the same
 Lighthouse 12.8.2 / Chromium 148.0.7778.96 stack and the recorded desktop
