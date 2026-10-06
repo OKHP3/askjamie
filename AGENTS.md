@@ -154,6 +154,13 @@ and leaves persistent HTML notices and links available without JavaScript.
 Published GPT names and links remain historical source references. A notice
 does not establish a tested or available replacement skill or plugin.
 
+The October 6, 2026 Replit integration keeps 27 content routes and expands
+responsive QA to ten viewports, including 320px and 360px, for 270
+route/viewport rows. CI serves the prepared Pages artifact for browser QA.
+Universe checks cover generated map geometry, color-scheme changes, blocked
+Mermaid, and no-JavaScript navigation. These checks do not establish human
+screen-reader spoken output or Firefox/WebKit compatibility.
+
 ### Agent skills
 
 The `.agents/skills/` directory holds Agent Skills for AI assistants. Not all

@@ -4,6 +4,60 @@ import fs from "node:fs/promises";
 
 const base = process.env.BASE_URL || "http://127.0.0.1:5000";
 const browser = await chromium.launch({ headless: true });
+const captureGroupLayout = async (page, index) => page.evaluate(groupIndex => {
+  const round = value => Math.round(value * 100) / 100;
+  const groups = [...document.querySelectorAll(".universe-map-generated .universe-map-group")];
+  const group = groups[groupIndex];
+  if (!group) return null;
+  const box = element => {
+    if (!element) return null;
+    const rect = element.getBoundingClientRect();
+    return Object.fromEntries(["x", "y", "width", "height"].map(property => [
+      property,
+      round(rect[property] + (property === "x" ? scrollX : property === "y" ? scrollY : 0)),
+    ]));
+  };
+  const diagram = group.querySelector(".mermaid");
+  return {
+    colorScheme: document.documentElement.getAttribute("data-color-scheme"),
+    open: group.open,
+    otherGroupsCollapsed: groups.every((other, otherIndex) =>
+      otherIndex === groupIndex || !other.open
+    ),
+    svgReady: Boolean(diagram?.querySelector("svg .node")),
+    geometry: {
+      group: box(group),
+      summary: box(group.querySelector("summary")),
+      shell: box(group.querySelector(".mermaid-scroll-wrap")),
+      previousSummary: box(groups[groupIndex - 1]?.querySelector("summary")),
+      nextSummary: box(groups[groupIndex + 1]?.querySelector("summary")),
+    },
+  };
+}, index);
+
+const assertGroupLayoutStable = (before, after, index, count, expectedTheme) => {
+  assert.equal(after.colorScheme, expectedTheme, "Color-scheme control must apply the selected theme");
+  assert.equal(after.open, true, "Theme changes must leave the selected group open");
+  assert.equal(after.otherGroupsCollapsed, true, "Theme changes must leave other generated groups collapsed");
+  assert.equal(after.svgReady, true, "Theme changes must preserve the rendered SVG");
+  for (const [name, beforeRect] of Object.entries(before.geometry)) {
+    const afterRect = after.geometry[name];
+    if ((name === "previousSummary" && index === 0) ||
+        (name === "nextSummary" && index === count - 1)) {
+      assert.equal(afterRect, null, `The ${name} is absent only at the edge of the group list`);
+      continue;
+    }
+    assert.ok(beforeRect && afterRect, `Both ${name} boxes must be measured`);
+    for (const property of ["x", "y", "width", "height"]) {
+      assert.ok(
+        Math.abs(afterRect[property] - beforeRect[property]) <= 1,
+        `${name} ${property} shifted when switching to ${expectedTheme}: ` +
+          `${beforeRect[property]} -> ${afterRect[property]}`
+      );
+    }
+  }
+};
+
 try {
   const report = await (await fetch(`${base}/assets/data/universe-map.json`)).json();
   for (const width of [390, 1280]) {
@@ -52,6 +106,49 @@ try {
         }
         await group.locator("summary").click();
       }
+
+      const switchIndex = Math.min(1, (await groups.count()) - 1);
+      const switchGroup = groups.nth(switchIndex);
+      await switchGroup.locator("summary").click();
+      await switchGroup.locator("svg .node").first().waitFor({ timeout: 20000 });
+      const layoutBeforeSwitch = await captureGroupLayout(page, switchIndex);
+      const groupCount = await groups.count();
+      const toggle = page.locator(".askjamie-main .glee-color-toggle");
+      assert.equal(await toggle.getAttribute("data-state"), theme);
+      const nextTheme = theme === "dark" ? "light" : "dark";
+      const clicksToNextTheme = theme === "dark" ? 2 : 1;
+      for (let click = 0; click < clicksToNextTheme; click += 1) {
+        await toggle.click();
+      }
+      await page.waitForFunction(expected =>
+        document.documentElement.getAttribute("data-color-scheme") === expected, nextTheme);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      )));
+      const layoutAfterSwitch = await captureGroupLayout(page, switchIndex);
+      assertGroupLayoutStable(layoutBeforeSwitch, layoutAfterSwitch, switchIndex, groupCount, nextTheme);
+
+      const clicksToReturn = nextTheme === "dark" ? 2 : 1;
+      for (let click = 0; click < clicksToReturn; click += 1) {
+        await toggle.click();
+      }
+      await page.waitForFunction(expected =>
+        document.documentElement.getAttribute("data-color-scheme") === expected, theme);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      )));
+      const layoutAfterReturn = await captureGroupLayout(page, switchIndex);
+      assertGroupLayoutStable(layoutBeforeSwitch, layoutAfterReturn, switchIndex, groupCount, theme);
+
+      await switchGroup.locator("summary").focus();
+      await page.keyboard.press("Enter");
+      assert.equal((await captureGroupLayout(page, switchIndex)).open, false, "Enter must close the selected group after theme changes");
+      await page.keyboard.press("Enter");
+      const keyboardReopened = await captureGroupLayout(page, switchIndex);
+      assert.equal(keyboardReopened.open, true, "Enter must reopen the selected group after theme changes");
+      assert.equal(keyboardReopened.otherGroupsCollapsed, true, "Keyboard interaction must not open another group");
+      assert.equal(keyboardReopened.svgReady, true, "Keyboard interaction must preserve the rendered SVG");
+
       const urls = await page.locator("a[data-universe-node]").evaluateAll(links => [...new Set(links.map(link => link.href.replace(location.origin, "https://askjamie.bot")))].sort());
       assert.deepEqual(urls, report.nodes.filter(node => node.indexed).map(node => node.url).sort());
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Page overflows viewport");
@@ -71,7 +168,7 @@ try {
   await keyboard.locator(".universe-map-group summary").first().focus();
   await keyboard.keyboard.press("Enter");
   assert.equal(await keyboard.locator(".universe-map-group[open]").count(), 1);
-  console.log(`Universe browser checks passed: ${report.nodes.length} indexed pages, ${report.diagrams.length} diagrams, two widths, both themes, keyboard and no-JavaScript links.`);
+  console.log(`Universe browser checks passed: ${report.nodes.length} indexed pages, ${report.diagrams.length} diagrams, two widths, both themes, in-place theme switching, keyboard and no-JavaScript links.`);
 } finally {
   await browser.close();
 }

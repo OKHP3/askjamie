@@ -10,9 +10,11 @@ This is a repeatable lab baseline, not field data. Network conditions, browser
 versions, Google Fonts responses, analytics responses, and CPU load can change
 the results. The report records a historical capture. The current site
 intentionally uses Google Fonts and unconditional page-shell GA4.
-The raw Lighthouse reports are in
-`assets/audit/lighthouse-baseline-2026-08-22/`. The compact machine-readable
-summary is `assets/audit/lighthouse-baseline-2026-08-22.json`.
+The mobile raw Lighthouse reports are in
+`assets/audit/lighthouse-baseline-2026-08-22/`. The compact mobile summary is
+`assets/audit/lighthouse-baseline-2026-08-22.json`. Desktop trend comparisons
+use the separate reference at
+`assets/docs/performance-baseline-desktop-2026-09-07.json`.
 
 ## Measurement-stack review gate
 
@@ -28,13 +30,124 @@ browser user agent reported by Lighthouse. These reference values are kept
 with the runner so the review gate does not depend on ignored, regenerable
 files under `assets/audit/`.
 
-Every dated summary compares those versions with the historical stack. If
-either version changes, the summary marks `measurementStackReview.status` as
-`required`, names the changed component, and directs the owner to review
-BrandGuard budget comparability before interpreting results or changing the
-approved budget. A tool upgrade alone does not approve a budget change. Keep
-the historical reference intact unless an owner approves a new comparison
-baseline.
+Every mobile summary compares those versions with the historical mobile stack.
+Desktop summaries compare only with the separate desktop reference. If either
+version changes, `measurementStackReview.status` becomes `required` and names
+the changed component. A tool upgrade alone does not approve a budget change.
+Keep each reference separate; changing one must not silently change the other.
+
+## Run-condition review gate
+
+The approved 2026-08-22 raw reports record a mobile form factor with simulated
+throttling, a 412×823 Moto G Power screen emulation, and a 4× CPU slowdown. The
+route runner records the effective `formFactor`, `throttlingMethod`, network
+and CPU throttling values, screen emulation, and emulated user agent from each
+raw report's `configSettings` in the dated summary. The reference values are
+kept with the runner because the raw audit directory is regenerable.
+
+The same reports record `maxWaitForFcp` 30000ms, `maxWaitForLoad` 45000ms,
+`pauseAfterFcpMs` and `pauseAfterLoadMs` 1000ms, and 1000ms network and CPU
+quiet thresholds. The effective locale is `en-US`. Storage reset is enabled
+(`disableStorageReset: false`) and the clear-storage types are
+`file_systems`, `shader_cache`, `service_workers`, and `cache_storage`.
+Each dated summary records these settings from every raw report, including
+repeated BrandGuard samples; a missing setting is marked unavailable.
+
+Each mobile report's effective settings are compared with the approved
+historical mobile conditions. Controlled runs are checked against their
+explicit blocked-URL profile; normal runs are checked for no blocked-URL
+patterns. A difference or missing setting marks `runConditionsReview.status`
+as `required` and names the changed setting. The gate also compares Lighthouse
+execution mode (`auditMode`, `gatherMode`), channel, navigation and gathering
+behavior, extra trace categories, request headers, Lantern input, and explicit
+audit/category filters. These values can change which page state is loaded,
+which data is gathered, or which measurements and audits are produced. An
+unrecognized `configSettings` field is recorded and requires review until it is
+explicitly classified in the inventory, even if it matches a copied reference
+value. This prevents a new Lighthouse setting from silently escaping the gate.
+
+The supported-report inventory was checked against the saved Lighthouse
+12.8.2 mobile and desktop reports and the installed Lighthouse 13.5.0 settings
+schema. `output` is recorded separately but not compared: it selects report
+serialization (the route runner requires JSON) and does not change navigation,
+collection, or audit measurements. Collection timing, locale, storage, and all
+other tracked settings remain compared. A changed or unavailable tracked
+setting requires review. This is separate from `measurementStackReview`, so
+tool-version changes and condition changes remain independently visible.
+
+## Desktop comparison reference
+
+Desktop runs use
+`assets/docs/performance-baseline-desktop-2026-09-07.json`, built from the
+four raw desktop reports captured on 2026-09-07. It stores the desktop
+measurements, exact effective settings, and measurement-stack versions
+separately from the approved mobile reference. Desktop summaries compare
+desktop measurements and run conditions only with this desktop reference; a
+desktop run does not inherit the mobile form factor, throttling, or emulation
+settings.
+
+The desktop capture is a historical comparison candidate, not an approved
+reference: the project has no recorded owner approval for it. Summaries expose
+`referenceApproval.status: "not-recorded"` and mark deltas as exploratory.
+Do not change that status to `"owner-approved"` unless the approval record,
+approver, and approval date are recorded in the desktop reference JSON. This
+approval metadata does not affect the mobile comparison or its review gate.
+
+### Desktop repeatability check, 2026-10-03
+
+Three independent four-route desktop passes were captured with the same
+Lighthouse 12.8.2 / Chromium 148.0.7778.96 stack and the recorded desktop
+conditions: 1350×940 screen emulation, 1× scale, simulated 40 ms RTT and
+10,240 Kbps throughput, no CPU slowdown, no blocked URLs, and the recorded
+collection timing, locale, and storage-reset settings. Every report passed
+both stack and run-condition review. These are desktop-only lab measurements;
+they are separate from mobile evidence and are not field data.
+
+The compact summaries and raw reports are in
+`assets/audit/lighthouse-2026-10-03-desktop-repeat-1/`,
+`assets/audit/lighthouse-2026-10-03-desktop-repeat-2/`, and
+`assets/audit/lighthouse-2026-10-03-desktop-repeat-3/`.
+Each directory contains one report for each of the four routes.
+
+| Page | Sep 7 candidate performance | Repeat performance range | Sep 7 candidate LCP | Repeat LCP range | Repeat FCP range | Repeat Speed Index range | Repeat TBT range |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Homepage `/` | 88 | 87–89 | 1,686 ms | 1,523–1,524 ms | 522–563 ms | 551–563 ms | 11–58 ms |
+| BrandGuard hub | 99 | 76 | 729 ms | 644–686 ms | 407–435 ms | 407–435 ms | 0 ms |
+| Universe `/universe/` | 99 | 77 | 728 ms | 647–686 ms | 329–345 ms | 501–569 ms | 6–41 ms |
+| Search `/search/` | 96 | 94–96 | 1,284 ms | 1,203–1,485 ms | 542–784 ms | 542–784 ms | 0 ms |
+
+CLS differs substantially on two routes:
+
+| Page | Sep 7 candidate CLS | Repeat CLS range |
+| --- | ---: | ---: |
+| Homepage `/` | 0.067939 | 0.149804–0.177419 |
+| BrandGuard hub | 0.044265 | 0.847435–0.930270 |
+| Universe `/universe/` | 0.056094 | 0.640679–0.640760 |
+| Search `/search/` | 0.060982 | 0.043371–0.093249 |
+
+Homepage and Search performance scores vary by at most two points; Search LCP
+varies by 282 ms. BrandGuard and Universe are consistent across the three new
+passes (scores 76 and 77 respectively; LCP spreads of 42 ms and 39 ms), but
+they do not reproduce the candidate's scores of 99. Their CLS ranges are also
+far above the candidate values. The raw shift audits identify the page's
+`main` element as the dominant shifting content, with web-font loads recorded
+among the shift contributors.
+
+The new runs used the clean checkout at revision `b8179b56e6b0`; the September
+candidate does not record its source revision. Therefore, the measured
+difference cannot be attributed to Lighthouse run-to-run variance alone or
+treated as a same-source repeatability comparison. The evidence does not
+establish that the September candidate is representative. Its JSON, including
+`approval.status: "not-recorded"`, was left unchanged; owner approval remains
+unrecorded pending an owner decision.
+
+Normal and controlled mobile runs are separate conditions in the summary.
+Controlled runs continue to block third-party fonts and analytics as an
+explicit isolation measure; they are not merged with normal results. The
+condition review compares Lighthouse emulation, throttling, collection timing,
+locale, storage, blocked-URL settings, and the remaining effective
+`configSettings` inventory. The run label and `controls` field preserve the
+normal-versus-controlled distinction.
 
 ## Lighthouse summary
 

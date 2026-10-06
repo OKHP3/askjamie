@@ -3,18 +3,23 @@
  * AskJamie™ responsive QA script.
  *
  * MODE A — Playwright:
- *   Visits each public page at 8 viewport widths and checks:
+ *   Visits each public page at 10 viewport widths and checks:
  *   - No horizontal overflow (scrollWidth > innerWidth)
  *   - No JS console errors
  *   - All images loaded (no broken img src)
  *   - CSS and JS assets load (no 404 on critical resources)
  *   - BrandGuard hero geometry stays stable when its deferred theme activates
+ *   - BrandGuard hero geometry stays stable after its branded web fonts load
  *   - Universe diagram shell stays stable while its rendered SVG initializes
+ *   - Universe caption and links remain usable when Mermaid fails or JavaScript is off
+ *   - Every generated Universe page-map group keeps its caption and links usable when Mermaid is blocked
+ *   - Every opened Universe page-map group keeps its shell and adjacent summaries stable across light/dark switches
+ *   - Every Universe page-map group remains usable at 320px with a locally scrollable diagram
  *
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
  *   Checks that are viewport-agnostic (viewport meta, h1, alt, etc.) are
- *   run once per page and applied to all 8 viewport rows — clearly flagged
+ *   run once per page and applied to all 10 viewport rows, clearly flagged
  *   as `static-lint` so results are not confused with live browser checks.
  *
  * Usage:
@@ -42,12 +47,16 @@ const ROOT       = resolve(__dirname, '..');
 const BASE_URL   = process.argv.find(a => a.startsWith('--base='))?.split('=')[1]
                  ?? 'http://localhost:5000';
 const FORCE_STATIC = process.argv.includes('--static');
+const REQUIRE_RELEASE_HERO_ROUTES =
+  process.argv.includes('--require-release-hero-routes');
 
 const VIEWPORTS = [
+  { name: 'mobile-320',   width: 320,  height: 740  },
   { name: 'mobile-360',   width: 360,  height: 780  },
   { name: 'mobile-390',   width: 390,  height: 844  },
   { name: 'mobile-430',   width: 430,  height: 932  },
   { name: 'tablet-768',   width: 768,  height: 1024 },
+  { name: 'tablet-899',   width: 899,  height: 1024 },
   { name: 'desktop-1024', width: 1024, height: 768  },
   { name: 'desktop-1280', width: 1280, height: 800  },
   { name: 'desktop-1440', width: 1440, height: 900  },
@@ -80,23 +89,963 @@ const RESULTS_DIR    = resolve(ROOT, 'assets/audit/responsive-qa');
 const RESULTS_FILE   = resolve(RESULTS_DIR, 'results.json');
 const SCREENSHOTS_DIR = resolve(RESULTS_DIR, 'screenshots');
 const BRANDGUARD_GEOMETRY_PATH = '/lens-system/okhp3-brandguard/';
-const BRANDGUARD_GEOMETRY_VIEWPORT = 'mobile-390';
+const BRANDGUARD_FONT_GEOMETRY_PATHS = new Set([
+  BRANDGUARD_GEOMETRY_PATH,
+  '/lens-system/okhp3-brandguard/lvmh/',
+  '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
+]);
+const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-320',
+  'mobile-360',
+  'mobile-390',
+  'mobile-430',
+  'tablet-768',
+  'tablet-899',
+]);
+const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-360',
+  'mobile-390',
+]);
+const BRANDGUARD_NARROW_CONTENT_VIEWPORT = 'mobile-320';
 const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
+const BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS = 15000;
 const BRANDGUARD_GEOMETRY_SELECTORS = [
-  '.askjamie-brandguard-page .askjamie-breadcrumb',
-  '.askjamie-brandguard-page .askjamie-hero-copy h1',
-  '.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle',
-  '.askjamie-brandguard-page .askjamie-hero-copy .hero-tagline',
+  '.askjamie-main .askjamie-breadcrumb',
+  '.askjamie-main .askjamie-hero-copy h1',
+  '.askjamie-main .askjamie-hero-copy .hero-subtitle',
+  '.askjamie-main .askjamie-hero-copy .hero-tagline',
 ];
+const BRANDGUARD_NARROW_CONTENT_SELECTORS = [
+  '.askjamie-main .askjamie-breadcrumb',
+  '.askjamie-main .askjamie-breadcrumb .breadcrumb-label',
+  '.askjamie-main .askjamie-hero-copy h1',
+  '.askjamie-main .askjamie-hero-copy .hero-subtitle',
+  '.askjamie-main .askjamie-hero-copy .hero-tagline',
+];
+const BRANDGUARD_FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
+const BRANDGUARD_FONT_FAMILIES = ['Kalam', 'Baloo 2', 'Kalam', 'Open Sans'];
 const BRANDGUARD_LOGO_SELECTOR =
-  '.askjamie-brandguard-page .askjamie-logo--crumb img';
+  '.askjamie-main .askjamie-logo--crumb img';
+const CRITICAL_HERO_STYLESHEET_PATH = '/assets/css/critical-hero.css';
+const BRANDGUARD_CRITICAL_STYLE_VIEWPORT = 'mobile-390';
 const UNIVERSE_DIAGRAM_GEOMETRY_PATH = '/universe/';
-const UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set(['mobile-390', 'desktop-1280']);
+const UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-320',
+  'mobile-390',
+  'tablet-768',
+  'desktop-1280',
+]);
 const UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX = 1;
+const UNIVERSE_PAGE_MAP_GROUP_SELECTOR = '.universe-map-generated .universe-map-group';
+const UNIVERSE_PAGE_MAP_RESERVATIONS_PX = new Map([
+  [4, 22 * 16],
+  [5, 17 * 16],
+]);
+const DEFAULT_UNIVERSE_PAGE_MAP_RESERVATION_PX = 14 * 16;
 const UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS = [
   '.askjamie-hero--universe .mermaid-scroll-wrap',
   '.askjamie-hero--universe .askjamie-mermaid-shell',
 ];
+
+async function checkCriticalHeroStyles(page, path, viewportWidth, stylesheetResponses) {
+  if (path !== BRANDGUARD_GEOMETRY_PATH &&
+      path !== UNIVERSE_DIAGRAM_GEOMETRY_PATH) {
+    return null;
+  }
+
+  const evidence = await page.evaluate(({ path, stylesheetPath, viewportWidth }) => {
+    const stylesheetLink = [...document.querySelectorAll('link[rel~="stylesheet"]')]
+      .find(link => new URL(link.href).pathname === stylesheetPath);
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize
+    );
+    const evidence = {
+      stylesheet: {
+        href: stylesheetLink?.href ?? null,
+        same_origin: stylesheetLink
+          ? new URL(stylesheetLink.href).origin === location.origin
+          : false,
+        attached: Boolean(stylesheetLink?.sheet),
+      },
+      root_font_size_px: rootFontSize,
+      computed: {},
+    };
+
+    if (path === '/lens-system/okhp3-brandguard/') {
+      const selector = '.askjamie-brandguard-page .askjamie-hero-copy h1';
+      const heading = document.querySelector(selector);
+      const style = heading ? getComputedStyle(heading) : null;
+      evidence.computed.brandguard_heading = {
+        selector,
+        present: Boolean(heading),
+        font_size: style?.fontSize ?? null,
+        letter_spacing: style?.letterSpacing ?? null,
+        expected_font_size: `${rootFontSize * 2}px`,
+        expected_letter_spacing: `${rootFontSize * 2 * -0.03}px`,
+      };
+    } else {
+      const selector = '.askjamie-hero--universe .mermaid-scroll-wrap';
+      const wrapper = document.querySelector(selector);
+      const style = wrapper ? getComputedStyle(wrapper) : null;
+      const minHeightRem = viewportWidth <= 640 ? 18 : 22;
+      evidence.computed.universe_diagram_wrapper = {
+        selector,
+        present: Boolean(wrapper),
+        min_height: style?.minHeight ?? null,
+        overflow: style?.overflow ?? null,
+        expected_min_height: `${rootFontSize * minHeightRem}px`,
+      };
+    }
+    return evidence;
+  }, { path, stylesheetPath: CRITICAL_HERO_STYLESHEET_PATH, viewportWidth });
+
+  const errors = [];
+  const releaseOrigin = new URL(BASE_URL).origin;
+  const stylesheetResponse = [...stylesheetResponses].reverse().find(response =>
+    new URL(response.url).origin === releaseOrigin &&
+    new URL(response.url).pathname === CRITICAL_HERO_STYLESHEET_PATH
+  );
+  if (!evidence.stylesheet.href) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET LINK MISSING: route ${path} has no ` +
+      `${CRITICAL_HERO_STYLESHEET_PATH} link`
+    );
+  }
+  if (evidence.stylesheet.href && !evidence.stylesheet.same_origin) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET NOT LOCAL: route ${path} ` +
+      `${evidence.stylesheet.href} is not served by ${releaseOrigin}`
+    );
+  }
+  if (!stylesheetResponse) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET RESPONSE MISSING: route ${path} did not request ` +
+      `${CRITICAL_HERO_STYLESHEET_PATH}`
+    );
+  } else if (stylesheetResponse.status >= 400) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET HTTP ${stylesheetResponse.status}: route ${path} ` +
+      `${stylesheetResponse.url}`
+    );
+  }
+  if (!evidence.stylesheet.attached) {
+    errors.push(
+      `CRITICAL HERO STYLESHEET NOT APPLIED: route ${path} ` +
+      `${CRITICAL_HERO_STYLESHEET_PATH} has no attached CSSStyleSheet`
+    );
+  }
+
+  const closeEnough = (actual, expected) =>
+    Number.isFinite(Number.parseFloat(actual)) &&
+    Math.abs(Number.parseFloat(actual) - Number.parseFloat(expected)) < 0.05;
+  if (path === BRANDGUARD_GEOMETRY_PATH) {
+    const heading = evidence.computed.brandguard_heading;
+    if (!heading.present ||
+        !closeEnough(heading.font_size, heading.expected_font_size) ||
+        !closeEnough(heading.letter_spacing, heading.expected_letter_spacing)) {
+      errors.push(
+        `CRITICAL HERO STYLE MISMATCH: route ${path} ${heading.selector} ` +
+        `computed font-size=${JSON.stringify(heading.font_size)}, ` +
+        `letter-spacing=${JSON.stringify(heading.letter_spacing)}; expected ` +
+        `font-size=${heading.expected_font_size}, ` +
+        `letter-spacing=${heading.expected_letter_spacing}`
+      );
+    }
+  } else {
+    const wrapper = evidence.computed.universe_diagram_wrapper;
+    if (!wrapper.present ||
+        !closeEnough(wrapper.min_height, wrapper.expected_min_height) ||
+        wrapper.overflow !== 'hidden') {
+      errors.push(
+        `CRITICAL HERO STYLE MISMATCH: route ${path} ${wrapper.selector} ` +
+        `computed min-height=${JSON.stringify(wrapper.min_height)}, ` +
+        `overflow=${JSON.stringify(wrapper.overflow)}; expected ` +
+        `min-height=${wrapper.expected_min_height}, overflow="hidden"`
+      );
+    }
+  }
+
+  return {
+    errors,
+    evidence: {
+      ...evidence,
+      stylesheet_response: stylesheetResponse ?? null,
+    },
+  };
+}
+
+function hasDarkUniverseTheme(state) {
+  return state?.color_scheme === 'dark' && state?.prefers_dark === true;
+}
+
+async function captureUniversePageMapGeometry(page, groupIndex) {
+  return page.evaluate((index) => {
+    const round = value => Math.round(value * 100) / 100;
+    const groups = [...document.querySelectorAll(
+      '.universe-map-generated .universe-map-group'
+    )];
+    const group = groups[index];
+    if (!group) return null;
+
+    const box = element => {
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return Object.fromEntries(
+        ['x', 'y', 'width', 'height'].map(property => [
+          property,
+          round(rect[property] + (property === 'x' ? window.scrollX : property === 'y' ? window.scrollY : 0)),
+        ])
+      );
+    };
+    const diagram = group.querySelector('.mermaid');
+    const scrollWrap = group.querySelector('.mermaid-scroll-wrap');
+    const svg = diagram?.querySelector('svg');
+    const summary = group.querySelector('summary');
+    const previousSummary = groups[index - 1]?.querySelector('summary');
+    const nextSummary = groups[index + 1]?.querySelector('summary');
+
+    return {
+      color_scheme: document.documentElement.getAttribute('data-color-scheme'),
+      prefers_dark: window.matchMedia('(prefers-color-scheme: dark)').matches,
+      title: summary?.textContent.trim() ?? '',
+      node_count: Number(group.dataset.mapNodeCount),
+      open: group.open,
+      other_groups_collapsed: groups.every((other, otherIndex) =>
+        otherIndex === index || !other.open
+      ),
+      render_started: diagram?.dataset.mermaidRendered === '1',
+      svg_ready: Boolean(diagram?.querySelector('svg .node')),
+      has_svg_node: Boolean(diagram?.querySelector('svg .node')),
+      source_present: diagram?.textContent.includes('flowchart') ?? false,
+      reserved_min_height_px: scrollWrap
+        ? round(parseFloat(getComputedStyle(scrollWrap).minHeight))
+        : null,
+      svg_geometry: box(svg),
+      geometry: {
+        group: box(group),
+        summary: box(summary),
+        figure: box(group.querySelector('figure.askjamie-mermaid-shell')),
+        reserved_shell: box(scrollWrap),
+        previous_group_summary: box(previousSummary),
+        next_group_summary: box(nextSummary),
+      },
+    };
+  }, groupIndex);
+}
+
+async function openUniversePageMapGroupForGeometryCheck(page, groupIndex, groupCount) {
+  const groups = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
+  const target = groups.nth(groupIndex);
+  const errors = [];
+  const initiallyCollapsed = await groups.evaluateAll(elements =>
+    elements.every(element => !element.open)
+  );
+  if (!initiallyCollapsed) {
+    errors.push(
+      `UNIVERSE PAGE MAP COLLAPSED STATE INVALID: expected every group except ` +
+      `${groupIndex + 1} to be closed before opening it`
+    );
+  }
+
+  await target.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  const openedByKeyboard = await target.evaluate(group => group.open);
+  if (!openedByKeyboard) {
+    errors.push(
+      `UNIVERSE PAGE MAP KEYBOARD OPEN FAILED: Enter did not open group ${groupIndex + 1}`
+    );
+  }
+
+  const othersStayedCollapsed = await groups.evaluateAll((elements, index) =>
+    elements.every((element, elementIndex) =>
+      elementIndex === index || !element.open
+    ),
+  groupIndex);
+  if (!othersStayedCollapsed) {
+    errors.push(
+      'UNIVERSE PAGE MAP COLLAPSED STATE INVALID: opening one group also opened a different group'
+    );
+  }
+
+  // The page-init hook holds Mermaid's scheduled render callback until the
+  // shell and its neighboring summaries have been measured.
+  await target.locator('.mermaid').scrollIntoViewIfNeeded();
+  const renderScheduled = await page.waitForFunction(
+    () => window.__responsiveQaMermaidRenderQueue?.length > 0,
+    undefined,
+    { timeout: 10000 }
+  ).then(() => true, () => false);
+  if (!renderScheduled) {
+    errors.push(
+      `UNIVERSE PAGE MAP RENDER NOT SCHEDULED: group ${groupIndex + 1} did not reach the Mermaid observer`
+    );
+  }
+
+  const before = await captureUniversePageMapGeometry(page, groupIndex);
+  if (before?.svg_ready) {
+    errors.push(
+      `UNIVERSE PAGE MAP BASELINE UNAVAILABLE: group ${groupIndex + 1} rendered before its ` +
+      `reserved-shell measurement; before=${JSON.stringify(before)}`
+    );
+  }
+  if (!before?.source_present) {
+    errors.push(
+      `UNIVERSE PAGE MAP SOURCE FALLBACK CHANGED: expected Mermaid source before SVG readiness ` +
+      `for group ${groupIndex + 1}; before=${JSON.stringify({
+        source_present: before?.source_present,
+        render_started: before?.render_started,
+      })}`
+    );
+  }
+  if (!before?.other_groups_collapsed) {
+    errors.push(
+      `UNIVERSE PAGE MAP COLLAPSED STATE INVALID: group ${groupIndex + 1} opened while another ` +
+      `generated group was also open; before=${JSON.stringify(before)}`
+    );
+  }
+  if (!hasDarkUniverseTheme(before)) {
+    errors.push(
+      `UNIVERSE PAGE MAP DARK THEME NOT ACTIVE: expected a pinned dark color scheme and dark ` +
+      `browser preference before measuring group ${groupIndex + 1}; ` +
+      `before=${JSON.stringify({ color_scheme: before?.color_scheme, prefers_dark: before?.prefers_dark })}`
+    );
+  }
+
+  const expectedReservation = UNIVERSE_PAGE_MAP_RESERVATIONS_PX.get(before?.node_count) ??
+    DEFAULT_UNIVERSE_PAGE_MAP_RESERVATION_PX;
+  if (before?.reserved_min_height_px == null ||
+      before.reserved_min_height_px + UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX <
+        expectedReservation ||
+      before.geometry.reserved_shell?.height + UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX <
+        expectedReservation) {
+    errors.push(
+      `UNIVERSE PAGE MAP RESERVATION TOO SMALL: group ${groupIndex + 1} expected a ` +
+      `${before?.title ? `"${before.title}" ` : ''}` +
+      `${expectedReservation}px reserved shell before rendering; measured=${JSON.stringify({
+        min_height_px: before?.reserved_min_height_px,
+        shell: before?.geometry?.reserved_shell,
+      })}`
+    );
+  }
+
+  return {
+    errors,
+    groupIndex,
+    groupCount,
+    before,
+    openedByKeyboard,
+    renderScheduled,
+    initiallyCollapsed,
+    othersStayedCollapsed,
+  };
+}
+
+async function releaseResponsiveQaMermaidRender(page) {
+  return page.evaluate(() => {
+    const entry = window.__responsiveQaMermaidRenderQueue?.shift();
+    if (!entry) return false;
+    entry.callback(...entry.args);
+    return true;
+  });
+}
+
+async function compareUniversePageMapGeometry(page, groupCheck, after) {
+  const { groupIndex, groupCount, before } = groupCheck;
+  const errors = [];
+  const shifts = [];
+  const groupLabel = before?.title ? `"${before.title}"` : `group ${groupIndex + 1}`;
+  if (before && after) {
+    if (!hasDarkUniverseTheme(after)) {
+      errors.push(
+        `UNIVERSE PAGE MAP DARK THEME NOT ACTIVE: expected a pinned dark color scheme and dark ` +
+        `browser preference after rendering group ${groupIndex + 1}; ` +
+        `after=${JSON.stringify({ color_scheme: after?.color_scheme, prefers_dark: after?.prefers_dark })}`
+      );
+    }
+    for (const selector of [
+      'group',
+      'summary',
+      'figure',
+      'reserved_shell',
+      'previous_group_summary',
+      'next_group_summary',
+    ]) {
+      const beforeRect = before.geometry[selector];
+      const afterRect = after.geometry[selector];
+      if (!beforeRect || !afterRect) {
+        // The first/last group has no neighbor summary on one side.
+        if ((selector === 'previous_group_summary' && groupIndex === 0) ||
+            (selector === 'next_group_summary' && groupIndex === groupCount - 1)) {
+          continue;
+        }
+        errors.push(
+          `UNIVERSE PAGE MAP GEOMETRY MISSING: group ${groupIndex + 1} ${groupLabel} ${selector}; ` +
+          `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+        );
+        continue;
+      }
+
+      const delta = Object.fromEntries(
+        ['x', 'y', 'width', 'height'].map(property => [
+          property,
+          Math.round((afterRect[property] - beforeRect[property]) * 100) / 100,
+        ])
+      );
+      const changedProperties = Object.keys(delta).filter(
+        property => Math.abs(delta[property]) > UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX
+      );
+      if (changedProperties.length > 0) {
+        const shift = {
+          selector,
+          before: beforeRect,
+          after: afterRect,
+          delta,
+          changed_properties: changedProperties,
+        };
+        shifts.push(shift);
+        errors.push(
+          `UNIVERSE PAGE MAP GEOMETRY SHIFT: group ${groupIndex + 1} ${groupLabel} ${selector} changed ` +
+          `${changedProperties.map(property => `${property}=${delta[property]}px`).join(', ')} ` +
+          `with ${UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+          `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+        );
+      }
+    }
+
+    if (after.svg_geometry &&
+        before.geometry.reserved_shell.height +
+          UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX < after.svg_geometry.height) {
+      errors.push(
+        `UNIVERSE PAGE MAP CONTENT EXCEEDS RESERVED SHELL: group ${groupIndex + 1} ${groupLabel} ` +
+        `reserved=${JSON.stringify(before.geometry.reserved_shell)}; ` +
+        `rendered=${JSON.stringify(after.svg_geometry)}`
+      );
+    }
+  }
+
+  if (!after?.open || !after?.other_groups_collapsed || !after?.svg_ready) {
+    errors.push(
+      `UNIVERSE PAGE MAP READY STATE INVALID: expected group ${groupIndex + 1} ${groupLabel} ` +
+      `to render while every other group remains collapsed; ` +
+      `after=${JSON.stringify({
+        open: after?.open,
+        other_groups_collapsed: after?.other_groups_collapsed,
+        svg_ready: after?.svg_ready,
+      })}`
+    );
+  }
+
+  let closedByKeyboard = false;
+  try {
+    const target = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).nth(groupIndex);
+    await target.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    closedByKeyboard = !(await target.evaluate(group => group.open));
+    if (!closedByKeyboard) {
+      errors.push(
+        `UNIVERSE PAGE MAP KEYBOARD CLOSE FAILED: Enter did not close group ${groupIndex + 1} ${groupLabel}`
+      );
+    }
+  } catch (error) {
+    errors.push(
+      `UNIVERSE PAGE MAP KEYBOARD CLOSE CHECK ERROR: group ${groupIndex + 1} ` +
+      `${error.message.split('\n')[0]}`
+    );
+  }
+
+  return { errors, shifts, closedByKeyboard };
+}
+
+async function checkUniversePageMapThemeSwitch(page, groupCheck, renderedState, waitForTwoFrames) {
+  const { groupIndex, groupCount, before } = groupCheck;
+  const errors = [];
+  const transitions = [];
+  const target = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).nth(groupIndex);
+  const toggle = page.locator('.askjamie-main .glee-color-toggle');
+  const baseline = renderedState;
+  const label = before?.title ? `"${before.title}"` : `group ${groupIndex + 1}`;
+  const geometrySelectors = [
+    'group',
+    'summary',
+    'figure',
+    'reserved_shell',
+    'previous_group_summary',
+    'next_group_summary',
+  ];
+
+  const compareState = (state, expectedTheme) => {
+    if (state?.color_scheme !== expectedTheme ||
+        state?.prefers_dark !== true ||
+        !state?.open ||
+        !state?.other_groups_collapsed ||
+        !state?.svg_ready) {
+      errors.push(
+        `UNIVERSE PAGE MAP THEME SWITCH STATE INVALID: expected ${label} to remain open with ` +
+        `a ready SVG, all other generated groups collapsed, and ${expectedTheme} color scheme; ` +
+        `state=${JSON.stringify({
+          color_scheme: state?.color_scheme,
+          prefers_dark: state?.prefers_dark,
+          open: state?.open,
+          other_groups_collapsed: state?.other_groups_collapsed,
+          svg_ready: state?.svg_ready,
+        })}`
+      );
+    }
+
+    for (const selector of geometrySelectors) {
+      const baselineRect = baseline?.geometry?.[selector];
+      const stateRect = state?.geometry?.[selector];
+      if (!baselineRect || !stateRect) {
+        if ((selector === 'previous_group_summary' && groupIndex === 0) ||
+            (selector === 'next_group_summary' && groupIndex === groupCount - 1)) {
+          continue;
+        }
+        errors.push(
+          `UNIVERSE PAGE MAP THEME SWITCH GEOMETRY MISSING: group ${groupIndex + 1} ` +
+          `${selector}; baseline=${JSON.stringify(baselineRect)}; state=${JSON.stringify(stateRect)}`
+        );
+        continue;
+      }
+
+      const changedProperties = ['x', 'y', 'width', 'height'].flatMap(property => {
+        const delta = Math.round((stateRect[property] - baselineRect[property]) * 100) / 100;
+        return Math.abs(delta) > UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX
+          ? [`${property}=${delta}px`]
+          : [];
+      });
+      if (changedProperties.length > 0) {
+        errors.push(
+          `UNIVERSE PAGE MAP THEME SWITCH GEOMETRY SHIFT: group ${groupIndex + 1} ${label} ` +
+          `${selector} changed ${changedProperties.join(', ')} with ` +
+          `${UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+          `baseline=${JSON.stringify(baselineRect)}; state=${JSON.stringify(stateRect)}`
+        );
+      }
+    }
+  };
+
+  if (!baseline?.svg_ready || !baseline?.open || !baseline?.other_groups_collapsed) {
+    errors.push(
+      `UNIVERSE PAGE MAP THEME SWITCH BASELINE INVALID: expected ready open SVG for ${label}; ` +
+      `baseline=${JSON.stringify(baseline)}`
+    );
+  }
+
+  const initialToggleState = await toggle.getAttribute('data-state').catch(() => null);
+  if (initialToggleState !== 'dark') {
+    errors.push(
+      `UNIVERSE PAGE MAP THEME SWITCH CONTROL INVALID: expected the color-scheme control to start ` +
+      `pinned dark; state=${JSON.stringify(initialToggleState)}`
+    );
+  }
+
+  if (initialToggleState === 'dark') {
+    for (const transition of [
+      { theme: 'light', clicks: 2 },
+      { theme: 'dark', clicks: 1 },
+    ]) {
+      try {
+        for (let clickIndex = 0; clickIndex < transition.clicks; clickIndex += 1) {
+          await toggle.click();
+        }
+        await page.waitForFunction(
+          theme => document.documentElement.getAttribute('data-color-scheme') === theme,
+          transition.theme,
+          { timeout: 5000 }
+        );
+        await waitForTwoFrames();
+        const state = await captureUniversePageMapGeometry(page, groupIndex);
+        compareState(state, transition.theme);
+        transitions.push({ theme: transition.theme, state });
+      } catch (error) {
+        errors.push(
+          `UNIVERSE PAGE MAP THEME SWITCH FAILED: group ${groupIndex + 1} ${label} ` +
+          `could not reach ${transition.theme}; ${error.message.split('\n')[0]}`
+        );
+      }
+    }
+  }
+
+  let keyboardClosed = false;
+  let keyboardReopened = false;
+  try {
+    const summary = target.locator('summary');
+    await summary.focus();
+    const summaryFocused = await summary.evaluate(element => element === document.activeElement);
+    await page.keyboard.press('Enter');
+    keyboardClosed = !(await target.evaluate(group => group.open));
+    const closedGroups = await page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).evaluateAll(
+      groups => groups.every(group => !group.open)
+    );
+    await page.keyboard.press('Enter');
+    keyboardReopened = await target.evaluate(group => group.open);
+    const openState = await captureUniversePageMapGeometry(page, groupIndex);
+    if (!summaryFocused || !keyboardClosed || !closedGroups ||
+        !keyboardReopened || !openState?.other_groups_collapsed || !openState?.svg_ready) {
+      errors.push(
+        `UNIVERSE PAGE MAP THEME SWITCH KEYBOARD FAILED: expected ${label} to close and reopen ` +
+        `with Enter after theme changes; ${JSON.stringify({
+          summary_focused: summaryFocused,
+          closed_by_keyboard: keyboardClosed,
+          all_groups_closed_after_toggle: closedGroups,
+          reopened_by_keyboard: keyboardReopened,
+          other_groups_collapsed: openState?.other_groups_collapsed,
+          svg_ready: openState?.svg_ready,
+        })}`
+      );
+    }
+  } catch (error) {
+    errors.push(
+      `UNIVERSE PAGE MAP THEME SWITCH KEYBOARD ERROR: group ${groupIndex + 1} ` +
+      `${error.message.split('\n')[0]}`
+    );
+  }
+
+  return {
+    errors,
+    evidence: {
+      initial_toggle_state: initialToggleState,
+      baseline,
+      transitions,
+      keyboard_closed: keyboardClosed,
+      keyboard_reopened: keyboardReopened,
+    },
+  };
+}
+
+async function checkUniversePageMapNarrowUsability(page, groupIndex) {
+  const errors = [];
+  const groupLabel = `group ${groupIndex + 1}`;
+  const prefix = `UNIVERSE PAGE MAP 320PX ${groupLabel}`;
+  let evidence = null;
+
+  try {
+    evidence = await page.evaluate((index) => {
+      const groups = [...document.querySelectorAll(
+        '.universe-map-generated .universe-map-group'
+      )];
+      const group = groups[index];
+      if (!group) return { group_exists: false };
+
+      const visible = element => Boolean(
+        element &&
+        element.getClientRects().length > 0 &&
+        getComputedStyle(element).display !== 'none' &&
+        getComputedStyle(element).visibility !== 'hidden'
+      );
+      const rect = element => {
+        if (!element) return null;
+        const box = element.getBoundingClientRect();
+        return {
+          left: Math.round(box.left * 100) / 100,
+          right: Math.round(box.right * 100) / 100,
+          width: Math.round(box.width * 100) / 100,
+          height: Math.round(box.height * 100) / 100,
+        };
+      };
+      const summary = group.querySelector('summary');
+      const scrollWrap = group.querySelector('.mermaid-scroll-wrap');
+      const diagram = group.querySelector('.mermaid');
+      const originalScrollLeft = scrollWrap?.scrollLeft ?? 0;
+      const maxScrollLeft = scrollWrap
+        ? Math.max(0, scrollWrap.scrollWidth - scrollWrap.clientWidth)
+        : 0;
+      let scrollLeftAfterPan = null;
+      if (scrollWrap && maxScrollLeft > 0) {
+        scrollWrap.scrollLeft = 0;
+        scrollWrap.scrollLeft = maxScrollLeft;
+        scrollLeftAfterPan = scrollWrap.scrollLeft;
+        scrollWrap.scrollLeft = originalScrollLeft;
+      }
+
+      const links = [...(group.querySelectorAll('.link-list a') ?? [])];
+      return {
+        group_exists: true,
+        title: summary?.textContent.trim() ?? '',
+        open: group.open,
+        other_groups_collapsed: groups.every((other, otherIndex) =>
+          otherIndex === index || !other.open
+        ),
+        page_width: {
+          viewport: window.innerWidth,
+          document: document.documentElement.scrollWidth,
+          body: document.body?.scrollWidth ?? null,
+        },
+        summary: {
+          visible: visible(summary),
+          text: summary?.textContent.trim() ?? '',
+          rect: rect(summary),
+          client_width: summary?.clientWidth ?? null,
+          scroll_width: summary?.scrollWidth ?? null,
+        },
+        map: {
+          visible: visible(scrollWrap),
+          overflow_x: scrollWrap ? getComputedStyle(scrollWrap).overflowX : null,
+          client_width: scrollWrap?.clientWidth ?? null,
+          scroll_width: scrollWrap?.scrollWidth ?? null,
+          max_scroll_left: maxScrollLeft,
+          scroll_left_after_pan: scrollLeftAfterPan,
+          rendered_svg_ready: Boolean(
+            diagram?.dataset.universeReady === '1' &&
+            diagram.querySelector('svg .node')
+          ),
+        },
+        links: links.map(link => {
+          const box = rect(link);
+          return {
+            text: link.textContent.trim(),
+            href: link.getAttribute('href'),
+            visible: visible(link),
+            rect: box,
+            within_viewport: Boolean(
+              box && box.left >= -1 && box.right <= window.innerWidth + 1
+            ),
+          };
+        }),
+      };
+    }, groupIndex);
+  } catch (error) {
+    errors.push(
+      `${prefix} USABILITY CHECK ERROR: ${error.message.split('\n')[0]}`
+    );
+    return { errors, evidence };
+  }
+
+  const label = evidence?.title ? `"${evidence.title}"` : groupLabel;
+  if (!evidence?.group_exists) {
+    errors.push(`${prefix} MISSING: generated page-map group was not found`);
+    return { errors, evidence };
+  }
+  if (!evidence.open || !evidence.other_groups_collapsed) {
+    errors.push(
+      `${prefix} COLLAPSED STATE INVALID: expected only ${label} to be open; ` +
+      `${JSON.stringify({
+        open: evidence.open,
+        other_groups_collapsed: evidence.other_groups_collapsed,
+      })}`
+    );
+  }
+  if (evidence.page_width.document > evidence.page_width.viewport ||
+      evidence.page_width.body > evidence.page_width.viewport) {
+    errors.push(
+      `${prefix} PAGE OVERFLOW: document or body is wider than the viewport; ` +
+      `${JSON.stringify(evidence.page_width)}`
+    );
+  }
+  if (!evidence.summary.visible || !evidence.summary.text ||
+      !evidence.summary.rect || evidence.summary.rect.left < -1 ||
+      evidence.summary.rect.right > evidence.page_width.viewport + 1 ||
+      evidence.summary.client_width <= 0 ||
+      evidence.summary.scroll_width > evidence.summary.client_width + 1) {
+    errors.push(
+      `${prefix} SUMMARY UNUSABLE: ${label} is hidden, clipped, or horizontally overflowing; ` +
+      `${JSON.stringify(evidence.summary)}`
+    );
+  }
+  if (!evidence.map.visible ||
+      !['auto', 'scroll'].includes(evidence.map.overflow_x) ||
+      evidence.map.max_scroll_left <= 1 ||
+      evidence.map.scroll_left_after_pan <= 1 ||
+      !evidence.map.rendered_svg_ready) {
+    errors.push(
+      `${prefix} DIAGRAM NOT HORIZONTALLY SCROLLABLE OR READY: ${label}; ` +
+      `${JSON.stringify(evidence.map)}`
+    );
+  }
+  if (evidence.links.length === 0 ||
+      evidence.links.some(link =>
+        !link.visible || !link.href || !link.within_viewport
+      )) {
+    errors.push(
+      `${prefix} ORDINARY LINKS UNUSABLE: ${label} has missing, hidden, or clipped page links; ` +
+      `${JSON.stringify(evidence.links)}`
+    );
+  }
+
+  let linkClickWorks = false;
+  try {
+    const setup = await page.evaluate((index) => {
+      const group = document.querySelectorAll(
+        '.universe-map-generated .universe-map-group'
+      )[index];
+      const link = group?.querySelector('.link-list a');
+      if (!link) return null;
+
+      link.setAttribute('data-responsive-qa-click-target', '');
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        window.__responsiveQaPageMapLinkClick = {
+          trusted: event.isTrusted,
+          href: link.getAttribute('href'),
+        };
+      }, { capture: true, once: true });
+      return { href: link.getAttribute('href') };
+    }, groupIndex);
+
+    if (setup?.href) {
+      const link = page.locator(
+        `${UNIVERSE_PAGE_MAP_GROUP_SELECTOR}:nth-of-type(${groupIndex + 1}) ` +
+        '.link-list a[data-responsive-qa-click-target]'
+      );
+      await link.scrollIntoViewIfNeeded();
+      linkClickWorks = await link.click({ timeout: 5000 })
+        .then(() => true, () => false);
+      const clickEvidence = await page.evaluate(() =>
+        window.__responsiveQaPageMapLinkClick ?? null
+      );
+      linkClickWorks = linkClickWorks &&
+        clickEvidence?.trusted === true &&
+        clickEvidence?.href === setup.href;
+      evidence.ordinary_link_click = {
+        attempted_href: setup.href,
+        click: clickEvidence,
+        works: linkClickWorks,
+      };
+    } else {
+      evidence.ordinary_link_click = { works: false, reason: 'no ordinary link found' };
+    }
+  } catch (error) {
+    evidence.ordinary_link_click = {
+      works: false,
+      error: error.message.split('\n')[0],
+    };
+  } finally {
+    await page.evaluate((index) => {
+      document.querySelectorAll(
+        '.universe-map-generated .universe-map-group'
+      )[index]?.querySelector('[data-responsive-qa-click-target]')
+        ?.removeAttribute('data-responsive-qa-click-target');
+    }, groupIndex).catch(() => {});
+  }
+  if (!linkClickWorks) {
+    errors.push(
+      `${prefix} ORDINARY LINK DID NOT RESPOND TO A TAP: ` +
+      `${JSON.stringify(evidence.ordinary_link_click)}`
+    );
+  }
+
+  const pageWidthAfterInteraction = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body?.scrollWidth ?? null,
+  })).catch(() => null);
+  evidence.page_width_after_interaction = pageWidthAfterInteraction;
+  if (pageWidthAfterInteraction &&
+      (pageWidthAfterInteraction.document > pageWidthAfterInteraction.viewport ||
+       pageWidthAfterInteraction.body > pageWidthAfterInteraction.viewport)) {
+    errors.push(
+      `${prefix} PAGE OVERFLOW AFTER INTERACTION: ${JSON.stringify(pageWidthAfterInteraction)}`
+    );
+  }
+
+  return { errors, evidence };
+}
+
+async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
+  const errors = [];
+  const groups = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
+  const groupCount = await groups.count();
+  if (groupCount === 0) {
+    return {
+      errors: ['UNIVERSE PAGE MAP GROUP MISSING: no generated details groups were found'],
+      initiallyCollapsed: false,
+      groupCount,
+      groups: [],
+    };
+  }
+
+  const initiallyCollapsed = await groups.evaluateAll(elements =>
+    elements.every(element => !element.open)
+  );
+  if (!initiallyCollapsed) {
+    errors.push(
+      'UNIVERSE PAGE MAP COLLAPSED STATE INVALID: a generated group was open before the group checks'
+    );
+  }
+
+  const groupEvidence = [];
+  for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+    const groupCheck = await openUniversePageMapGroupForGeometryCheck(
+      page,
+      groupIndex,
+      groupCount
+    );
+    errors.push(...groupCheck.errors);
+
+    let released = false;
+    let ready = false;
+    let after = null;
+    let narrowUsability = null;
+    let themeSwitch = null;
+    try {
+      if (groupCheck.renderScheduled) {
+        released = await releaseResponsiveQaMermaidRender(page);
+        if (!released) {
+          errors.push(
+            `UNIVERSE PAGE MAP RENDER NOT RELEASED: group ${groupIndex + 1} had no held Mermaid render`
+          );
+        } else {
+          ready = await page.waitForFunction((index) => {
+            const group = document.querySelectorAll(
+              '.universe-map-generated .universe-map-group'
+            )[index];
+            return Boolean(group?.querySelector('.mermaid svg .node'));
+          }, groupIndex, { timeout: 20000 }).then(() => true, () => false);
+        }
+      }
+      await waitForTwoFrames();
+      after = await captureUniversePageMapGeometry(page, groupIndex);
+      if (!ready) {
+        errors.push(
+          `UNIVERSE PAGE MAP DID NOT REACH SVG READY STATE: group ${groupIndex + 1} ` +
+          `${groupCheck.before?.title ? `"${groupCheck.before.title}"` : ''}; ` +
+          `before=${JSON.stringify(groupCheck.before)}; after=${JSON.stringify(after)}`
+        );
+      }
+      if (ready && after?.svg_ready) {
+        themeSwitch = await checkUniversePageMapThemeSwitch(
+          page,
+          groupCheck,
+          after,
+          waitForTwoFrames
+        );
+        errors.push(...themeSwitch.errors);
+      }
+      if (page.viewportSize()?.width === 320) {
+        narrowUsability = await checkUniversePageMapNarrowUsability(page, groupIndex);
+        errors.push(...narrowUsability.errors);
+      }
+    } catch (error) {
+      errors.push(
+        `UNIVERSE PAGE MAP GEOMETRY CHECK ERROR: group ${groupIndex + 1} ` +
+        `${error.message.split('\n')[0]}`
+      );
+      after = await captureUniversePageMapGeometry(page, groupIndex).catch(() => null);
+    }
+
+    const comparison = await compareUniversePageMapGeometry(page, groupCheck, after);
+    errors.push(...comparison.errors);
+    groupEvidence.push({
+      group_index: groupIndex + 1,
+      title: groupCheck.before?.title ?? '',
+      node_count: groupCheck.before?.node_count ?? null,
+      initially_collapsed: groupCheck.initiallyCollapsed,
+      opened_by_keyboard: groupCheck.openedByKeyboard,
+      other_groups_stayed_collapsed: groupCheck.othersStayedCollapsed,
+      render_scheduled: groupCheck.renderScheduled,
+      render_released: released,
+      rendered_svg_ready: ready,
+      closed_by_keyboard: comparison.closedByKeyboard,
+      before: groupCheck.before,
+      after,
+      shifts: comparison.shifts,
+      ...(themeSwitch ? { theme_switch: themeSwitch.evidence } : {}),
+      ...(narrowUsability ? { narrow_usability: narrowUsability.evidence } : {}),
+    });
+  }
+
+  return { errors, initiallyCollapsed, groupCount, groups: groupEvidence };
+}
 
 async function checkBrandGuardHeroGeometry(page) {
   const errors = [];
@@ -235,10 +1184,311 @@ async function checkBrandGuardHeroGeometry(page) {
   };
 }
 
+async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontResponses) {
+  const errors = [];
+  const fontStylesheetMode = await page.evaluate(() =>
+    document.querySelector('link[data-deferred-fonts]') ? 'deferred' : 'active'
+  );
+  if (fontStylesheetMode === 'active') {
+    try {
+      await page.waitForFunction(() => {
+        const fontStylesheet = [...document.querySelectorAll('link[rel~="stylesheet"]')]
+          .find(link => {
+            const url = new URL(link.href);
+            return url.hostname === 'fonts.googleapis.com' &&
+              url.pathname === '/css2' &&
+              link.media !== 'not all';
+          });
+        return Boolean(fontStylesheet?.sheet);
+      }, undefined, { timeout: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS });
+    } catch (error) {
+      errors.push(
+        `BRANDGUARD WEB FONT STYLESHEET NOT READY: ${error.message.split('\n')[0]}; ` +
+        `measurements will continue`
+      );
+    }
+  }
+
+  const capture = () => page.evaluate((selectors) => {
+    const geometry = {};
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) {
+        geometry[selector] = null;
+        continue;
+      }
+      const rect = element.getBoundingClientRect();
+      const round = value => Math.round(value * 100) / 100;
+      geometry[selector] = Object.fromEntries(
+        ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left']
+          .map(property => [property, round(rect[property])])
+      );
+    }
+    return geometry;
+  }, BRANDGUARD_GEOMETRY_SELECTORS);
+
+  const before = await capture();
+  releaseFontRequests();
+
+  let fontLoading = null;
+  try {
+    await page.waitForFunction(() => {
+      const fontLink = document.querySelector('link[data-deferred-fonts]');
+      if (fontLink) return fontLink.media === 'all' && Boolean(fontLink.sheet);
+
+      const fontStylesheet = [...document.querySelectorAll('link[rel~="stylesheet"]')]
+        .find(link => {
+          const url = new URL(link.href);
+          return url.hostname === 'fonts.googleapis.com' &&
+            url.pathname === '/css2' &&
+            link.media !== 'not all';
+        });
+      return Boolean(fontStylesheet?.sheet);
+    }, undefined, { timeout: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS });
+    fontLoading = await page.evaluate(async ({ selectors, expectedFamilies, timeoutMs }) => {
+      const fontLink = document.querySelector('link[data-deferred-fonts]');
+      const activeFontStylesheet = fontLink ?? [...document.querySelectorAll('link[rel~="stylesheet"]')]
+        .find(link => {
+          const url = new URL(link.href);
+          return url.hostname === 'fonts.googleapis.com' &&
+            url.pathname === '/css2' &&
+            link.media !== 'not all';
+        });
+      if (!activeFontStylesheet?.sheet || (fontLink && fontLink.media !== 'all')) {
+        throw new Error(
+          `Google Fonts stylesheet was not active (mode=${fontLink ? 'deferred' : 'active'}, ` +
+          `media=${JSON.stringify(activeFontStylesheet?.media ?? null)})`
+        );
+      }
+
+      const loadFonts = Promise.all(selectors.map(async (selector, index) => {
+        const element = document.querySelector(selector);
+        if (!element) {
+          return {
+            selector,
+            expected_family: expectedFamilies[index],
+            loaded: false,
+            reason: 'element missing',
+          };
+        }
+
+        const style = getComputedStyle(element);
+        const expectedFamily = expectedFamilies[index];
+        const declaredFamily = style.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, '');
+        const faces = await document.fonts.load(style.font, element.textContent || ' ');
+        const matchingFaces = faces.filter(face =>
+          face.family.replace(/^["']|["']$/g, '') === expectedFamily
+        );
+        return {
+          selector,
+          expected_family: expectedFamily,
+          declared_family: declaredFamily,
+          font: style.font,
+          face_statuses: matchingFaces.map(face => face.status),
+          loaded: declaredFamily === expectedFamily &&
+            matchingFaces.length > 0 &&
+            matchingFaces.every(face => face.status === 'loaded'),
+        };
+      }));
+
+      let timeoutId;
+      try {
+        const fonts = await Promise.race([
+          loadFonts,
+          new Promise((_, reject) => {
+            timeoutId = setTimeout(
+              () => reject(new Error(`font loading exceeded ${timeoutMs}ms`)),
+              timeoutMs
+            );
+          }),
+        ]);
+        await document.fonts.ready;
+        await new Promise(resolve => requestAnimationFrame(() =>
+          requestAnimationFrame(resolve)
+        ));
+        return {
+          status: document.fonts.status,
+          link_media: activeFontStylesheet.media,
+          fonts,
+        };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }, {
+      selectors: BRANDGUARD_GEOMETRY_SELECTORS,
+      expectedFamilies: BRANDGUARD_FONT_FAMILIES,
+      timeoutMs: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+    });
+  } catch (error) {
+    errors.push(
+      `BRANDGUARD WEB FONTS NOT READY: ${error.message.split('\n')[0]}; ` +
+      `selectors=${JSON.stringify(BRANDGUARD_GEOMETRY_SELECTORS)}; ` +
+      `before=${JSON.stringify(before)}; after will still be measured`
+    );
+  }
+
+  const after = await capture();
+  const hasStylesheet = fontResponses.some(
+    response => response.resource_type === 'stylesheet' && response.status < 400
+  );
+  const hasFontAsset = fontResponses.some(
+    response => response.resource_type === 'font' && response.status < 400
+  );
+  const failedFontChecks = fontLoading?.fonts.filter(font => !font.loaded) ?? [];
+  if (!hasStylesheet || !hasFontAsset || failedFontChecks.length > 0) {
+    errors.push(
+      `BRANDGUARD WEB FONTS UNAVAILABLE: stylesheet_loaded=${hasStylesheet}; ` +
+      `font_asset_loaded=${hasFontAsset}; failed_faces=${JSON.stringify(failedFontChecks)}; ` +
+      `resources=${JSON.stringify(fontResponses)}; ` +
+      `before=${JSON.stringify(before)}; after=${JSON.stringify(after)}`
+    );
+  }
+
+  const shifts = [];
+  for (const selector of BRANDGUARD_GEOMETRY_SELECTORS) {
+    const beforeRect = before[selector];
+    const afterRect = after[selector];
+    if (!beforeRect || !afterRect) {
+      errors.push(
+        `BRANDGUARD WEB FONT GEOMETRY MISSING: ${selector}; ` +
+        `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+      );
+      continue;
+    }
+
+    const delta = Object.fromEntries(
+      ['x', 'y', 'width', 'height'].map(property => [
+        property,
+        Math.round((afterRect[property] - beforeRect[property]) * 100) / 100,
+      ])
+    );
+    const changedProperties = Object.keys(delta).filter(
+      property => Math.abs(delta[property]) > BRANDGUARD_GEOMETRY_TOLERANCE_PX
+    );
+    if (changedProperties.length > 0) {
+      shifts.push({ selector, before: beforeRect, after: afterRect, delta, changed_properties: changedProperties });
+      errors.push(
+        `BRANDGUARD WEB FONT GEOMETRY SHIFT: ${selector} changed ` +
+        `${changedProperties.map(property => `${property}=${delta[property]}px`).join(', ')} ` +
+        `with ${BRANDGUARD_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+        `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+      );
+    }
+  }
+
+  return {
+    errors,
+    evidence: {
+      threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+      timeout_ms: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+      font_stylesheet_mode: fontStylesheetMode,
+      before,
+      after,
+      font_loading: fontLoading,
+      font_resources: fontResponses,
+      shifts,
+    },
+  };
+}
+
+async function checkBrandGuardNarrowContent(page) {
+  const evidence = await page.evaluate(({ selectors, tolerancePx }) => {
+    const elements = {};
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) {
+        elements[selector] = null;
+        continue;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const round = value => Math.round(value * 100) / 100;
+      elements[selector] = {
+        text_present: Boolean(element.textContent.trim()),
+        visible: style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          Number.parseFloat(style.opacity) > 0 &&
+          rect.width > 0 &&
+          rect.height > 0,
+        rect: Object.fromEntries(
+          ['left', 'right', 'top', 'bottom', 'width', 'height']
+            .map(property => [property, round(rect[property])])
+        ),
+        client_width: element.clientWidth,
+        scroll_width: element.scrollWidth,
+        client_height: element.clientHeight,
+        scroll_height: element.scrollHeight,
+        horizontal_content_overflow:
+          element.scrollWidth > element.clientWidth + tolerancePx,
+        vertical_content_overflow:
+          element.scrollHeight > element.clientHeight + tolerancePx,
+        horizontal_content_clipping:
+          ['hidden', 'clip'].includes(style.overflowX) &&
+          element.scrollWidth > element.clientWidth + tolerancePx,
+        vertical_content_clipping:
+          ['hidden', 'clip'].includes(style.overflowY) &&
+          element.scrollHeight > element.clientHeight + tolerancePx,
+        outside_viewport:
+          rect.left < -tolerancePx || rect.right > window.innerWidth + tolerancePx,
+      };
+    }
+
+    const breadcrumb = document.querySelector(selectors[0]);
+    const heading = document.querySelector(selectors[2]);
+    const breadcrumbRect = breadcrumb?.getBoundingClientRect();
+    const headingRect = heading?.getBoundingClientRect();
+    return {
+      viewport_width: window.innerWidth,
+      document_scroll_width: document.documentElement.scrollWidth,
+      document_overflow: document.documentElement.scrollWidth > window.innerWidth,
+      breadcrumb_overlaps_heading: Boolean(
+        breadcrumbRect && headingRect &&
+        breadcrumbRect.bottom > headingRect.top + tolerancePx
+      ),
+      elements,
+    };
+  }, {
+    selectors: BRANDGUARD_NARROW_CONTENT_SELECTORS,
+    tolerancePx: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+  });
+
+  const errors = [];
+  for (const [selector, element] of Object.entries(evidence.elements)) {
+    if (!element) {
+      errors.push(`BRANDGUARD 320PX CONTENT MISSING: ${selector}`);
+      continue;
+    }
+    if (!element.text_present || !element.visible) {
+      errors.push(
+        `BRANDGUARD 320PX CONTENT NOT READABLE: ${selector}; ` +
+        `evidence=${JSON.stringify(element)}`
+      );
+    }
+    if (element.horizontal_content_clipping ||
+        element.vertical_content_clipping ||
+        element.outside_viewport) {
+      errors.push(
+        `BRANDGUARD 320PX CONTENT CLIPPED: ${selector}; ` +
+        `evidence=${JSON.stringify(element)}`
+      );
+    }
+  }
+  if (evidence.breadcrumb_overlaps_heading) {
+    errors.push(
+      `BRANDGUARD 320PX BREADCRUMB OVERLAPS HERO: ` +
+      `evidence=${JSON.stringify(evidence.elements)}`
+    );
+  }
+
+  return { errors, evidence };
+}
+
 async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequestSeen) {
   const errors = [];
   let before = null;
   let after = null;
+  let pageMapCheck = null;
   let themeActive = false;
   let mermaidRequested = false;
   let rendered = false;
@@ -271,6 +1521,8 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
       '.askjamie-hero--universe .askjamie-mermaid-shell'
     );
     return {
+      color_scheme: document.documentElement.getAttribute('data-color-scheme'),
+      prefers_dark: window.matchMedia('(prefers-color-scheme: dark)').matches,
       ready: diagram?.dataset.universeReady === '1',
       has_svg_node: Boolean(diagram?.querySelector('svg .node')),
       source_present: diagram?.textContent.includes('flowchart') ?? false,
@@ -304,19 +1556,15 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
   try {
     await page.locator(UNIVERSE_DIAGRAM_GEOMETRY_SELECTORS[0]).scrollIntoViewIfNeeded();
 
-    [themeActive, mermaidRequested] = await Promise.all([
-      page.waitForFunction(() => {
-        const themeLink = document.querySelector('link[data-deferred-styles]');
-        return themeLink?.media === 'all' && Boolean(themeLink.sheet);
-      }, undefined, { timeout: 15000 }).then(() => true, () => false),
-      mermaidRequestSeen,
-    ]);
+    themeActive = await page.waitForFunction(() => {
+      const themeLink = document.querySelector('link[data-deferred-styles]');
+      return themeLink?.media === 'all' && Boolean(themeLink.sheet);
+    }, undefined, { timeout: 15000 }).then(() => true, () => false);
 
     if (themeActive) {
       await waitForTwoFrames();
       // The desktop hero has a finite scroll reveal that changes its transform.
       // Let that existing animation finish before isolating Mermaid's layout.
-      // Keep the Mermaid import blocked throughout this baseline preparation.
       await page.evaluate(async () => {
         const hero = document.querySelector('.askjamie-hero--universe');
         const reveals = (hero?.getAnimations({ subtree: true }) ?? [])
@@ -332,9 +1580,13 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
         `measured before=${JSON.stringify(before.geometry)}`
       );
     }
-    if (!mermaidRequested) {
+    if (!hasDarkUniverseTheme(before)) {
       errors.push(
-        'UNIVERSE DIAGRAM NOT INITIALIZED: Mermaid module request was not observed after bringing the hero into view'
+        'UNIVERSE DIAGRAM DARK THEME NOT ACTIVE: expected a pinned dark color scheme and dark ' +
+        `browser preference before rendering; before=${JSON.stringify({
+          color_scheme: before.color_scheme,
+          prefers_dark: before.prefers_dark,
+        })}`
       );
     }
     if (before.ready || before.has_svg_node) {
@@ -367,23 +1619,57 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
       );
     }
 
+    const heroRenderScheduled = await page.waitForFunction(
+      () => window.__responsiveQaMermaidRenderQueue?.length > 0,
+      undefined,
+      { timeout: 10000 }
+    ).then(() => true, () => false);
+    if (!heroRenderScheduled) {
+      errors.push(
+        'UNIVERSE DIAGRAM RENDER NOT SCHEDULED: hero did not reach the Mermaid observer'
+      );
+    } else if (!await releaseResponsiveQaMermaidRender(page)) {
+      errors.push('UNIVERSE DIAGRAM RENDER NOT RELEASED: no held hero Mermaid render was available');
+    }
+
+    mermaidRequested = await mermaidRequestSeen;
+    if (!mermaidRequested) {
+      errors.push(
+        'UNIVERSE DIAGRAM NOT INITIALIZED: Mermaid module request was not observed after bringing the hero into view'
+      );
+    }
     releaseMermaid();
+
     if (mermaidRequested) {
       rendered = await page.waitForFunction(() => {
         const diagram = document.querySelector('.askjamie-hero--universe .mermaid');
         return diagram?.dataset.universeReady === '1' && Boolean(diagram.querySelector('svg .node'));
-      }, undefined, { timeout: 15000 }).then(() => true, () => false);
-      if (rendered) {
-        await waitForTwoFrames();
-        after = await capture();
-      } else {
-        after = await capture();
-        errors.push(
-          'UNIVERSE DIAGRAM DID NOT REACH READY STATE: expected a rendered SVG node and data-universe-ready=1; ' +
-          `before=${JSON.stringify(before.geometry)}; after=${JSON.stringify(after.geometry)}`
-        );
-      }
+      }, undefined, { timeout: 20000 }).then(() => true, () => false);
     }
+    if (rendered) {
+      await waitForTwoFrames();
+      after = await capture();
+    } else {
+      after = await capture();
+      errors.push(
+        'UNIVERSE DIAGRAM DID NOT REACH READY STATE: expected a rendered SVG node and data-universe-ready=1; ' +
+        `before=${JSON.stringify(before.geometry)}; after=${JSON.stringify(after.geometry)}`
+      );
+    }
+    if (after && !hasDarkUniverseTheme(after)) {
+      errors.push(
+        'UNIVERSE DIAGRAM DARK THEME NOT ACTIVE: expected a pinned dark color scheme and dark ' +
+        `browser preference after rendering; after=${JSON.stringify({
+          color_scheme: after.color_scheme,
+          prefers_dark: after.prefers_dark,
+        })}`
+      );
+    }
+
+    // Finish the hero render before opening any page map so Mermaid never has
+    // multiple diagrams rendering at once during this geometry check.
+    pageMapCheck = await checkUniversePageMapGroupsGeometry(page, waitForTwoFrames);
+    errors.push(...pageMapCheck.errors);
   } catch (error) {
     errors.push(`UNIVERSE DIAGRAM GEOMETRY CHECK ERROR: ${error.message.split('\n')[0]}`);
   } finally {
@@ -439,30 +1725,567 @@ async function checkUniverseDiagramGeometry(page, releaseMermaid, mermaidRequest
     }
   }
 
+  const pageMapEvidence = {
+    group_count: pageMapCheck?.groupCount ?? 0,
+    initially_collapsed: pageMapCheck?.initiallyCollapsed ?? false,
+    all_groups_rendered_svg_ready:
+      pageMapCheck?.groups.length > 0 &&
+      pageMapCheck.groups.every(group => group.rendered_svg_ready),
+    groups: pageMapCheck?.groups ?? [],
+  };
+
   return {
     errors,
     evidence: {
       threshold_px: UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX,
       theme_active_before_render: themeActive,
+      dark_theme_active_before_render: hasDarkUniverseTheme(before),
+      dark_theme_active_after_render: hasDarkUniverseTheme(after),
       mermaid_module_requested: mermaidRequested,
       rendered_svg_ready: rendered,
       expected_reservation_px: (page.viewportSize().width <= 640 ? 18 : 22) * 16,
       before,
       after,
       shifts,
+      page_map: pageMapEvidence,
     },
   };
+}
+
+async function checkUniverseMermaidFailure(browser, viewport, url) {
+  const errors = [];
+  const mermaidPath = '/assets/vendor/mermaid/mermaid.esm.min.mjs';
+  const externalBlock =
+    /fonts\.(gstatic|googleapis)\.com|google-analytics\.com|googletagmanager\.com|cdn\.jsdelivr\.net/;
+  const context = await browser.newContext({
+    viewport: { width: viewport.width, height: viewport.height },
+  });
+  const page = await context.newPage();
+  let noJsContext;
+
+  const isMermaidRequest = request =>
+    new URL(request.url()).pathname === mermaidPath;
+  const mermaidRequest = page.waitForRequest(isMermaidRequest, { timeout: 15000 })
+    .then(request => request.url(), () => null);
+  const mermaidFailure = page.waitForEvent('requestfailed', {
+    predicate: isMermaidRequest,
+    timeout: 15000,
+  }).then(request => request.failure()?.errorText || 'failed', () => null);
+  const renderWarning = page.waitForEvent('console', {
+    predicate: message =>
+      message.type() === 'warning' &&
+      message.text().startsWith('[mermaid-init] render error:'),
+    timeout: 15000,
+  }).then(message => message.text(), () => null);
+
+  const inspectFallback = targetPage => targetPage.evaluate(() => {
+    const figure = document.querySelector(
+      '.askjamie-hero--universe .askjamie-mermaid-shell'
+    );
+    const diagram = figure?.querySelector('.mermaid');
+    const status = figure?.querySelector('[data-mermaid-failure-status]');
+    const caption = figure?.querySelector('figcaption');
+    const links = [...(figure?.querySelectorAll('.link-list a') ?? [])];
+    const visible = element => Boolean(
+      element &&
+      element.getClientRects().length > 0 &&
+      getComputedStyle(element).visibility !== 'hidden' &&
+      getComputedStyle(element).display !== 'none'
+    );
+
+    return {
+      caption: caption?.textContent.trim() ?? '',
+      caption_visible: visible(caption),
+      failure_status_visible: visible(status),
+      failure_status_text: status?.textContent.trim() ?? '',
+      failure_status_role: status?.getAttribute('role') ?? null,
+      failure_status_live: status?.getAttribute('aria-live') ?? null,
+      links: links.map(link => ({
+        text: link.textContent.trim(),
+        href: link.getAttribute('href'),
+        visible: visible(link),
+      })),
+      ready_state: diagram?.dataset.universeReady ?? null,
+      has_svg_node: Boolean(diagram?.querySelector('svg .node')),
+      noscript_visible: visible(figure?.querySelector('.mermaid-noscript')),
+      noscript_text: figure?.querySelector('.mermaid-noscript')?.textContent.trim() ?? '',
+    };
+  });
+
+  const clickPageMapLink = async targetPage => {
+    const link = targetPage.locator(
+      '.askjamie-hero--universe .link-list a[href="#indexed-map-title"]'
+    );
+    if (await link.count() !== 1 || !(await link.isVisible())) return false;
+    await link.click({ timeout: 5000 });
+    return targetPage.evaluate(() =>
+      location.hash === '#indexed-map-title' &&
+      Boolean(document.querySelector('#indexed-map-title'))
+    );
+  };
+
+  const checkGeneratedPageMapFallback = async targetPage => {
+    const groups = targetPage.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
+    const groupCount = await groups.count();
+    if (groupCount === 0) {
+      return {
+        errors: ['UNIVERSE MERMAID FAILURE PAGE MAP MISSING: no generated page-map group was found'],
+        evidence: { group_count: 0, groups: [] },
+      };
+    }
+
+    const errors = [];
+    const groupEvidence = [];
+    for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+      const groupLabel = `group ${groupIndex + 1}`;
+      const group = targetPage.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).nth(groupIndex);
+      const renderWarning = targetPage.waitForEvent('console', {
+        predicate: message =>
+          message.type() === 'warning' &&
+          message.text().startsWith('[mermaid-init] render error:'),
+        timeout: 10000,
+      }).then(message => message.text(), () => null);
+
+      await group.locator('summary').click({ timeout: 5000 });
+      const opened = await group.evaluate(element => element.open);
+      if (!opened) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE PAGE MAP DID NOT OPEN: ${groupLabel} stayed closed`
+        );
+      }
+
+      await group.locator('.mermaid').scrollIntoViewIfNeeded();
+      const renderStarted = await targetPage.waitForFunction(index => {
+        const currentGroup = document.querySelectorAll(
+          '.universe-map-generated .universe-map-group'
+        )[index];
+        return currentGroup?.querySelector('.mermaid')
+          ?.dataset.mermaidRendered === '1';
+      }, groupIndex, { timeout: 10000 }).then(() => true, () => false);
+      if (!renderStarted) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE PAGE MAP NOT ATTEMPTED: ${groupLabel} did not start rendering`
+        );
+      }
+
+      const renderFailureCaught = await renderWarning;
+      if (!renderFailureCaught) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE PAGE MAP NOT CAUGHT: ${groupLabel} render failure was not observed`
+        );
+      }
+
+      const state = await targetPage.evaluate(index => {
+        const isVisible = element => Boolean(
+          element &&
+          element.getClientRects().length > 0 &&
+          getComputedStyle(element).visibility !== 'hidden' &&
+          getComputedStyle(element).display !== 'none'
+        );
+        const group = document.querySelectorAll(
+          '.universe-map-generated .universe-map-group'
+        )[index];
+        const diagram = group?.querySelector('.mermaid');
+        const status = group?.querySelector('[data-mermaid-failure-status]');
+        const caption = group?.querySelector('figcaption');
+        const links = [...(group?.querySelectorAll('.link-list a') ?? [])];
+        return {
+          open: Boolean(group?.open),
+          summary: group?.querySelector('summary')?.textContent.trim() ?? '',
+          summary_visible: isVisible(group?.querySelector('summary')),
+          caption: caption?.textContent.trim() ?? '',
+          caption_visible: isVisible(caption),
+          failure_status_visible: isVisible(status),
+          failure_status_text: status?.textContent.trim() ?? '',
+          failure_status_role: status?.getAttribute('role') ?? null,
+          failure_status_live: status?.getAttribute('aria-live') ?? null,
+          links: links.map(link => ({
+            text: link.textContent.trim(),
+            href: link.getAttribute('href'),
+            visible: isVisible(link),
+          })),
+          render_started: diagram?.dataset.mermaidRendered === '1',
+          ready_state: diagram?.dataset.universeReady ?? null,
+          has_svg_node: Boolean(diagram?.querySelector('svg .node')),
+        };
+      }, groupIndex);
+
+      if (!state.open || !state.summary_visible || !state.summary) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE PAGE MAP SUMMARY UNAVAILABLE: ${groupLabel} ` +
+          JSON.stringify(state)
+        );
+      }
+      if (!state.caption_visible || !state.caption) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE HID PAGE MAP CAPTION: ${groupLabel} ` +
+          JSON.stringify(state)
+        );
+      }
+      if (!state.failure_status_visible ||
+          !state.failure_status_text.includes('could not be displayed') ||
+          state.failure_status_role !== 'status' ||
+          state.failure_status_live !== 'polite') {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE STATUS UNAVAILABLE OR INACCESSIBLE: ${groupLabel} ` +
+          JSON.stringify(state)
+        );
+      }
+      if (state.links.length < 1 || state.links.some(link => !link.visible || !link.href)) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE MADE GENERATED PAGE LINKS UNAVAILABLE: ${groupLabel} ` +
+          JSON.stringify(state.links)
+        );
+      }
+      if (state.ready_state === '1' && !state.has_svg_node) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE MARKED PAGE MAP READY WITHOUT A RENDERED SVG: ${groupLabel} ` +
+          JSON.stringify({
+            ready_state: state.ready_state,
+            has_svg_node: state.has_svg_node,
+          })
+        );
+      }
+
+      const currentUrl = new URL(url);
+      const navigableLinkIndex = state.links.findIndex(link => {
+        try {
+          const destination = new URL(link.href, targetPage.url());
+          return destination.origin === currentUrl.origin &&
+            destination.pathname !== currentUrl.pathname;
+        } catch {
+          return false;
+        }
+      });
+      let ordinaryPageLinkWorks = false;
+      let ordinaryPageLinkEvidence = null;
+      if (navigableLinkIndex >= 0) {
+        const ordinaryPageLink = group.locator('.link-list a').nth(navigableLinkIndex);
+        const targetPath = new URL(
+          state.links[navigableLinkIndex].href,
+          targetPage.url()
+        ).pathname;
+        try {
+          const response = await Promise.all([
+            targetPage.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+            ordinaryPageLink.click({ timeout: 5000 }),
+          ]).then(([navigationResponse]) => navigationResponse);
+          ordinaryPageLinkWorks =
+            new URL(targetPage.url()).pathname === targetPath &&
+            Boolean(response && response.status() < 400);
+          ordinaryPageLinkEvidence = {
+            href: state.links[navigableLinkIndex].href,
+            target_path: targetPath,
+            http_status: response?.status() ?? null,
+          };
+        } catch {
+          ordinaryPageLinkWorks = false;
+        }
+      }
+      if (!ordinaryPageLinkWorks) {
+        errors.push(
+          `UNIVERSE MERMAID FAILURE BROKE GENERATED PAGE LINK: ${groupLabel} ` +
+          'ordinary link did not reach a successful page'
+        );
+      }
+
+      groupEvidence.push({
+        group_index: groupIndex + 1,
+        render_started: renderStarted,
+        render_failure_caught: Boolean(renderFailureCaught),
+        state,
+        ordinary_page_link_works: ordinaryPageLinkWorks,
+        ordinary_page_link: ordinaryPageLinkEvidence,
+      });
+
+      if (ordinaryPageLinkWorks) {
+        try {
+          await targetPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          const transitionDismiss = targetPage.locator(
+            '[data-transition-dialog][open] [data-transition-dismiss]'
+          );
+          if (await transitionDismiss.isVisible()) await transitionDismiss.click();
+        } catch (error) {
+          errors.push(
+            `UNIVERSE MERMAID FAILURE PAGE MAP CHECK COULD NOT RETURN TO UNIVERSE: ` +
+            `${error.message.split('\n')[0]}`
+          );
+          break;
+        }
+      } else {
+        await group.evaluate(element => { element.open = false; }).catch(() => {});
+      }
+    }
+
+    return {
+      errors,
+      evidence: {
+        group_count: groupCount,
+        all_groups_checked: groupEvidence.length === groupCount,
+        all_groups_render_failures_caught:
+          groupEvidence.length === groupCount &&
+          groupEvidence.every(group => group.render_failure_caught),
+        all_group_links_visible:
+          groupEvidence.length === groupCount &&
+          groupEvidence.every(group =>
+            group.state.links.length > 0 &&
+            group.state.links.every(link => link.visible && link.href)
+          ),
+        all_groups_navigated:
+          groupEvidence.length === groupCount &&
+          groupEvidence.every(group => group.ordinary_page_link_works),
+        groups: groupEvidence,
+      },
+    };
+  };
+
+  const checkGeneratedPageMapWithoutJavaScript = async targetPage => {
+    const groups = targetPage.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR);
+    const groupCount = await groups.count();
+    if (groupCount === 0) {
+      return {
+        errors: ['UNIVERSE NO-JAVASCRIPT PAGE MAP MISSING: no generated page-map group was found'],
+        evidence: { group_count: 0, group: null, ordinary_page_link_works: false },
+      };
+    }
+
+    const errors = [];
+    const group = groups.first();
+    try {
+      await group.locator('summary').click({ timeout: 5000 });
+    } catch (error) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT PAGE MAP DID NOT OPEN: ${error.message.split('\n')[0]}`
+      );
+    }
+
+    const state = await group.evaluate(element => {
+      const isVisible = node => Boolean(
+        node &&
+        node.getClientRects().length > 0 &&
+        getComputedStyle(node).visibility !== 'hidden' &&
+        getComputedStyle(node).display !== 'none'
+      );
+      const summary = element.querySelector('summary');
+      const caption = element.querySelector('figcaption');
+      const links = [...element.querySelectorAll('.link-list a')];
+      return {
+        open: element.open,
+        summary: summary?.textContent.trim() ?? '',
+        summary_visible: isVisible(summary),
+        caption: caption?.textContent.trim() ?? '',
+        caption_visible: isVisible(caption),
+        links: links.map(link => ({
+          text: link.textContent.trim(),
+          href: link.getAttribute('href'),
+          visible: isVisible(link),
+        })),
+      };
+    });
+
+    if (!state.open || !state.summary_visible || !state.summary) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT PAGE MAP SUMMARY UNAVAILABLE: ${JSON.stringify(state)}`
+      );
+    }
+    if (!state.caption_visible || !state.caption) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT PAGE MAP CAPTION UNAVAILABLE: ${JSON.stringify(state)}`
+      );
+    }
+    if (state.links.length < 1 || state.links.some(link => !link.visible || !link.href)) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT GENERATED PAGE LINKS UNAVAILABLE: ${JSON.stringify(state.links)}`
+      );
+    }
+
+    const currentUrl = new URL(targetPage.url());
+    const navigableLinkIndex = state.links.findIndex(link => {
+      try {
+        const destination = new URL(link.href, targetPage.url());
+        return destination.origin === currentUrl.origin &&
+          destination.pathname !== currentUrl.pathname;
+      } catch {
+        return false;
+      }
+    });
+    let ordinaryPageLinkWorks = false;
+    let ordinaryPageLinkEvidence = null;
+    if (navigableLinkIndex >= 0) {
+      const ordinaryPageLink = group.locator('.link-list a').nth(navigableLinkIndex);
+      const targetPath = new URL(
+        state.links[navigableLinkIndex].href,
+        targetPage.url()
+      ).pathname;
+      try {
+        const response = await Promise.all([
+          targetPage.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+          ordinaryPageLink.click({ timeout: 5000 }),
+        ]).then(([navigationResponse]) => navigationResponse);
+        ordinaryPageLinkWorks =
+          new URL(targetPage.url()).pathname === targetPath &&
+          Boolean(response && response.status() < 400);
+        ordinaryPageLinkEvidence = {
+          href: state.links[navigableLinkIndex].href,
+          target_path: targetPath,
+          http_status: response?.status() ?? null,
+        };
+      } catch {
+        ordinaryPageLinkWorks = false;
+      }
+    }
+    if (!ordinaryPageLinkWorks) {
+      errors.push(
+        'UNIVERSE NO-JAVASCRIPT GENERATED PAGE LINK BROKE: ' +
+        'ordinary link did not reach a successful local page'
+      );
+    }
+
+    return {
+      errors,
+      evidence: {
+        group_count: groupCount,
+        state,
+        ordinary_page_link_works: ordinaryPageLinkWorks,
+        ordinary_page_link: ordinaryPageLinkEvidence,
+      },
+    };
+  };
+
+  try {
+    await page.route('**/*', route => {
+      const requestUrl = new URL(route.request().url());
+      if (requestUrl.pathname === mermaidPath) return route.abort();
+      if (externalBlock.test(route.request().url())) return route.abort();
+      return route.continue();
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const transitionDismiss = page.locator(
+      '[data-transition-dialog][open] [data-transition-dismiss]'
+    );
+    if (await transitionDismiss.isVisible()) await transitionDismiss.click();
+    await page.locator('.askjamie-hero--universe .mermaid').scrollIntoViewIfNeeded();
+
+    const renderStarted = await page.waitForFunction(() => {
+      const diagram = document.querySelector('.askjamie-hero--universe .mermaid');
+      return diagram?.dataset.mermaidRendered === '1';
+    }, undefined, { timeout: 10000 }).then(() => true, () => false);
+    if (!renderStarted) {
+      errors.push('UNIVERSE MERMAID FAILURE CHECK DID NOT START: hero initialization was not observed');
+    }
+
+    const [requestedUrl, failure, warning] = await Promise.all([
+      mermaidRequest,
+      mermaidFailure,
+      renderWarning,
+    ]);
+    if (!requestedUrl) {
+      errors.push('UNIVERSE MERMAID FAILURE CHECK DID NOT REQUEST: local Mermaid module request was not observed');
+    }
+    if (!failure) {
+      errors.push('UNIVERSE MERMAID FAILURE CHECK DID NOT FAIL: blocked local module request did not fail');
+    }
+    if (!warning) {
+      errors.push('UNIVERSE MERMAID FAILURE NOT CAUGHT: expected the renderer failure warning');
+    }
+
+    const failedState = await inspectFallback(page);
+    if (!failedState.caption_visible || !failedState.caption) {
+      errors.push(`UNIVERSE MERMAID FAILURE HID CAPTION: ${JSON.stringify(failedState)}`);
+    }
+    if (!failedState.failure_status_visible ||
+        !failedState.failure_status_text.includes('could not be displayed') ||
+        failedState.failure_status_role !== 'status' ||
+        failedState.failure_status_live !== 'polite') {
+      errors.push(
+        `UNIVERSE MERMAID FAILURE STATUS UNAVAILABLE OR INACCESSIBLE: ${JSON.stringify(failedState)}`
+      );
+    }
+    if (failedState.links.length < 3 || failedState.links.some(link => !link.visible || !link.href)) {
+      errors.push(`UNIVERSE MERMAID FAILURE MADE PAGE LINKS UNAVAILABLE: ${JSON.stringify(failedState.links)}`);
+    }
+    if (failedState.ready_state === '1' || failedState.has_svg_node) {
+      errors.push(
+        'UNIVERSE MERMAID FAILURE REPORTED FALSE READY STATE: ' +
+        JSON.stringify({
+          ready_state: failedState.ready_state,
+          has_svg_node: failedState.has_svg_node,
+        })
+      );
+    }
+    const failedPageMapLinkWorks = await clickPageMapLink(page).catch(() => false);
+    if (!failedPageMapLinkWorks) {
+      errors.push('UNIVERSE MERMAID FAILURE BROKE ORDINARY LINK: page-map link did not reach its in-page target');
+    }
+
+    const generatedPageMap = await checkGeneratedPageMapFallback(page);
+    errors.push(...generatedPageMap.errors);
+
+    noJsContext = await browser.newContext({
+      viewport: { width: viewport.width, height: viewport.height },
+      javaScriptEnabled: false,
+    });
+    const noJsPage = await noJsContext.newPage();
+    await noJsPage.route('**/*', route =>
+      externalBlock.test(route.request().url()) ? route.abort() : route.continue()
+    );
+    await noJsPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const noJsState = await inspectFallback(noJsPage);
+    if (!noJsState.noscript_visible ||
+        !noJsState.noscript_text.includes('The page links below work without JavaScript.')) {
+      errors.push(`UNIVERSE NO-JAVASCRIPT FALLBACK MISSING: ${JSON.stringify(noJsState)}`);
+    }
+    if (noJsState.failure_status_visible) {
+      errors.push(
+        `UNIVERSE NO-JAVASCRIPT FAILURE STATUS SHOULD REMAIN HIDDEN: ${JSON.stringify(noJsState)}`
+      );
+    }
+    if (!noJsState.caption_visible || noJsState.links.length < 3 ||
+        noJsState.links.some(link => !link.visible || !link.href)) {
+      errors.push(`UNIVERSE NO-JAVASCRIPT LINKS UNAVAILABLE: ${JSON.stringify(noJsState)}`);
+    }
+    const noJsPageMapLinkWorks = await clickPageMapLink(noJsPage).catch(() => false);
+    if (!noJsPageMapLinkWorks) {
+      errors.push('UNIVERSE NO-JAVASCRIPT LINK BROKE: page-map link did not reach its in-page target');
+    }
+    const noJsGeneratedPageMap = await checkGeneratedPageMapWithoutJavaScript(noJsPage);
+    errors.push(...noJsGeneratedPageMap.errors);
+
+    return {
+      errors,
+      evidence: {
+        module_requested: Boolean(requestedUrl),
+        module_failure: failure,
+        render_failure_caught: Boolean(warning),
+        failed_state: failedState,
+        failed_page_map_link_works: failedPageMapLinkWorks,
+        generated_page_map: generatedPageMap.evidence,
+        no_javascript_state: noJsState,
+        no_javascript_page_map_link_works: noJsPageMapLinkWorks,
+        no_javascript_generated_page_map: noJsGeneratedPageMap.evidence,
+      },
+    };
+  } catch (error) {
+    errors.push(`UNIVERSE MERMAID FAILURE CHECK ERROR: ${error.message.split('\n')[0]}`);
+    return { errors, evidence: null };
+  } finally {
+    await page.close();
+    await context.close();
+    await noJsContext?.close();
+  }
 }
 
 // ── MODE A: Playwright ────────────────────────────────────────────────────────
 
 async function runWithPlaywright() {
   let pw;
+  let playwrightVersion;
   try {
     const require = createRequire(import.meta.url);
     pw = require('playwright');
+    playwrightVersion = require('playwright/package.json').version;
   } catch {
-    return { ok: false, reason: 'Playwright is not installed' };
+    return { ok: false, reason: 'Playwright is not installed or its package version is unavailable' };
   }
 
   mkdirSync(RESULTS_DIR, { recursive: true });
@@ -474,6 +2297,9 @@ async function runWithPlaywright() {
   } catch {
     return { ok: false, reason: 'Chromium could not be launched' };
   }
+
+  const chromiumVersion = browser.version();
+  console.log(`Browser runtime: Playwright ${playwrightVersion}; Chromium ${chromiumVersion}`);
 
   // Reuse contexts for isolation and speed, but create a fresh page for every
   // route. External resources are blocked so browser QA measures local assets.
@@ -489,9 +2315,26 @@ async function runWithPlaywright() {
   async function runViewport(worker, path, url) {
     const { vp, ctx } = worker;
     const page = await ctx.newPage();
+    const checkBrandGuardFonts =
+      BRANDGUARD_FONT_GEOMETRY_PATHS.has(path) &&
+      BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name);
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
+    const checkUniverseFailure =
+      path === UNIVERSE_DIAGRAM_GEOMETRY_PATH && vp.name === 'mobile-390';
+    let releaseBrandGuardFontRequests = () => {};
+    let brandGuardFontGate = Promise.resolve();
+    if (checkBrandGuardFonts) {
+      let release;
+      brandGuardFontGate = new Promise(resolve => { release = resolve; });
+      let released = false;
+      releaseBrandGuardFontRequests = () => {
+        if (released) return;
+        released = true;
+        release();
+      };
+    }
     let releaseUniverseMermaid;
     let universeMermaidImportGate = Promise.resolve();
     let universeMermaidRequestSeen = Promise.resolve(false);
@@ -513,6 +2356,8 @@ async function runWithPlaywright() {
     const consoleErrors = [];
     const requestFailures = [];
     const failedResponses = [];
+    const criticalHeroStylesheetResponses = [];
+    const brandGuardFontResponses = [];
     const requestInfo = new WeakMap();
     const requestedUrls = new Set();
     const requestedAtByUrl = new Map();
@@ -551,6 +2396,23 @@ async function runWithPlaywright() {
       });
     };
     const onResponse = resp => {
+      const responseUrl = new URL(resp.url());
+      if (responseUrl.pathname === CRITICAL_HERO_STYLESHEET_PATH &&
+          resp.request().resourceType() === 'stylesheet') {
+        criticalHeroStylesheetResponses.push({
+          url: resp.url(),
+          status: resp.status(),
+          resourceType: resp.request().resourceType(),
+        });
+      }
+      if (checkBrandGuardFonts && BRANDGUARD_FONT_HOSTS.has(responseUrl.hostname)) {
+        brandGuardFontResponses.push({
+          host: responseUrl.hostname,
+          path: responseUrl.pathname,
+          resource_type: resp.request().resourceType(),
+          status: resp.status(),
+        });
+      }
       if (resp.status() < 400 || blockedExternal.has(resp.url())) return;
       const info = requestInfo.get(resp.request());
       failedResponses.push({
@@ -565,8 +2427,22 @@ async function runWithPlaywright() {
     };
 
     await page.route('**/*', route => {
+      const requestUrl = new URL(route.request().url());
+      if (checkBrandGuardFonts && BRANDGUARD_FONT_HOSTS.has(requestUrl.hostname)) {
+        const requestType = route.request().resourceType();
+        if (requestUrl.hostname === 'fonts.googleapis.com' &&
+            requestUrl.pathname === '/css2' &&
+            requestType === 'stylesheet') {
+          return route.continue();
+        }
+        if (requestUrl.hostname === 'fonts.gstatic.com' && requestType === 'font') {
+          return brandGuardFontGate.then(() => route.continue());
+        }
+        blockedExternal.add(route.request().url());
+        return route.abort();
+      }
       if (checkUniverseDiagram &&
-          new URL(route.request().url()).pathname === '/assets/vendor/mermaid/mermaid.esm.min.mjs') {
+          requestUrl.pathname === '/assets/vendor/mermaid/mermaid.esm.min.mjs') {
         return universeMermaidImportGate.then(() => route.continue());
       }
       if (EXTERNAL_BLOCK.test(route.request().url())) {
@@ -575,6 +2451,40 @@ async function runWithPlaywright() {
       }
       return route.continue();
     });
+    if (checkUniverseDiagram) {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      await page.addInitScript(() => {
+        localStorage.setItem('askjamie-color-scheme', 'dark');
+        const queue = [];
+        Object.defineProperty(window, '__responsiveQaMermaidRenderQueue', {
+          configurable: false,
+          value: queue,
+        });
+        const isMermaidRenderCallback = callback =>
+          typeof callback === 'function' &&
+          /renderOne\s*\(\s*node\s*\)/.test(Function.prototype.toString.call(callback));
+
+        if (typeof window.requestIdleCallback === 'function') {
+          const requestIdleCallback = window.requestIdleCallback.bind(window);
+          window.requestIdleCallback = (callback, options) => {
+            if (isMermaidRenderCallback(callback)) {
+              queue.push({ callback, args: [] });
+              return queue.length;
+            }
+            return requestIdleCallback(callback, options);
+          };
+        }
+
+        const setTimeout = window.setTimeout.bind(window);
+        window.setTimeout = (callback, delay, ...args) => {
+          if (isMermaidRenderCallback(callback)) {
+            queue.push({ callback, args });
+            return queue.length;
+          }
+          return setTimeout(callback, delay, ...args);
+        };
+      });
+    }
     page.on('console', onConsole);
     page.on('request', onRequest);
     page.on('requestfailed', onRequestFailed);
@@ -597,12 +2507,37 @@ async function runWithPlaywright() {
       const transitionDismiss = page.locator('[data-transition-dialog][open] [data-transition-dismiss]');
       if (await transitionDismiss.isVisible()) await transitionDismiss.click();
 
+      const criticalHeroStyles =
+        (path === BRANDGUARD_GEOMETRY_PATH &&
+          vp.name === BRANDGUARD_CRITICAL_STYLE_VIEWPORT) ||
+        (path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
+          UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name))
+          ? await checkCriticalHeroStyles(
+            page,
+            path,
+            vp.width,
+            criticalHeroStylesheetResponses
+          )
+          : null;
+
       // Compare the critical shell with the live deferred theme on the supported
-      // narrow BrandGuard viewport. Do this before scrolling lazy images so the
-      // two geometry samples cover only theme activation, not later page work.
+      // phone and tablet BrandGuard viewports before scrolling lazy images, so
+      // both geometry samples cover theme activation rather than later page work.
       const heroThemeGeometry =
-        path === BRANDGUARD_GEOMETRY_PATH && vp.name === BRANDGUARD_GEOMETRY_VIEWPORT
+        path === BRANDGUARD_GEOMETRY_PATH && BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)
           ? await checkBrandGuardHeroGeometry(page)
+          : null;
+      const heroFontGeometry = checkBrandGuardFonts
+        ? await checkBrandGuardWebFontGeometry(
+          page,
+          releaseBrandGuardFontRequests,
+          brandGuardFontResponses
+        )
+        : null;
+      const brandGuardNarrowContent =
+        path.startsWith(BRANDGUARD_GEOMETRY_PATH) &&
+        vp.name === BRANDGUARD_NARROW_CONTENT_VIEWPORT
+          ? await checkBrandGuardNarrowContent(page)
           : null;
       const universeDiagramGeometry = checkUniverseDiagram
         ? await checkUniverseDiagramGeometry(
@@ -610,6 +2545,9 @@ async function runWithPlaywright() {
           releaseUniverseMermaid,
           universeMermaidRequestSeen
         )
+        : null;
+      const universeMermaidFailure = checkUniverseFailure
+        ? await checkUniverseMermaidFailure(browser, vp, url)
         : null;
 
       // Lazy loading is viewport-driven. Scroll each lazy image into view so
@@ -678,8 +2616,12 @@ async function runWithPlaywright() {
         ![...blockedExternal].some(blocked => blocked === src)
       );
       const errors = [
+        ...(criticalHeroStyles?.errors ?? []),
         ...(heroThemeGeometry?.errors ?? []),
+        ...(heroFontGeometry?.errors ?? []),
+        ...(brandGuardNarrowContent?.errors ?? []),
         ...(universeDiagramGeometry?.errors ?? []),
+        ...(universeMermaidFailure?.errors ?? []),
         ...(overflow ? [`OVERFLOW: scrollWidth > ${vp.width}px`] : []),
         ...consoleErrors.slice(0, 5).map(e => 'CONSOLE: ' + e),
         ...requestFailures.slice(0, 5).map(r =>
@@ -699,8 +2641,20 @@ async function runWithPlaywright() {
                     ...(heroThemeGeometry
                       ? { hero_theme_geometry: heroThemeGeometry.evidence }
                       : {}),
+                     ...(criticalHeroStyles
+                       ? { critical_hero_styles: criticalHeroStyles.evidence }
+                       : {}),
+                     ...(heroFontGeometry
+                      ? { hero_font_geometry: heroFontGeometry.evidence }
+                      : {}),
+                     ...(brandGuardNarrowContent
+                       ? { brandguard_320_content: brandGuardNarrowContent.evidence }
+                       : {}),
                     ...(universeDiagramGeometry
                       ? { universe_diagram_geometry: universeDiagramGeometry.evidence }
+                      : {}),
+                    ...(universeMermaidFailure
+                      ? { universe_mermaid_failure: universeMermaidFailure.evidence }
                       : {}) };
       if (!row.pass) {
         const ssFile = `${path.replace(/\//g, '_')}_${vp.name}.png`;
@@ -708,6 +2662,7 @@ async function runWithPlaywright() {
       }
       return row;
     } finally {
+      releaseBrandGuardFontRequests();
       page.removeListener('console', onConsole);
       page.removeListener('request', onRequest);
       page.removeListener('requestfailed', onRequestFailed);
@@ -734,6 +2689,18 @@ async function runWithPlaywright() {
         r.errors.forEach(e => console.log(`         → ${e}`));
       });
     }
+    const warningViewports = new Map();
+    for (const row of vpResults) {
+      for (const warning of row.warnings ?? []) {
+        const viewports = warningViewports.get(warning) ?? [];
+        if (!viewports.includes(row.viewport)) viewports.push(row.viewport);
+        warningViewports.set(warning, viewports);
+      }
+    }
+    for (const [warning, viewports] of warningViewports) {
+      console.log(`  WARN  ${path} (${viewports.join(', ')})`);
+      console.log(`         → ${warning}`);
+    }
     process.stdout.write(`  done  ${path}\n`);
 
     for (const row of vpResults) {
@@ -747,6 +2714,8 @@ async function runWithPlaywright() {
   const report = {
     generated: new Date().toISOString(),
     mode: 'playwright',
+    playwright_version: playwrightVersion,
+    chromium_version: chromiumVersion,
     base_url: BASE_URL,
     pages_checked: PUBLIC_PATHS.length,
     viewports_checked: VIEWPORTS.length,
@@ -878,10 +2847,13 @@ async function staticAnalysis() {
     generated: new Date().toISOString(),
     mode: 'static-lint',
     note: [
-      'Static-lint mode: 10 structural checks per page, applied uniformly to all 8 viewport rows.',
+      'Static-lint mode: 10 structural checks per page, applied uniformly to all 10 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
-      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-390.',
-      'Universe diagram shell geometry through Mermaid rendering is checked only in Playwright mode at mobile-390 and desktop-1280.',
+      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
+      'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-360 and mobile-390 on the hub and representative short and long case-study pages.',
+      'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
+      'Universe hero geometry and page-map shell geometry during sequential Mermaid rendering are checked in dark mode in Playwright mode at mobile-320, mobile-390, tablet-768, and desktop-1280; each ready page-map group is also measured through light and dark color-scheme switches.',
+      'Every generated Universe page-map group is checked for page overflow, diagram scrolling, usable summaries, and working ordinary links at mobile-320 in Playwright mode.',
       'To run full browser QA: npm install -D playwright && npx playwright install chromium && node scripts/responsive-qa.mjs',
     ].join(' '),
     base_url: BASE_URL,
@@ -909,6 +2881,17 @@ async function staticAnalysis() {
   console.log('AskJamie™ Responsive QA\n' + '='.repeat(40));
   console.log(`Base URL: ${BASE_URL}`);
   console.log(`Pages: ${PUBLIC_PATHS.length} | Viewports: ${VIEWPORTS.length}\n`);
+
+  if (REQUIRE_RELEASE_HERO_ROUTES) {
+    const requiredRoutes = [BRANDGUARD_GEOMETRY_PATH, UNIVERSE_DIAGRAM_GEOMETRY_PATH];
+    const missingRoutes = requiredRoutes.filter(path => !PUBLIC_PATHS.includes(path));
+    if (missingRoutes.length > 0) {
+      console.error(
+        `Required release hero routes are missing from sitemap.xml: ${missingRoutes.join(', ')}`
+      );
+      process.exit(1);
+    }
+  }
 
   const pwResult = FORCE_STATIC ? null : await runWithPlaywright();
   if (pwResult?.ok === false) {

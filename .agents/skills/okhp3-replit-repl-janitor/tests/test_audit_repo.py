@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import subprocess
 import sys
@@ -16,8 +17,231 @@ assert SPEC and SPEC.loader
 audit_repo = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(audit_repo)
 
+MALFORMED_PULL_REQUESTS = (
+    {},
+    {"merged_at": None},
+    {"merged_at": "2099-01-01"},
+    {"state": "open"},
+    {"state": "closed"},
+    {"state": None, "merged_at": None},
+    {"state": "", "merged_at": None},
+    {"state": "merged", "merged_at": "2099-01-01"},
+    {"state": [], "merged_at": None},
+    {"state": {}, "merged_at": None},
+    {"state": "closed", "merged_at": False},
+    {"state": "closed", "merged_at": 0},
+    {"state": "closed", "merged_at": []},
+    {"state": "closed", "merged_at": {}},
+    {"state": "closed", "merged_at": ""},
+    {"state": "closed", "merged_at": "  "},
+    {"state": "open", "merged_at": False},
+)
+
 
 class AuditRepoTests(unittest.TestCase):
+    def test_remote_start_failures_hold_and_continue_each_provider_ref(self) -> None:
+        requested = ["origin=work", "mirror=work", "origin=later"]
+        for failure in (
+            FileNotFoundError(2, "No such file or directory", "git"),
+            PermissionError(13, "Permission denied", "git"),
+            OSError(8, "Exec format error", "git"),
+        ):
+            calls = []
+
+            def command(args, **kwargs):
+                calls.append(args)
+                if len(calls) == 1:
+                    raise failure
+                return subprocess.CompletedProcess(args, 0, f"{'a' * 40}\t{args[-1]}\n", "")
+
+            with self.subTest(failure=type(failure).__name__), patch.object(
+                audit_repo, "remote_url_for_provider",
+                side_effect=lambda _root, provider: (provider, "https://github.com/fixture/repo.git"),
+            ), patch.object(audit_repo.subprocess, "run", side_effect=command), patch.object(
+                audit_repo, "github_hosted_evidence", return_value={
+                    "protection": {"status": "unprotected"},
+                    "deployments": {"status": "available", "count": 0, "items": []},
+                    "pull_requests": {"status": "available", "count": 0, "items": []},
+                },
+            ) as evidence:
+                report = audit_repo.audit_hosted_branches(Path("."), requested)
+            self.assertEqual([(args[3], args[-1]) for args in calls], [
+                ("origin", "refs/heads/work"), ("mirror", "refs/heads/work"),
+                ("origin", "refs/heads/later"),
+            ])
+            self.assertEqual(evidence.call_count, 2)
+            entry = report["entries"][0]
+            self.assertEqual(entry["classification"], "inaccessible")
+            self.assertEqual(entry["ref_status"], "unknown")
+            self.assertIn("command could not start", entry["reason"])
+            self.assertIn(str(failure), entry["reason"])
+            self.assertNotIn("tip", entry)
+            for key in ("protection", "deployments", "pull_requests"):
+                self.assertEqual(entry[key]["status"], "unknown")
+                self.assertNotIn("count", entry[key])
+                self.assertNotIn("items", entry[key])
+            for later in report["entries"][1:]:
+                self.assertEqual(later["classification"], "present")
+                self.assertFalse(later["deletion_blocked"])
+            self.assertEqual(report["blocking_entries"], ["origin:work"])
+            self.assert_single_hosted_hold(report, "hosted-remote-inaccessible", "review")
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
+    def test_api_start_failures_preserve_holds_and_continue_lookups_and_pairs(self) -> None:
+        keys = ("protection", "deployments", "pull_requests")
+        codes = (
+            "hosted-protection-unknown", "hosted-deployment-evidence-unknown",
+            "hosted-pull-request-evidence-unknown",
+        )
+        for failure in (
+            FileNotFoundError(2, "No such file or directory", "gh"),
+            PermissionError(13, "Permission denied", "gh"),
+            OSError(8, "Exec format error", "gh"),
+        ):
+            for failed in ((0,), (1,), (2,), (0, 1, 2)):
+                calls = []
+
+                def command(args, **kwargs):
+                    if args[0] == "git":
+                        return subprocess.CompletedProcess(args, 0, f"{'a' * 40}\t{args[-1]}\n", "")
+                    index = len(calls)
+                    calls.append(args[2])
+                    if index in failed:
+                        raise failure
+                    output = '{"protected": false}' if index % 3 == 0 else "[]"
+                    return subprocess.CompletedProcess(args, 0, output, "")
+
+                with self.subTest(failure=type(failure).__name__, failed=failed), patch.object(
+                    audit_repo, "remote_url_for_provider",
+                    side_effect=lambda _root, provider: (provider, "https://github.com/fixture/repo.git"),
+                ), patch.object(audit_repo.shutil, "which", return_value="/fixture/gh"), patch.object(
+                    audit_repo.subprocess, "run", side_effect=command,
+                ):
+                    report = audit_repo.audit_hosted_branches(
+                        Path("."), ["origin=work", "mirror=work", "origin=later"],
+                    )
+                self.assertEqual(len(calls), 9)
+                self.assertEqual(calls[:3], calls[3:6])
+                self.assertIn("/branches/later", calls[6])
+                self.assertIn("deployments?ref=later", calls[7])
+                self.assertIn("pulls?state=all&head=fixture%3Alater", calls[8])
+                entry = report["entries"][0]
+                self.assertEqual(entry["classification"], "present")
+                self.assertTrue(entry["deletion_blocked"])
+                self.assertEqual(entry["blocking_reasons"], sorted(codes[index] for index in failed))
+                for index, key in enumerate(keys):
+                    if index in failed:
+                        self.assertEqual(entry[key]["status"], "unknown")
+                        self.assertIn("command could not start", entry[key]["reason"])
+                        self.assertIn(str(failure), entry[key]["reason"])
+                        self.assertNotIn("count", entry[key])
+                        self.assertNotIn("items", entry[key])
+                    else:
+                        self.assertEqual(entry[key]["status"], "unprotected" if index == 0 else "available")
+                for later in report["entries"][1:]:
+                    self.assertEqual(later["classification"], "present")
+                    self.assertFalse(later["deletion_blocked"])
+                self.assertTrue(report["deletion_blocked"])
+                self.assertEqual(report["blocking_entries"], ["origin:work"])
+                self.assertEqual(len(report["cleanup_plan"]["review"]), 1)
+                self.assertEqual(report["cleanup_plan"]["review"][0]["blocking_reasons"], entry["blocking_reasons"])
+                self.assertEqual(report["cleanup_plan"]["delete"], [])
+                self.assertEqual(report["cleanup_plan"]["merge"], [])
+
+    def test_hosted_commands_have_a_finite_timeout(self) -> None:
+        self.assertEqual(audit_repo.HOSTED_COMMAND_TIMEOUT_SECONDS, 30)
+        for args in (
+            ["git", "ls-remote", "--heads", "origin", "refs/heads/work"],
+            ["gh", "api", "repos/fixture/repo/branches/work"],
+        ):
+            with self.subTest(args=args), patch.object(audit_repo.subprocess, "run") as run:
+                audit_repo.hosted_command(args, Path("."))
+                self.assertEqual(run.call_args.kwargs["timeout"], 30)
+                self.assertEqual(run.call_args.kwargs["stdin"], subprocess.DEVNULL)
+
+    def test_remote_timeout_holds_and_continues_without_trusting_partial_output(self) -> None:
+        for partial_output in (None, b"", b"aaaaaaaa\trefs/heads/work\n"):
+            def command(args, **kwargs):
+                self.assertEqual(kwargs["timeout"], 30)
+                if args[3] == "stalled":
+                    raise subprocess.TimeoutExpired(args, 30, output=partial_output)
+                return subprocess.CompletedProcess(args, 0, "", "")
+
+            with self.subTest(partial_output=partial_output), patch.object(
+                audit_repo, "remote_url_for_provider",
+                side_effect=lambda _root, provider: (provider, "https://github.com/fixture/repo.git"),
+            ), patch.object(audit_repo.subprocess, "run", side_effect=command) as run, patch.object(
+                audit_repo, "github_hosted_evidence",
+            ) as evidence:
+                report = audit_repo.audit_hosted_branches(
+                    Path("."), ["stalled=work", "responsive=work"],
+                )
+            self.assertEqual(run.call_count, 2)
+            evidence.assert_not_called()
+            entry = report["entries"][0]
+            self.assertEqual(entry["classification"], "inaccessible")
+            self.assertEqual(entry["ref_status"], "unknown")
+            self.assertIn("timed out after 30 seconds", entry["reason"])
+            self.assertNotIn("tip", entry)
+            self.assertTrue(entry["deletion_blocked"])
+            self.assertEqual(entry["blocking_reasons"], ["hosted-remote-inaccessible"])
+            for key in ("protection", "deployments", "pull_requests"):
+                self.assertEqual(entry[key]["status"], "unknown")
+                self.assertNotIn("count", entry[key])
+            self.assertEqual(report["entries"][1]["classification"], "missing")
+            self.assertTrue(report["deletion_blocked"])
+            self.assertEqual(len(report["cleanup_plan"]["review"]), 2)
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
+    def test_github_timeouts_preserve_each_unknown_hold_and_continue(self) -> None:
+        keys = ("protection", "deployments", "pull_requests")
+        codes = (
+            "hosted-protection-unknown", "hosted-deployment-evidence-unknown",
+            "hosted-pull-request-evidence-unknown",
+        )
+        for timed_out in ((0,), (1,), (2,), (0, 1, 2)):
+            calls = []
+
+            def command(args, **kwargs):
+                self.assertEqual(kwargs["timeout"], 30)
+                if args[0] == "git":
+                    return subprocess.CompletedProcess(args, 0, f"{'a' * 40}\trefs/heads/work\n", "")
+                index = len(calls)
+                calls.append(args)
+                output = '{"protected": false}' if index == 0 else "[]"
+                if index in timed_out:
+                    # Even apparently complete output cannot be trusted after timeout.
+                    raise subprocess.TimeoutExpired(args, 30, output=output.encode())
+                return subprocess.CompletedProcess(args, 0, output, "")
+
+            with self.subTest(timed_out=timed_out), patch.object(
+                audit_repo, "remote_url_for_provider",
+                return_value=("origin", "https://github.com/fixture/repo.git"),
+            ), patch.object(audit_repo.shutil, "which", return_value="/fixture/gh"), patch.object(
+                audit_repo.subprocess, "run", side_effect=command,
+            ):
+                report = audit_repo.audit_hosted_branches(Path("."), ["origin=work"])
+            self.assertEqual(len(calls), 3)
+            entry = report["entries"][0]
+            self.assertEqual(entry["classification"], "present")
+            self.assertTrue(entry["deletion_blocked"])
+            self.assertEqual(entry["blocking_reasons"], sorted(codes[index] for index in timed_out))
+            for index, key in enumerate(keys):
+                if index in timed_out:
+                    self.assertEqual(entry[key]["status"], "unknown")
+                    self.assertIn("timed out after 30 seconds", entry[key]["reason"])
+                    self.assertNotIn("count", entry[key])
+                    self.assertNotIn("items", entry[key])
+                else:
+                    self.assertEqual(entry[key]["status"], "unprotected" if index == 0 else "available")
+            self.assertTrue(report["deletion_blocked"])
+            self.assertEqual(report["blocking_entries"], ["origin:work"])
+            self.assertEqual(report["cleanup_plan"]["review"][0]["blocking_reasons"], entry["blocking_reasons"])
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
     def test_hosted_command_forces_noninteractive_ssh_batch_mode(self) -> None:
         commands = (
             "ssh", "", "ssh -o BatchMode=no", "ssh -oBatchMode no",
@@ -35,32 +259,317 @@ class AuditRepoTests(unittest.TestCase):
                 self.assertNotIn("batchmode=no", normalized)
                 self.assertIn("batchmode=yes", normalized)
 
-    def test_hosted_pull_request_page_limit_retains_unknown_history_hold(self) -> None:
-        for count in (99, 100, 101):
-            with self.subTest(count=count), patch.object(
-                audit_repo, "gh_api_json", side_effect=[
-                    ({"protected": False}, None),
-                    ([], None),
-                    ([{"state": "closed", "merged_at": "2099-01-01"}] * count, None),
-                ]
-            ):
-                evidence = audit_repo.github_hosted_evidence(
-                    Path("."), "https://github.com/fixture/repo.git", "feature/work"
+    def hosted_pages_fixture(self, deployment_pages, pr_pages):
+        """Exercise the real JSON adapter and hold projection without network access."""
+        deployment_endpoint = "repos/fixture/repo/deployments?ref=feature%2Fwork"
+        pr_endpoint = "repos/fixture/repo/pulls?state=all&head=fixture%3Afeature%2Fwork"
+        fixtures = {"repos/fixture/repo/branches/feature%2Fwork": {"protected": False}}
+        for endpoint, pages in ((deployment_endpoint, deployment_pages), (pr_endpoint, pr_pages)):
+            fixtures.update({
+                f"{endpoint}&per_page=100&page={page}": data
+                for page, data in enumerate(pages, 1)
+            })
+        calls = []
+
+        def command(args, _root):
+            if args[0] == "git":
+                return subprocess.CompletedProcess(
+                    args, 0, f"{'a' * 40}\trefs/heads/feature/work\n", "",
                 )
-            expected = "unknown" if count >= 100 else "available"
-            self.assertEqual(evidence["pull_requests"]["status"], expected)
-            with patch.object(audit_repo, "remote_url_for_provider", return_value=(
-                "origin", "https://github.com/fixture/repo.git"
-            )), patch.object(audit_repo, "hosted_command", return_value=(
-                subprocess.CompletedProcess([], 0, f"{'a' * 40}\trefs/heads/feature/work\n", "")
-            )), patch.object(audit_repo, "github_hosted_evidence", return_value=evidence):
-                report = audit_repo.audit_hosted_branches(Path("."), ["origin=feature/work"])
-            self.assertEqual(report["deletion_blocked"], count >= 100)
+            self.assertEqual(args[:2], ["gh", "api"])
+            endpoint = args[2]
+            calls.append(endpoint)
+            self.assertIn(endpoint, fixtures, "unexpected or unfiltered pagination request")
+            data = fixtures[endpoint]
+            if isinstance(data, Exception):
+                raise data
+            if isinstance(data, subprocess.CompletedProcess):
+                return data
+            return subprocess.CompletedProcess(
+                args, 0, data if isinstance(data, str) else json.dumps(data), "",
+            )
+
+        with patch.object(audit_repo, "remote_url_for_provider", return_value=(
+            "origin", "https://github.com/fixture/repo.git",
+        )), patch.object(audit_repo.shutil, "which", return_value="/fixture/gh"), patch.object(
+            audit_repo, "hosted_command", side_effect=command,
+        ):
+            report = audit_repo.audit_hosted_branches(Path("."), ["origin=feature/work"])
+        self.assertEqual(calls, list(fixtures))
+        self.assertEqual(report["cleanup_plan"]["delete"], [])
+        self.assertEqual(report["cleanup_plan"]["merge"], [])
+        return report
+
+    def assert_single_hosted_hold(self, report, code, bucket):
+        self.assertTrue(report["deletion_blocked"])
+        self.assertTrue(report["entries"][0]["deletion_blocked"])
+        self.assertEqual(report["entries"][0]["blocking_reasons"], [code])
+        item = report["cleanup_plan"][bucket][0]
+        self.assertEqual(item["blocking_reasons"], [code])
+        self.assertEqual(item["blocking_reason_explanations"], [{
+            "reason_code": code,
+            "explanation": audit_repo.HOSTED_HOLD_EXPLANATIONS[code],
+        }])
+        other_bucket = "keep" if bucket == "review" else "review"
+        self.assertEqual(report["cleanup_plan"][other_bucket], [])
+
+    def test_later_pr_pages_preserve_open_and_closed_unmerged_holds(self) -> None:
+        merged = [{"number": n, "state": "closed", "merged_at": "2099-01-01"}
+                  for n in range(1, 201)]
+        for state, code, bucket in (
+            ("open", "hosted-open-pull-request", "keep"),
+            ("closed", "hosted-closed-unmerged-pull-request", "review"),
+        ):
+            for page in (2, 3):
+                with self.subTest(state=state, page=page):
+                    later_pr = {"number": 201, "state": state, "merged_at": None}
+                    pages = [merged[:100]]
+                    if page == 3:
+                        pages.append(merged[100:])
+                    pages.append([later_pr])
+                    report = self.hosted_pages_fixture([[]], pages)
+                    evidence = report["entries"][0]["pull_requests"]
+                    self.assertEqual(evidence["status"], "available")
+                    self.assertEqual(evidence["count"], 100 * (page - 1) + 1)
+                    self.assertEqual(evidence["items"], sum(pages, []))
+                    self.assert_single_hosted_hold(report, code, bucket)
+
+    def test_pr_history_completes_only_after_short_or_empty_page(self) -> None:
+        for count in (0, 99, 100, 101, 200):
+            with self.subTest(count=count):
+                items = [{"number": n, "state": "closed", "merged_at": "2099-01-01"}
+                         for n in range(count)]
+                pages = [items[n:n + 100] for n in range(0, count, 100)]
+                if count % 100 == 0:
+                    pages.append([])
+                report = self.hosted_pages_fixture([[]], pages)
+                evidence = report["entries"][0]["pull_requests"]
+                self.assertEqual(evidence["status"], "available")
+                self.assertEqual(evidence["count"], count)
+                self.assertEqual(evidence["items"], items)
+                self.assertFalse(report["deletion_blocked"])
+                self.assertEqual(report["cleanup_plan"]["keep"], [])
+                self.assertEqual(report["cleanup_plan"]["review"], [])
+
+    def test_malformed_pr_fields_discard_history_and_retain_unknown_hold(self) -> None:
+        merged = {"state": "closed", "merged_at": "2099-01-01"}
+        for record in MALFORMED_PULL_REQUESTS:
+            for page in (1, 2):
+                with self.subTest(record=record, page=page):
+                    pages = [[merged] * 100] if page == 2 else []
+                    pages.append([merged, record])
+                    report = self.hosted_pages_fixture([[]], pages)
+                    entry = report["entries"][0]
+                    evidence = entry["pull_requests"]
+                    self.assertEqual(evidence, {
+                        "status": "unknown",
+                        "reason": f"GitHub pull-request response on page {page} contained invalid classification fields",
+                    })
+                    self.assertEqual(entry["protection"]["status"], "unprotected")
+                    self.assertEqual(entry["deployments"]["status"], "available")
+                    self.assert_single_hosted_hold(
+                        report, "hosted-pull-request-evidence-unknown", "review",
+                    )
+
+    def test_hosted_audit_does_not_trust_malformed_available_pr_records(self) -> None:
+        for record in (*MALFORMED_PULL_REQUESTS, None, "not an object"):
+            with self.subTest(record=record), patch.object(
+                audit_repo, "remote_url_for_provider",
+                return_value=("origin", "https://github.com/fixture/repo.git"),
+            ), patch.object(
+                audit_repo, "hosted_command",
+                return_value=subprocess.CompletedProcess(
+                    [], 0, f"{'a' * 40}\trefs/heads/work\n", "",
+                ),
+            ), patch.object(audit_repo, "github_hosted_evidence", return_value={
+                "protection": {"status": "unprotected"},
+                "deployments": {"status": "available", "count": 0, "items": []},
+                "pull_requests": {"status": "available", "count": 1, "items": [record]},
+            }):
+                report = audit_repo.audit_hosted_branches(Path("."), ["origin=work"])
+            self.assert_single_hosted_hold(
+                report, "hosted-pull-request-evidence-unknown", "review",
+            )
             self.assertEqual(report["cleanup_plan"]["delete"], [])
-            if count >= 100:
-                self.assertEqual(report["entries"][0]["blocking_reasons"], [
-                    "hosted-pull-request-evidence-unknown"
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
+
+    def test_explicit_null_and_merged_pr_fields_preserve_legitimate_results(self) -> None:
+        for record, code, bucket in (
+            ({"state": "open", "merged_at": None}, "hosted-open-pull-request", "keep"),
+            ({"state": "closed", "merged_at": None}, "hosted-closed-unmerged-pull-request", "review"),
+            ({"state": "closed", "merged_at": "2099-01-01"}, None, None),
+        ):
+            with self.subTest(record=record):
+                report = self.hosted_pages_fixture([[]], [[record]])
+                self.assertEqual(report["entries"][0]["pull_requests"], {
+                    "status": "available", "source": "github-api",
+                    "count": 1, "items": [record],
+                })
+                if code:
+                    self.assert_single_hosted_hold(report, code, bucket)
+                else:
+                    self.assertFalse(report["deletion_blocked"])
+                    self.assertEqual(report["entries"][0]["blocking_reasons"], [])
+                    self.assertEqual(report["cleanup_plan"]["keep"], [])
+                    self.assertEqual(report["cleanup_plan"]["review"], [])
+
+    def test_deployment_pages_are_aggregated_before_classifying_holds(self) -> None:
+        for count in (0, 99, 100, 101, 200, 201):
+            with self.subTest(count=count):
+                items = [{"id": n, "ref": "feature/work", "environment": "preview"}
+                         for n in range(count)]
+                pages = [items[n:n + 100] for n in range(0, count, 100)]
+                if count % 100 == 0:
+                    pages.append([])
+                report = self.hosted_pages_fixture(pages, [[]])
+                evidence = report["entries"][0]["deployments"]
+                self.assertEqual(evidence["status"], "available")
+                self.assertEqual(evidence["count"], count)
+                self.assertEqual(evidence["items"], items)
+                if count:
+                    self.assert_single_hosted_hold(report, "hosted-ref-has-deployments", "keep")
+                else:
+                    self.assertFalse(report["deletion_blocked"])
+
+    def test_partial_page_failures_discard_history_and_retain_unknown_holds(self) -> None:
+        failures = (
+            (subprocess.CompletedProcess([], 1, "", "rate limited"), "request failed"),
+            (subprocess.TimeoutExpired(["gh", "api"], 30, output=b"[]"), "timed out"),
+            (FileNotFoundError(2, "No such file or directory", "gh"), "command could not start"),
+            (PermissionError(13, "Permission denied", "gh"), "command could not start"),
+            ("not JSON", "invalid JSON"),
+            ({"message": "unexpected object"}, "not a list"),
+            ([None], "invalid records"),
+            ([{}] * 101, "invalid records"),
+        )
+        for key, code in (
+            ("deployments", "hosted-deployment-evidence-unknown"),
+            ("pull_requests", "hosted-pull-request-evidence-unknown"),
+        ):
+            for failure, reason in failures:
+                with self.subTest(key=key, reason=reason):
+                    first_page = ([{"id": n} for n in range(100)] if key == "deployments"
+                                  else [{"number": n, "state": "closed", "merged_at": "2099-01-01"}
+                                        for n in range(100)])
+                    pages = [first_page, failure]
+                    report = self.hosted_pages_fixture(
+                        pages if key == "deployments" else [[]],
+                        pages if key == "pull_requests" else [[]],
+                    )
+                    evidence = report["entries"][0][key]
+                    self.assertEqual(evidence["status"], "unknown")
+                    self.assertIn("page 2", evidence["reason"])
+                    self.assertIn(reason, evidence["reason"])
+                    self.assertNotIn("count", evidence)
+                    self.assertNotIn("items", evidence)
+                    other = "pull_requests" if key == "deployments" else "deployments"
+                    self.assertEqual(report["entries"][0][other]["status"], "available")
+                    self.assert_single_hosted_hold(report, code, "review")
+
+    def test_history_page_budget_discards_unique_or_repeated_full_pages(self) -> None:
+        self.assertEqual(audit_repo.HOSTED_HISTORY_MAX_PAGES, 10)
+        for repeated in (False, True):
+            for label in ("deployments", "pull-request"):
+                calls = []
+
+                def response(_root, endpoint):
+                    calls.append(endpoint)
+                    start = 0 if repeated else (len(calls) - 1) * 100
+                    return [{"id": n} for n in range(start, start + 100)], None
+
+                with self.subTest(repeated=repeated, label=label), patch.object(
+                    audit_repo, "gh_api_json", side_effect=response,
+                ):
+                    data, error = audit_repo.gh_api_list(Path("."), "history?ref=work", label)
+                self.assertIsNone(data)
+                self.assertEqual(error, (
+                    f"GitHub {label} history incomplete after page 10: "
+                    "pagination budget exhausted (10 pages); "
+                    "no short or empty page confirmed completion"
+                ))
+                self.assertEqual(calls, [
+                    f"history?ref=work&per_page=100&page={page}" for page in range(1, 11)
                 ])
+
+    def test_history_completes_on_short_or_empty_last_budgeted_page(self) -> None:
+        for final_count in (0, 99):
+            pages = [[{"id": page * 100 + n} for n in range(100)] for page in range(9)]
+            pages.append([{"id": 900 + n} for n in range(final_count)])
+            with self.subTest(final_count=final_count), patch.object(
+                audit_repo, "gh_api_json", side_effect=[(page, None) for page in pages],
+            ) as api:
+                data, error = audit_repo.gh_api_list(Path("."), "history?ref=work", "deployments")
+            self.assertIsNone(error)
+            self.assertEqual(data, sum(pages, []))
+            self.assertEqual(api.call_count, 10)
+
+    def test_history_budget_holds_continue_other_evidence_and_provider_ref_pairs(self) -> None:
+        keys = ("deployments", "pull_requests")
+        codes = (
+            "hosted-deployment-evidence-unknown", "hosted-pull-request-evidence-unknown",
+        )
+        for exhausted in ((0,), (1,), (0, 1)):
+            calls = []
+            pair = -1
+            full_page = [{"id": n, "number": n, "state": "closed", "merged_at": "2099-01-01"}
+                         for n in range(100)]
+
+            def command(args, _root):
+                nonlocal pair
+                if args[0] == "git":
+                    pair += 1
+                    return subprocess.CompletedProcess(args, 0, f"{'a' * 40}\t{args[-1]}\n", "")
+                endpoint = args[2]
+                calls.append((pair, endpoint))
+                if "/branches/" in endpoint:
+                    data = {"protected": False}
+                else:
+                    index = 0 if "/deployments?" in endpoint else 1
+                    data = full_page if pair == 0 and index in exhausted else []
+                return subprocess.CompletedProcess(args, 0, json.dumps(data), "")
+
+            with self.subTest(exhausted=exhausted), patch.object(
+                audit_repo, "remote_url_for_provider",
+                side_effect=lambda _root, provider: (provider, "https://github.com/fixture/repo.git"),
+            ), patch.object(audit_repo.shutil, "which", return_value="/fixture/gh"), patch.object(
+                audit_repo, "hosted_command", side_effect=command,
+            ):
+                report = audit_repo.audit_hosted_branches(
+                    Path("."), ["origin=work", "mirror=work", "origin=later"],
+                )
+            first = report["entries"][0]
+            self.assertEqual(first["protection"]["status"], "unprotected")
+            expected_codes = sorted(codes[index] for index in exhausted)
+            self.assertEqual(first["blocking_reasons"], expected_codes)
+            self.assertTrue(first["deletion_blocked"])
+            for index, key in enumerate(keys):
+                evidence = first[key]
+                if index in exhausted:
+                    self.assertEqual(evidence["status"], "unknown")
+                    self.assertIn("pagination budget exhausted (10 pages)", evidence["reason"])
+                    self.assertNotIn("items", evidence)
+                    self.assertNotIn("count", evidence)
+                else:
+                    self.assertEqual(evidence["status"], "available")
+                    self.assertEqual(evidence["count"], 0)
+                fragment = "/deployments?" if index == 0 else "/pulls?"
+                endpoints = [endpoint for current, endpoint in calls
+                             if current == 0 and fragment in endpoint]
+                self.assertEqual(len(endpoints), 10 if index in exhausted else 1)
+                self.assertTrue(endpoints[-1].endswith(f"page={len(endpoints)}"))
+            for current, later in enumerate(report["entries"][1:], 1):
+                self.assertEqual(later["classification"], "present")
+                self.assertFalse(later["deletion_blocked"])
+                self.assertEqual(len([endpoint for pair_index, endpoint in calls
+                                      if pair_index == current]), 3)
+                for key in keys:
+                    self.assertEqual(later[key]["status"], "available")
+                    self.assertEqual(later[key]["count"], 0)
+            self.assertEqual(report["blocking_entries"], ["origin:work"])
+            self.assertEqual(len(report["cleanup_plan"]["review"]), 1)
+            self.assertEqual(report["cleanup_plan"]["review"][0]["blocking_reasons"], expected_codes)
+            self.assertEqual(report["cleanup_plan"]["delete"], [])
+            self.assertEqual(report["cleanup_plan"]["merge"], [])
 
     def test_check_delete_rejects_hosted_options_before_repository_or_fetch(self) -> None:
         for option in ("--hosted-branch", "--hosted-ref"):
@@ -155,7 +664,7 @@ class AuditRepoTests(unittest.TestCase):
         fixtures = {
             "protected": {"protection": {"status": "protected"}},
             "deployed": {"deployments": {"status": "available", "count": 1}},
-            "open-pr": {"pull_requests": {"status": "available", "items": [{"state": "open"}]}},
+            "open-pr": {"pull_requests": {"status": "available", "items": [{"state": "open", "merged_at": None}]}},
             "closed-pr": {"pull_requests": {"status": "available", "items": [{"state": "closed", "merged_at": None}]}},
             "unknown-protection": {"protection": {"status": "unknown"}},
             "unknown-deployments": {"deployments": {"status": "unknown"}},
@@ -328,6 +837,20 @@ class AuditRepoTests(unittest.TestCase):
             subprocess.run(["git", "init", "-q", str(root)], check=True)
             with self.assertRaises(audit_repo.AuditError):
                 audit_repo.ensure_base(root, "origin/main")
+
+    def test_local_git_start_failure_still_aborts_main_visibly(self) -> None:
+        failure = FileNotFoundError(2, "No such file or directory", "git")
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            sys, "argv", [str(SCRIPT), "--root", directory, "--hosted-branch", "origin=work"],
+        ), patch.object(audit_repo.subprocess, "run", side_effect=failure) as run, patch.object(
+            audit_repo, "audit_hosted_branches",
+        ) as hosted, patch("sys.stdout", new_callable=io.StringIO) as output:
+            status = audit_repo.main()
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue())["error"], str(failure))
+        self.assertNotIn("hosted_lifecycle", json.loads(output.getvalue()))
+        self.assertEqual(run.call_args.args[0], ["git", "rev-parse", "--is-inside-work-tree"])
+        hosted.assert_not_called()
 
     @staticmethod
     def _git(root: Path, *args: str) -> str:

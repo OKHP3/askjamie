@@ -22,6 +22,12 @@ What it reports:
       at commit, tree, and file level, including patch promotion status.
       File moves are reported as deterministic add/delete pairs so both
       paths remain visible in the JSON evidence.
+      UTF-8 paths remain JSON strings; paths containing invalid UTF-8 bytes
+      use {"encoding": "base64", "data": "..."} with standard Base64 of the
+      exact path bytes.
+      UTF-8 commit text remains a JSON string; commit text containing invalid
+      UTF-8 bytes uses the same Base64 object representation of the exact
+      text bytes.
   4. Naming violations: files/folders whose names break the kebab-case
      default (PascalCase, camelCase, spaces, uppercase extensions) outside
      the recognized structural exceptions (React components/hooks, root
@@ -34,6 +40,7 @@ This script only reads; it never deletes, renames, or force-pushes anything.
 Treat its output as evidence for a plan, not as an execution instruction.
 """
 import argparse
+import base64
 import json
 import os
 import re
@@ -158,7 +165,9 @@ class DecisionLedger(NamedTuple):
     exclusions: list[str]
     archive_reconciliations: list[dict[str, str]]
     malformed_archive_reconciliation_rows: list[dict[str, object]]
+    duplicate_archive_reconciliation_rows: list[dict[str, object]]
     malformed_decision_rows: list[dict[str, object]]
+    duplicate_decision_rows: list[dict[str, object]]
     unsupported_decision_labels: list[dict[str, object]]
     malformed_exclusion_entries: list[dict[str, object]]
     duplicate_exclusion_entries: list[dict[str, object]]
@@ -179,18 +188,18 @@ def audit_branches(root: Path, base: str, *, refresh: bool = True):
     for b in branches:
         if not b:
             continue
-        last = sh(
-            ["git", "log", "-1", "--format=%ci|%an|%s", b], root
-        )
-        date, author, subject = (last.split("|", 2) + ["", "", ""])[:3]
+        last = _git_bytes_result(
+            root, "log", "-1", "--encoding=none", "--format=%ci|%an|%s", b
+        ).stdout.rstrip(b"\n")
+        date, author, subject = (last.split(b"|", 2) + [b"", b"", b""])[:3]
         ledger.append({
             "branch": b,
             "is_current": b == sh(["git", "branch", "--show-current"], root),
             "tip_sha": sh(["git", "rev-parse", b], root),
             "merged_into_base": b in merged,
-            "last_commit_date": date,
-            "last_commit_author": author,
-            "last_commit_subject": subject,
+            "last_commit_date": _decode_commit_text(date),
+            "last_commit_author": _decode_commit_text(author),
+            "last_commit_subject": _decode_commit_text(subject),
             "replit_generated_pattern": bool(REPLIT_BRANCH_PATTERNS.match(b)),
         })
     return ledger
@@ -212,7 +221,11 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
     exclusions: list[str] = []
     archive_reconciliations: list[dict[str, str]] = []
     malformed_archive_reconciliation_rows: list[dict[str, object]] = []
+    duplicate_archive_reconciliation_rows: list[dict[str, object]] = []
+    seen_reconciliations: dict[tuple[str, str], tuple[int, str]] = {}
     malformed_decision_rows: list[dict[str, object]] = []
+    duplicate_decision_rows: list[dict[str, object]] = []
+    seen_decisions: dict[str, tuple[int, str]] = {}
     unsupported_decision_labels: list[dict[str, object]] = []
     malformed_exclusion_entries: list[dict[str, object]] = []
     duplicate_exclusion_entries: list[dict[str, object]] = []
@@ -268,6 +281,19 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
                 r"^\*\*|\*\*$", "", cells[1]
             ).strip().lower()
             branch = branch_match.group(1)
+            if branch in seen_decisions:
+                first_line, first_content = seen_decisions[branch]
+                duplicate_decision_rows.append({
+                    "line": line_number,
+                    "content": line,
+                    "branch": branch,
+                    "first_line": first_line,
+                    "first_content": first_content,
+                    "reason": "duplicate branch decision; retain one unambiguous row per branch",
+                })
+            else:
+                seen_decisions[branch] = (line_number, line)
+            # Retain all rows as evidence, but consumers must reject ambiguous keys.
             decisions.append({
                 "branch": branch,
                 "decision": decision,
@@ -332,14 +358,29 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
                     "reason": reason,
                 })
                 continue
-            archive_reconciliations.append({
+            reconciliation = {
                 "branch": branch_match.group(1),
                 "tip_sha": cells[1].strip("`").lower(),
                 "active_tip_sha": cells[2].strip("`").lower(),
                 "disposition": disposition,
                 "active_line_evidence": cells[4],
                 "rationale": cells[5],
-            })
+            }
+            key = (reconciliation["branch"], reconciliation["tip_sha"])
+            if key in seen_reconciliations:
+                first_line, first_content = seen_reconciliations[key]
+                duplicate_archive_reconciliation_rows.append({
+                    "line": line_number,
+                    "content": line,
+                    "branch": key[0],
+                    "tip_sha": key[1],
+                    "first_line": first_line,
+                    "first_content": first_content,
+                    "reason": "duplicate archive reconciliation branch and tip SHA",
+                })
+                continue
+            seen_reconciliations[key] = (line_number, line)
+            archive_reconciliations.append(reconciliation)
         elif section == "explicit exclusions and holds":
             if not line.strip():
                 continue
@@ -390,7 +431,9 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
         exclusions=sorted(set(exclusions)),
         archive_reconciliations=archive_reconciliations,
         malformed_archive_reconciliation_rows=malformed_archive_reconciliation_rows,
+        duplicate_archive_reconciliation_rows=duplicate_archive_reconciliation_rows,
         malformed_decision_rows=malformed_decision_rows,
+        duplicate_decision_rows=duplicate_decision_rows,
         unsupported_decision_labels=unsupported_decision_labels,
         malformed_exclusion_entries=malformed_exclusion_entries,
         duplicate_exclusion_entries=duplicate_exclusion_entries,
@@ -402,20 +445,24 @@ def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
     ledger = parse_decision_ledger(ledger_path)
     findings = (
         ledger.malformed_decision_rows
+        or ledger.duplicate_decision_rows
         or ledger.unsupported_decision_labels
         or ledger.malformed_exclusion_entries
         or ledger.duplicate_exclusion_entries
         or ledger.malformed_archive_reconciliation_rows
+        or ledger.duplicate_archive_reconciliation_rows
     )
     return {
         "ledger_path": str(ledger_path),
         "decision_row_count": len(ledger.decisions),
         "exclusion_branch_count": len(ledger.exclusions),
         "malformed_decision_rows": ledger.malformed_decision_rows,
+        "duplicate_decision_rows": ledger.duplicate_decision_rows,
         "unsupported_decision_labels": ledger.unsupported_decision_labels,
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
         "malformed_archive_reconciliation_rows": ledger.malformed_archive_reconciliation_rows,
+        "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
         "ok": not findings,
     }
 
@@ -433,7 +480,11 @@ def audit_decision_ledger(
         for branch in branches
         if str(branch["branch"]) != current
     }
-    decision_by_name = {row["branch"]: row for row in ledger.decisions}
+    ambiguous_branches = {row["branch"] for row in ledger.duplicate_decision_rows}
+    decision_by_name = {
+        row["branch"]: row for row in ledger.decisions
+        if row["branch"] not in ambiguous_branches
+    }
     covered = set(decision_by_name) | set(ledger.exclusions)
 
     missing_branches = sorted(set(local_by_name) - covered)
@@ -484,20 +535,24 @@ def audit_decision_ledger(
             stale_ledger_rows, key=lambda item: (item["branch"], item["kind"])
         ),
         "malformed_decision_rows": ledger.malformed_decision_rows,
+        "duplicate_decision_rows": ledger.duplicate_decision_rows,
         "unsupported_decision_labels": ledger.unsupported_decision_labels,
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
         "malformed_archive_reconciliation_rows": ledger.malformed_archive_reconciliation_rows,
+        "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
         "ok": not (
             missing_branches
             or tip_sha_drift
             or invalid_tip_sha
             or stale_ledger_rows
             or ledger.malformed_decision_rows
+            or ledger.duplicate_decision_rows
             or ledger.unsupported_decision_labels
             or ledger.malformed_exclusion_entries
             or ledger.duplicate_exclusion_entries
             or ledger.malformed_archive_reconciliation_rows
+            or ledger.duplicate_archive_reconciliation_rows
         ),
     }
 
@@ -513,6 +568,18 @@ def _git_result(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _git_bytes_result(
+    root: Path, *args: str
+) -> subprocess.CompletedProcess[bytes]:
+    """Run a Git command without decoding output that may contain file paths."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+
+
 def _verified_commit(root: Path, ref: str) -> str | None:
     """Return a full commit SHA when ref resolves to a commit, otherwise None."""
     result = _git_result(root, "rev-parse", "--verify", f"{ref}^{{commit}}")
@@ -522,49 +589,90 @@ def _verified_commit(root: Path, ref: str) -> str | None:
     return value if SHA_PATTERN.fullmatch(value) else None
 
 
-def _parse_commit_lines(output: str, *, patch_status: str | None = None):
-    commits: list[dict[str, str]] = []
-    for line in output.splitlines():
-        sha, separator, subject = line.partition("\t")
-        if separator and SHA_PATTERN.fullmatch(sha):
-            item = {"sha": sha, "subject": subject}
-            if patch_status is not None:
-                item["patch_status"] = patch_status
-            commits.append(item)
+def _decode_commit_text(value: bytes) -> str | dict[str, str]:
+    """Keep UTF-8 commit text readable and encode invalid bytes losslessly."""
+    try:
+        return value.decode("utf-8")
+    except UnicodeDecodeError:
+        return {
+            "encoding": "base64",
+            "data": base64.b64encode(value).decode("ascii"),
+        }
+
+
+def _as_bytes(output: str | bytes) -> bytes:
+    return (
+        output.encode("utf-8", errors="surrogateescape")
+        if isinstance(output, str)
+        else output
+    )
+
+
+def _parse_commit_lines(
+    output: str | bytes, *, patch_status: str | None = None
+) -> list[dict[str, object]]:
+    commits: list[dict[str, object]] = []
+    for line in _as_bytes(output).split(b"\n"):
+        sha, separator, subject = line.partition(b"\t")
+        if not separator:
+            continue
+        try:
+            sha_text = sha.decode("ascii")
+        except UnicodeDecodeError:
+            continue
+        if not SHA_PATTERN.fullmatch(sha_text):
+            continue
+        item: dict[str, object] = {
+            "sha": sha_text,
+            "subject": _decode_commit_text(subject),
+        }
+        if patch_status is not None:
+            item["patch_status"] = patch_status
+        commits.append(item)
     return commits
 
 
-def _parse_cherry_lines(output: str) -> list[dict[str, str]]:
-    commits: list[dict[str, str]] = []
-    for line in output.splitlines():
-        match = re.match(r"^([+-])\s+([0-9a-f]{7,40})\s?(.*)$", line)
+def _parse_cherry_lines(output: str | bytes) -> list[dict[str, object]]:
+    commits: list[dict[str, object]] = []
+    for line in _as_bytes(output).split(b"\n"):
+        match = re.match(rb"^([+-])\s+([0-9a-f]{7,40})\s?(.*)$", line)
         if not match:
             continue
         marker, abbreviated_sha, subject = match.groups()
-        status = "already-promoted" if marker == "-" else "unrepresented"
+        status = "already-promoted" if marker == b"-" else "unrepresented"
         commits.append({
-            "sha": abbreviated_sha,
-            "subject": subject,
+            "sha": abbreviated_sha.decode("ascii"),
+            "subject": _decode_commit_text(subject),
             "patch_status": status,
         })
     return commits
 
 
-def _parse_file_differences(output: str) -> list[dict[str, str]]:
+def _parse_file_differences(
+    output: str | bytes,
+) -> list[dict[str, object]]:
     """Parse NUL-delimited ``--no-renames`` name-status evidence.
 
     A move is intentionally retained as separate add/delete records rather
     than inferred as a rename. This preserves both paths exactly as Git
     reported them and avoids making similarity-based classifications part of
     the audit contract. NUL delimiters keep spaces, tabs, and newlines inside
-    a path from being mistaken for record boundaries.
+    a path from being mistaken for record boundaries. Valid UTF-8 paths remain
+    strings. Invalid UTF-8 paths use a JSON object with ``encoding`` set to
+    ``base64`` and ``data`` set to the standard Base64 encoding of the exact
+    path bytes.
     """
-    differences: list[dict[str, str]] = []
+    differences: list[dict[str, object]] = []
     if not output:
         return differences
 
-    fields = output.split("\0")
-    if fields[-1] == "":
+    raw_output = (
+        output.encode("utf-8", errors="surrogateescape")
+        if isinstance(output, str)
+        else output
+    )
+    fields = raw_output.split(b"\0")
+    if fields[-1] == b"":
         fields.pop()
     if len(fields) % 2:
         raise ValueError("incomplete NUL-delimited Git name-status evidence")
@@ -572,7 +680,17 @@ def _parse_file_differences(output: str) -> list[dict[str, str]]:
         status, path = fields[index:index + 2]
         if not status or not path:
             raise ValueError("empty status or path in Git name-status evidence")
-        differences.append({"status": status, "path": path})
+        try:
+            path_value: str | dict[str, str] = path.decode("utf-8")
+        except UnicodeDecodeError:
+            path_value = {
+                "encoding": "base64",
+                "data": base64.b64encode(path).decode("ascii"),
+            }
+        differences.append({
+            "status": status.decode("ascii"),
+            "path": path_value,
+        })
     return differences
 
 
@@ -586,6 +704,11 @@ def audit_archive_equivalents(
     archive_rows = [
         row for row in ledger.decisions if row["decision"] == "archive"
     ]
+    ambiguous_branches = {row["branch"] for row in ledger.duplicate_decision_rows}
+    ambiguous_tips = {
+        (row["branch"], row["tip_sha"])
+        for row in ledger.duplicate_archive_reconciliation_rows
+    }
     reconciliation_by_tip = {
         (row["branch"], row["tip_sha"]): row
         for row in ledger.archive_reconciliations
@@ -593,6 +716,7 @@ def audit_archive_equivalents(
         and SHA_PATTERN.fullmatch(row["active_tip_sha"])
         and row["active_line_evidence"]
         and row["rationale"]
+        and (row["branch"], row["tip_sha"]) not in ambiguous_tips
     }
     active_tip = _verified_commit(root, active_line)
     reports: list[dict[str, object]] = []
@@ -607,6 +731,13 @@ def audit_archive_equivalents(
             "branch_tip_sha": branch_tip,
             "file_difference_direction": "active-line-to-archive-tip",
         }
+        if branch in ambiguous_branches:
+            report.update({
+                "classification": "unverifiable",
+                "error": "duplicate branch decisions cannot authorize archive cleanup",
+            })
+            reports.append(report)
+            continue
         if not SHA_PATTERN.fullmatch(tip_sha):
             report.update({
                 "classification": "unverifiable",
@@ -631,13 +762,21 @@ def audit_archive_equivalents(
             reports.append(report)
             continue
 
-        cherry = _git_result(root, "cherry", "-v", active_line, tip_sha)
+        cherry = _git_bytes_result(root, "cherry", "-v", active_line, tip_sha)
         archive_commits = _parse_cherry_lines(cherry.stdout)
-        active_only = _git_result(
-            root, "log", "--format=%H%x09%s", f"{tip_sha}..{active_line}"
+        active_only = _git_bytes_result(
+            root,
+            "log",
+            "--encoding=none",
+            "--format=%H%x09%s",
+            f"{tip_sha}..{active_line}",
         )
-        archive_only = _git_result(
-            root, "log", "--format=%H%x09%s", f"{active_line}..{tip_sha}"
+        archive_only = _git_bytes_result(
+            root,
+            "log",
+            "--encoding=none",
+            "--format=%H%x09%s",
+            f"{active_line}..{tip_sha}",
         )
         tree_result = _git_result(root, "rev-parse", f"{active_line}^{{tree}}")
         archive_tree_result = _git_result(root, "rev-parse", f"{tip_sha}^{{tree}}")
@@ -645,7 +784,7 @@ def audit_archive_equivalents(
         archive_tree = archive_tree_result.stdout.strip()
         # Keep rename detection disabled so a moved file remains an explicit
         # add/delete pair and reviewers can see both the old and new paths.
-        file_diff = _git_result(
+        file_diff = _git_bytes_result(
             root,
             "diff",
             "--no-renames",
@@ -762,7 +901,9 @@ def audit_archive_equivalents(
         "confirmed_supersession": sorted(confirmed_supersession),
         "unrepresented_changes": sorted(unrepresented),
         "unverifiable": sorted(unverifiable),
-        "ok": not unrepresented and not unverifiable,
+        "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
+        "duplicate_decision_rows": ledger.duplicate_decision_rows,
+        "ok": not unrepresented and not unverifiable and not ambiguous_tips and not ambiguous_branches,
     }
 
 

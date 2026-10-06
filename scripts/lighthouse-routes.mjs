@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Run the same Lighthouse pass against the four public routes and compare the
- * compact results with the committed 2026-08-22 baseline.
+ * compact results with the matching mobile or desktop reference.
  *
  * The static server is intentionally kept separate so this command can be
  * used against the Replit preview, a local server, or a hosted preview:
@@ -13,11 +13,13 @@
  *   node scripts/lighthouse-routes.mjs --base-url=https://askjamie.bot
  *   node scripts/lighthouse-routes.mjs --preset=mobile --date=2026-10-01 --run-id=rerun-2
  *   node scripts/lighthouse-routes.mjs --preset=mobile --date=2026-10-01 --replace
+ *   node scripts/lighthouse-routes.mjs --show-unavailable-sources
  *
  * Existing dated output is preserved by default. Use --run-id to write to a
  * separate directory, or --replace to explicitly clear and reuse that output.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -30,7 +32,81 @@ export const routes = Object.freeze({
 });
 export const LIGHTHOUSE_ROUTES = routes;
 
-// This is a historical reference stack, independent of the ignored, regenerable
+export const CONTROLLED_BLOCKED_URL_PATTERNS = Object.freeze([
+  "https://fonts.googleapis.com/*",
+  "https://fonts.gstatic.com/*",
+  "https://www.googletagmanager.com/*",
+  "https://www.google-analytics.com/*",
+  "https://*.google-analytics.com/*",
+]);
+
+// Inventory of configSettings emitted by supported Lighthouse 12.8.2 reports
+// and the installed Lighthouse 13.5.0 settings schema. Measurement-affecting
+// values are compared against each explicit reference. New, unclassified keys
+// are retained and therefore require review until deliberately classified.
+export const LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY = Object.freeze({
+  tracked: Object.freeze([
+    "formFactor",
+    "throttlingMethod",
+    "throttling",
+    "screenEmulation",
+    "emulatedUserAgent",
+    "blockedUrlPatterns",
+    "maxWaitForFcp",
+    "maxWaitForLoad",
+    "pauseAfterFcpMs",
+    "pauseAfterLoadMs",
+    "networkQuietThresholdMs",
+    "cpuQuietThresholdMs",
+    "locale",
+    "disableStorageReset",
+    "clearStorageTypes",
+    "auditMode",
+    "gatherMode",
+    "debugNavigation",
+    "channel",
+    "usePassiveGathering",
+    "disableFullPageScreenshot",
+    "skipAboutBlank",
+    "blankPage",
+    "ignoreStatusCode",
+    "additionalTraceCategories",
+    "extraHeaders",
+    "precomputedLanternData",
+    "onlyAudits",
+    "onlyCategories",
+    "skipAudits",
+  ]),
+  recordedWithoutComparison: Object.freeze({
+    output: "Selects report serialization only; it does not change page navigation, collection, or audits.",
+  }),
+});
+
+const knownConfigSettings = new Set([
+  ...LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.tracked,
+  ...Object.keys(LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.recordedWithoutComparison),
+]);
+const summarizedConfigSettings = new Set([
+  "formFactor",
+  "throttlingMethod",
+  "throttling",
+  "screenEmulation",
+  "emulatedUserAgent",
+  "blockedUrlPatterns",
+  "maxWaitForFcp",
+  "maxWaitForLoad",
+  "pauseAfterFcpMs",
+  "pauseAfterLoadMs",
+  "networkQuietThresholdMs",
+  "cpuQuietThresholdMs",
+  "locale",
+  "disableStorageReset",
+  "clearStorageTypes",
+]);
+const additionalTrackedConfigSettings = LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.tracked
+  .filter((field) => !summarizedConfigSettings.has(field));
+
+// Historical mobile reference is independent of the ignored, regenerable
 // files under assets/audit/. Historical reports establish Chromium major 148;
 // the exact patch build below is inferred from Playwright 1.60.0 metadata, not
 // independently confirmed or owner-approved.
@@ -40,6 +116,281 @@ export const HISTORICAL_REFERENCE_MEASUREMENT_STACK = Object.freeze({
   chromiumVersion: "148.0.7778.96",
   chromiumUserAgent: "HeadlessChrome/148.0.0.0",
 });
+
+// Effective settings copied from configSettings in the approved 2026-08-22 raw
+// reports. Keep this reference in source because assets/audit/ is regenerable.
+export const HISTORICAL_REFERENCE_RUN_CONDITIONS = Object.freeze({
+  formFactor: "mobile",
+  throttlingMethod: "simulate",
+  throttling: Object.freeze({
+    rttMs: 150,
+    throughputKbps: 1638.4,
+    requestLatencyMs: 562.5,
+    downloadThroughputKbps: 1474.5600000000002,
+    uploadThroughputKbps: 675,
+    cpuSlowdownMultiplier: 4,
+  }),
+  screenEmulation: Object.freeze({
+    mobile: true,
+    width: 412,
+    height: 823,
+    deviceScaleFactor: 1.75,
+    disabled: false,
+  }),
+  emulatedUserAgent: "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+  blockedUrlPatterns: null,
+  collectionTiming: Object.freeze({
+    maxWaitForFcp: 30000,
+    maxWaitForLoad: 45000,
+    pauseAfterFcpMs: 1000,
+    pauseAfterLoadMs: 1000,
+    networkQuietThresholdMs: 1000,
+    cpuQuietThresholdMs: 1000,
+  }),
+  locale: "en-US",
+  storage: Object.freeze({
+    disableStorageReset: false,
+    clearStorageTypes: Object.freeze([
+      "file_systems",
+      "shader_cache",
+      "service_workers",
+      "cache_storage",
+    ]),
+  }),
+  additionalConfigSettings: Object.freeze({
+    auditMode: false,
+    gatherMode: false,
+    debugNavigation: false,
+    channel: "cli",
+    usePassiveGathering: false,
+    disableFullPageScreenshot: false,
+    skipAboutBlank: false,
+    blankPage: "about:blank",
+    ignoreStatusCode: false,
+    additionalTraceCategories: null,
+    extraHeaders: null,
+    precomputedLanternData: null,
+    onlyAudits: null,
+    onlyCategories: null,
+    skipAudits: null,
+  }),
+  unclassifiedConfigSettings: Object.freeze({}),
+});
+
+export const DESKTOP_REFERENCE_PATH = "assets/docs/performance-baseline-desktop-2026-09-07.json";
+export const MOBILE_REFERENCE_PATH = "assets/audit/lighthouse-baseline-2026-08-22.json";
+
+function canonicalizeJson(value) {
+  if (Array.isArray(value)) return value.map(canonicalizeJson);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalizeJson(value[key])]),
+    );
+  }
+  return value;
+}
+
+export function getDesktopReferenceIntegrityFingerprint(reference) {
+  const integrityPayload = {
+    measurementStack: reference?.measurementStack,
+    runConditions: reference?.runConditions,
+    pages: reference?.pages,
+  };
+  const canonicalPayload = JSON.stringify(canonicalizeJson(integrityPayload));
+  const digest = createHash("sha256")
+    .update(`desktop-lighthouse-reference:v1\n${canonicalPayload}`)
+    .digest("hex");
+  return `sha256:${digest}`;
+}
+
+export function getLighthouseReference(preset, baseline) {
+  if (preset === "mobile") {
+    return {
+      path: MOBILE_REFERENCE_PATH,
+      measurementStack: HISTORICAL_REFERENCE_MEASUREMENT_STACK,
+      runConditions: HISTORICAL_REFERENCE_RUN_CONDITIONS,
+      measurementStackReferenceNote: undefined,
+      approval: null,
+    };
+  }
+  if (preset !== "desktop") {
+    throw new Error(`Unsupported Lighthouse preset: ${preset}. Use desktop or mobile.`);
+  }
+  const missingStackFields = ["lighthouseVersion", "chromiumVersion"]
+    .filter((field) => typeof baseline?.measurementStack?.[field] !== "string");
+  if (missingStackFields.length > 0) {
+    throw new Error(
+      `Desktop Lighthouse reference is missing measurement-stack fields: ${missingStackFields.join(", ")}.`,
+    );
+  }
+  if (baseline?.runConditions?.formFactor !== "desktop") {
+    throw new Error("Desktop Lighthouse reference must record desktop run conditions.");
+  }
+  const missingRouteMeasurements = Object.keys(routes).filter((name) => (
+    !Number.isFinite(baseline?.pages?.[name]?.performance)
+    || !Number.isFinite(baseline?.pages?.[name]?.lcpMs)
+  ));
+  if (missingRouteMeasurements.length > 0) {
+    throw new Error(
+      `Desktop Lighthouse reference is missing performance or LCP measurements for: ${missingRouteMeasurements.join(", ")}.`,
+    );
+  }
+  const integrityFingerprint = getDesktopReferenceIntegrityFingerprint(baseline);
+  return {
+    path: DESKTOP_REFERENCE_PATH,
+    measurementStack: baseline.measurementStack,
+    runConditions: baseline.runConditions,
+    measurementStackReferenceNote: baseline.measurementStackReferenceNote,
+    approval: baseline.approval ?? null,
+    integrityFingerprint,
+  };
+}
+
+export function summarizeRunConditions(report) {
+  const settings = report.configSettings ?? {};
+  const settingValue = (field) => (
+    Object.hasOwn(settings, field) ? settings[field] : "unavailable"
+  );
+  const pickFields = (value, fields) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    return Object.fromEntries(fields.map((field) => [
+      field,
+      Object.hasOwn(value, field) ? value[field] : null,
+    ]));
+  };
+
+  return {
+    formFactor: typeof settings.formFactor === "string" ? settings.formFactor : null,
+    throttlingMethod: typeof settings.throttlingMethod === "string" ? settings.throttlingMethod : null,
+    throttling: pickFields(settings.throttling, [
+      "rttMs",
+      "throughputKbps",
+      "requestLatencyMs",
+      "downloadThroughputKbps",
+      "uploadThroughputKbps",
+      "cpuSlowdownMultiplier",
+    ]),
+    screenEmulation: pickFields(settings.screenEmulation, [
+      "mobile",
+      "width",
+      "height",
+      "deviceScaleFactor",
+      "disabled",
+    ]),
+    emulatedUserAgent: typeof settings.emulatedUserAgent === "string"
+      ? settings.emulatedUserAgent
+      : null,
+    blockedUrlPatterns: Object.hasOwn(settings, "blockedUrlPatterns")
+      ? settings.blockedUrlPatterns
+      : "unavailable",
+    collectionTiming: Object.fromEntries([
+      "maxWaitForFcp",
+      "maxWaitForLoad",
+      "pauseAfterFcpMs",
+      "pauseAfterLoadMs",
+      "networkQuietThresholdMs",
+      "cpuQuietThresholdMs",
+    ].map((field) => [
+      field,
+      Object.hasOwn(settings, field) ? settings[field] : "unavailable",
+    ])),
+    locale: Object.hasOwn(settings, "locale") ? settings.locale : "unavailable",
+    storage: {
+      disableStorageReset: settingValue("disableStorageReset"),
+      clearStorageTypes: settingValue("clearStorageTypes"),
+    },
+    additionalConfigSettings: Object.fromEntries(
+      additionalTrackedConfigSettings.map((field) => [field, settingValue(field)]),
+    ),
+    nonComparabilitySettings: Object.fromEntries(
+      Object.keys(LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY.recordedWithoutComparison)
+        .map((field) => [field, settingValue(field)]),
+    ),
+    unclassifiedConfigSettings: Object.fromEntries(
+      Object.keys(settings)
+        .filter((field) => !knownConfigSettings.has(field))
+        .map((field) => [field, settings[field]]),
+    ),
+  };
+}
+
+function changedRunConditionComponents(actual, expected, prefix = "") {
+  const actualIsObject = actual !== null && typeof actual === "object" && !Array.isArray(actual);
+  const expectedIsObject = expected !== null && typeof expected === "object" && !Array.isArray(expected);
+  if (actualIsObject && expectedIsObject) {
+    const keys = [...new Set([...Object.keys(actual), ...Object.keys(expected)])].sort();
+    return keys.flatMap((key) => changedRunConditionComponents(
+      actual[key],
+      expected[key],
+      prefix ? `${prefix}.${key}` : key,
+    ));
+  }
+  return JSON.stringify(actual) === JSON.stringify(expected) ? [] : [prefix || "run conditions"];
+}
+
+function comparableRunConditionSnapshot(conditions) {
+  if (!conditions || typeof conditions !== "object" || Array.isArray(conditions)) {
+    return conditions;
+  }
+  return Object.fromEntries(
+    Object.entries(conditions).filter(([field]) => field !== "nonComparabilitySettings"),
+  );
+}
+
+function unclassifiedConfigSettingComponents(conditions) {
+  const values = conditions?.unclassifiedConfigSettings;
+  if (!values || typeof values !== "object" || Array.isArray(values)) return [];
+  return Object.keys(values).map((field) => `unclassifiedConfigSettings.${field}`);
+}
+
+export function createRunConditionsReview(
+  reports,
+  {
+    controlled = false,
+    baselineRunConditions = HISTORICAL_REFERENCE_RUN_CONDITIONS,
+  } = {},
+) {
+  const expectedConditions = controlled
+    ? {
+        ...baselineRunConditions,
+        blockedUrlPatterns: CONTROLLED_BLOCKED_URL_PATTERNS,
+      }
+    : baselineRunConditions;
+  const entries = Object.entries(reports ?? {});
+  const changedReports = entries
+    .map(([report, conditions]) => {
+      const changed = changedRunConditionComponents(
+        comparableRunConditionSnapshot(conditions),
+        comparableRunConditionSnapshot(expectedConditions),
+      );
+      const unclassified = unclassifiedConfigSettingComponents(conditions);
+      return {
+        report,
+        changedComponents: [...new Set([...changed, ...unclassified])].sort(),
+      };
+    })
+    .filter(({ changedComponents }) => changedComponents.length > 0);
+  const changedComponents = [...new Set(
+    changedReports.flatMap(({ changedComponents: changed }) => changed),
+  )].sort();
+  const reviewRequired = entries.length === 0 || changedComponents.length > 0;
+  const desktopReference = baselineRunConditions?.formFactor === "desktop";
+
+  return {
+    baseline: baselineRunConditions,
+    expected: expectedConditions,
+    status: reviewRequired ? "required" : "not-required",
+    changedComponents: entries.length === 0 ? ["run conditions unavailable"] : changedComponents,
+    changedReports,
+    action: reviewRequired
+      ? desktopReference
+        ? "Owner review is required before interpreting desktop trends because Lighthouse measurement settings differ from or are missing in the desktop reference."
+        : "Owner review is required before interpreting or changing the BrandGuard lab budget because Lighthouse measurement settings differ from or are missing in the historical reference."
+      : desktopReference
+        ? "No Lighthouse run-condition change from the desktop reference."
+        : "No Lighthouse run-condition change from the historical reference.",
+  };
+}
 
 export function parseChromiumVersion(output) {
   const match = String(output).match(/\b(\d+\.\d+\.\d+\.\d+)\b/);
@@ -56,6 +407,12 @@ export function createSummary({
   baseUrl,
   measurementStack,
   baselineMeasurementStack,
+  runConditionsReports = {},
+  baselineRunConditions = HISTORICAL_REFERENCE_RUN_CONDITIONS,
+  baselinePath = MOBILE_REFERENCE_PATH,
+  measurementStackReferenceNote = "Historical reference only. The exact Chromium 148.0.7778.96 build is inferred from Playwright metadata; historical reports establish major version 148, not an independently owner-approved exact build.",
+  referenceApproval = null,
+  referenceIntegrityFingerprint = null,
 }) {
   const versionFields = ["lighthouseVersion", "chromiumVersion"];
   const baselineKnown = versionFields.every((field) => Boolean(baselineMeasurementStack?.[field]));
@@ -65,24 +422,42 @@ export function createSummary({
   const reviewRequired = changedComponents.length > 0;
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 6,
     capturedAt: date,
     tool: `Lighthouse ${measurementStack.lighthouseVersion}`,
     measurementStack,
     measurementStackReview: {
       baseline: baselineMeasurementStack ?? null,
-      referenceNote: "Historical reference only. The exact Chromium 148.0.7778.96 build is inferred from Playwright metadata; historical reports establish major version 148, not an independently owner-approved exact build.",
+      referenceNote: measurementStackReferenceNote,
       status: reviewRequired ? "required" : "not-required",
       changedComponents,
       action: reviewRequired
-        ? "Owner review is required before interpreting or changing the BrandGuard lab budget."
-        : "No Lighthouse or Chromium version change from the historical reference measurement stack.",
+        ? preset === "desktop"
+          ? "Owner review is required before interpreting desktop trends."
+          : "Owner review is required before interpreting or changing the BrandGuard lab budget."
+        : preset === "desktop"
+          ? "No Lighthouse or Chromium version change from the desktop reference measurement stack."
+          : "No Lighthouse or Chromium version change from the historical reference measurement stack.",
     },
+    runConditions: {
+      condition: controlled ? "controlled" : "normal",
+      reports: runConditionsReports,
+    },
+    runConditionsReview: createRunConditionsReview(runConditionsReports, {
+      controlled,
+      baselineRunConditions,
+    }),
     environment: controlled
       ? "Local or supplied static server, controlled mobile preset"
       : `Local or supplied static server, ${preset} preset`,
     property: baseUrl,
-    baseline: "assets/audit/lighthouse-baseline-2026-08-22.json",
+    baseline: baselinePath,
+    ...(referenceApproval === null ? {} : {
+      referenceApproval: summarizeReferenceApproval(
+        referenceApproval,
+        referenceIntegrityFingerprint,
+      ),
+    }),
     controls: controlled
       ? {
           thirdPartyFonts: "blocked",
@@ -98,12 +473,79 @@ export function createSummary({
   };
 }
 
+export function summarizeReferenceApproval(approval, currentIntegrityFingerprint = null) {
+  const status = approval?.status ?? "not-recorded";
+  if (!["not-recorded", "owner-approved"].includes(status)) {
+    throw new Error(`Unsupported Lighthouse reference approval status: ${status}.`);
+  }
+  if (status === "not-recorded") {
+    return {
+      status,
+      ownerApproved: false,
+      approvalIntegrityFingerprint: null,
+      currentIntegrityFingerprint,
+      action: "No owner approval is recorded for this reference; treat desktop trend deltas as exploratory.",
+    };
+  }
+
+  const approvalRecord = {
+    approvedAt: approval.approvedAt,
+    approvedBy: approval.approvedBy,
+    approvalRecord: approval.approvalRecord,
+  };
+  const missingFields = Object.entries(approvalRecord)
+    .filter(([, value]) => typeof value !== "string" || value.trim().length === 0)
+    .map(([field]) => field);
+  if (missingFields.length > 0) {
+    throw new Error(
+      `Owner-approved Lighthouse reference is missing recorded approval fields: ${missingFields.join(", ")}.`,
+    );
+  }
+  const approvalIntegrityFingerprint = approval.integrityFingerprint;
+  if (
+    typeof currentIntegrityFingerprint !== "string"
+    || approvalIntegrityFingerprint !== currentIntegrityFingerprint
+  ) {
+    return {
+      status: "stale",
+      ownerApproved: false,
+      ...approvalRecord,
+      approvalIntegrityFingerprint:
+        typeof approvalIntegrityFingerprint === "string" ? approvalIntegrityFingerprint : null,
+      currentIntegrityFingerprint,
+      action: "The desktop reference changed since approval or its integrity fingerprint is missing; record a fresh owner decision before interpreting desktop trend deltas.",
+    };
+  }
+  return {
+    status,
+    ownerApproved: true,
+    ...approvalRecord,
+    approvalIntegrityFingerprint,
+    currentIntegrityFingerprint,
+  };
+}
+
+// Lighthouse reports category scores in [0, 1], or null when they are unscored.
+const SUMMARY_CATEGORY_SCORE_RANGE = { min: 0, max: 1 };
+
+// These audit numericValues are optional, nonnegative measurements. CLS has no
+// upper bound: its accumulated layout-shift score can legitimately exceed 1.
+const SUMMARY_AUDIT_NUMERIC_VALUE_RANGES = {
+  "largest-contentful-paint": { min: 0, max: Number.POSITIVE_INFINITY },
+  "cumulative-layout-shift": { min: 0, max: Number.POSITIVE_INFINITY },
+  "total-blocking-time": { min: 0, max: Number.POSITIVE_INFINITY },
+  "first-contentful-paint": { min: 0, max: Number.POSITIVE_INFINITY },
+  "speed-index": { min: 0, max: Number.POSITIVE_INFINITY },
+};
+
 export function summarizePage({ report, path, baselinePage = {} }) {
   const audits = report.audits ?? {};
   const unavailableMetrics = [];
+  const isWithinRange = (value, { min, max }) =>
+    typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
   const metric = (id, field) => {
     const value = audits[id]?.numericValue;
-    if (typeof value !== "number" || !Number.isFinite(value)) {
+    if (!isWithinRange(value, SUMMARY_AUDIT_NUMERIC_VALUE_RANGES[id])) {
       unavailableMetrics.push({ field, source: `audits.${id}.numericValue` });
       return null;
     }
@@ -111,7 +553,7 @@ export function summarizePage({ report, path, baselinePage = {} }) {
   };
   const categoryScore = (id, field) => {
     const value = report.categories?.[id]?.score;
-    if (typeof value !== "number" || !Number.isFinite(value)) {
+    if (!isWithinRange(value, SUMMARY_CATEGORY_SCORE_RANGE)) {
       unavailableMetrics.push({ field, source: `categories.${id}.score` });
       return null;
     }
@@ -155,6 +597,63 @@ export function summarizePage({ report, path, baselinePage = {} }) {
     deltaLcpMs: lcpMs === null ? null : lcpMs - (baselinePage.lcpMs ?? 0),
     unavailableMetrics: unavailableMetrics,
   };
+}
+
+export function formatUnavailableMetricsNotice(pages, { includeSources = false } = {}) {
+  const affectedRoutes = Object.entries(pages ?? {}).flatMap(([name, page]) => {
+    const metrics = Array.isArray(page?.unavailableMetrics) ? page.unavailableMetrics : [];
+    const fields = [...new Set(
+      metrics
+        .map((metric) => metric?.field)
+        .filter((field) => typeof field === "string" && field.length > 0),
+    )];
+    if (fields.length === 0) return [];
+
+    const lines = [`  ${page.path || name}: ${fields.join(", ")}`];
+    if (includeSources) {
+      const sources = new Set();
+      for (const metric of metrics) {
+        if (
+          typeof metric?.field === "string"
+          && metric.field.length > 0
+          && typeof metric?.source === "string"
+          && metric.source.length > 0
+        ) {
+          sources.add(`${metric.field}: ${metric.source}`);
+        }
+      }
+      lines.push(...[...sources].map((source) => `    ${source}`));
+    }
+    return lines;
+  });
+  return affectedRoutes.length
+    ? `Unavailable Lighthouse metrics:\n${affectedRoutes.join("\n")}`
+    : "";
+}
+
+export function formatUnavailableBrandGuardSampleMetricsNotice(samples) {
+  const numericFields = ["fcpMs", "speedIndexMs", "lcpMs", "tbtMs"];
+  const affectedSamples = (Array.isArray(samples) ? samples : [])
+    .flatMap(({ report, page }, index) => {
+      const fields = new Set(
+        (Array.isArray(page?.unavailableMetrics) ? page.unavailableMetrics : [])
+          .map((metric) => metric?.field)
+          .filter((field) => typeof field === "string" && field.length > 0),
+      );
+      for (const field of numericFields) {
+        if (typeof page?.[field] !== "number" || !Number.isFinite(page[field])) fields.add(field);
+      }
+      if (typeof page?.lcpInvalidated !== "boolean") fields.add("lcpInvalidated");
+      if (fields.size === 0) return [];
+
+      const reportName = typeof report === "string" && report.length > 0
+        ? report
+        : "report unavailable";
+      return [`  sample ${index + 1} (${reportName}): ${[...fields].join(", ")}`];
+    });
+  return affectedSamples.length
+    ? `Unavailable repeated BrandGuard sample metrics:\n${affectedSamples.join("\n")}`
+    : "";
 }
 
 export function summarizeBrandGuardSamples(samples, { controlled }) {
@@ -209,7 +708,6 @@ export function summarizeBrandGuardSamples(samples, { controlled }) {
 
 function main() {
   const root = resolve(import.meta.dirname, "..");
-  const baselinePath = resolve(root, "assets/audit/lighthouse-baseline-2026-08-22.json");
   const defaultBaseUrl = process.env.LIGHTHOUSE_BASE_URL || "http://127.0.0.1:5000";
   const baseUrlArg = process.argv.find((arg) => arg.startsWith("--base-url="));
   const baseUrl = (baseUrlArg ? baseUrlArg.slice("--base-url=".length) : defaultBaseUrl).replace(/\/+$/, "");
@@ -219,6 +717,10 @@ function main() {
     console.error(`Unsupported Lighthouse preset: ${preset}. Use desktop or mobile.`);
     process.exit(1);
   }
+  const baselineReferencePath = preset === "desktop"
+    ? DESKTOP_REFERENCE_PATH
+    : MOBILE_REFERENCE_PATH;
+  const baselinePath = resolve(root, baselineReferencePath);
   const dateArg = process.argv.find((arg) => arg.startsWith("--date="));
   const date = dateArg ? dateArg.slice("--date=".length) : new Date().toISOString().slice(0, 10);
   const parsedDate = new Date(`${date}T00:00:00.000Z`);
@@ -240,6 +742,7 @@ function main() {
   }
   const replaceExisting = process.argv.includes("--replace");
   const controlled = process.argv.includes("--controlled");
+  const showUnavailableSources = process.argv.includes("--show-unavailable-sources");
   const brandguardSamplesArg = process.argv.find((arg) => arg.startsWith("--brandguard-samples="));
   const brandguardSamples = brandguardSamplesArg
     ? Number(brandguardSamplesArg.slice("--brandguard-samples=".length))
@@ -269,14 +772,8 @@ function main() {
     process.exit(1);
   }
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+  const reference = getLighthouseReference(preset, baseline);
   const lighthouseBin = resolve(root, "node_modules/.bin/lighthouse");
-  const controlledBlockedUrlPatterns = [
-    "https://fonts.googleapis.com/*",
-    "https://fonts.gstatic.com/*",
-    "https://www.googletagmanager.com/*",
-    "https://www.google-analytics.com/*",
-    "https://*.google-analytics.com/*",
-  ];
   const chromePath = process.env.CHROME_PATH || (() => {
     try {
       return execFileSync(process.execPath, ["-e", "process.stdout.write(require('playwright').chromium.executablePath())"], {
@@ -315,8 +812,8 @@ function main() {
   }
   let lighthouseVersion = null;
   let chromiumUserAgent = null;
-  const baselineMeasurementStack = HISTORICAL_REFERENCE_MEASUREMENT_STACK;
   const pages = {};
+  const runConditionsReports = {};
 
   for (const [name, path] of Object.entries(routes)) {
     const reportPath = resolve(outputDir, `${name}.json`);
@@ -328,7 +825,7 @@ function main() {
       `--output-path=${reportPath}`,
       ...(preset === "desktop" ? ["--preset=desktop"] : ["--form-factor=mobile"]),
       ...(controlled
-        ? controlledBlockedUrlPatterns.map((pattern) => `--blocked-url-patterns=${pattern}`)
+        ? CONTROLLED_BLOCKED_URL_PATTERNS.map((pattern) => `--blocked-url-patterns=${pattern}`)
         : []),
       "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
       "--quiet",
@@ -357,6 +854,7 @@ function main() {
     }
     lighthouseVersion = report.lighthouseVersion;
     chromiumUserAgent = browserMatch[0];
+    runConditionsReports[`${name}.json`] = summarizeRunConditions(report);
     pages[name] = summarizePage({
       report,
       path,
@@ -379,7 +877,7 @@ function main() {
       `--output-path=${reportPath}`,
       "--form-factor=mobile",
       ...(controlled
-        ? controlledBlockedUrlPatterns.map((pattern) => `--blocked-url-patterns=${pattern}`)
+        ? CONTROLLED_BLOCKED_URL_PATTERNS.map((pattern) => `--blocked-url-patterns=${pattern}`)
         : []),
       "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
       "--quiet",
@@ -406,6 +904,7 @@ function main() {
       throw new Error(`Chromium user agent changed during the route run (${chromiumUserAgent} to ${browserMatch[0]}).`);
     }
 
+    runConditionsReports[reportName] = summarizeRunConditions(report);
     repeatedBrandGuardSamples.push({
       report: reportName,
       page: summarizePage({
@@ -427,7 +926,13 @@ function main() {
     controlled,
     baseUrl,
     measurementStack,
-    baselineMeasurementStack,
+    baselineMeasurementStack: reference.measurementStack,
+    runConditionsReports,
+    baselineRunConditions: reference.runConditions,
+    baselinePath: reference.path,
+    measurementStackReferenceNote: reference.measurementStackReferenceNote,
+    referenceApproval: reference.approval,
+    referenceIntegrityFingerprint: reference.integrityFingerprint,
   });
   summary.pages = pages;
   if (brandguardSamples > 1) {
@@ -450,10 +955,30 @@ function main() {
     );
     console.warn(summary.measurementStackReview.action);
   }
+  if (summary.runConditionsReview.status === "required") {
+    console.warn(
+      `BRANDGUARD RUN-CONDITION REVIEW REQUIRED: ${summary.runConditionsReview.changedComponents.join(", ")} changed from the historical reference.`,
+    );
+    console.warn(summary.runConditionsReview.action);
+  }
+  if (summary.referenceApproval?.ownerApproved === false) {
+    console.warn(`DESKTOP REFERENCE NOT OWNER-APPROVED: ${summary.referenceApproval.action}`);
+  }
   console.table(Object.fromEntries(Object.entries(summary.pages).map(([name, page]) => [
     name,
     { performance: page.performance, delta: page.deltaPerformance, lcpMs: page.lcpMs, deltaLcpMs: page.deltaLcpMs, cls: page.cls, tbtMs: page.tbtMs },
   ])));
+  const unavailableMetricsNotice = formatUnavailableMetricsNotice(summary.pages, {
+    includeSources: showUnavailableSources,
+  });
+  if (unavailableMetricsNotice) console.warn(`\n${unavailableMetricsNotice}`);
+  if (summary.brandguardRepeatSamples) {
+    const unavailableBrandGuardSampleMetricsNotice =
+      formatUnavailableBrandGuardSampleMetricsNotice(repeatedBrandGuardSamples);
+    if (unavailableBrandGuardSampleMetricsNotice) {
+      console.warn(`\n${unavailableBrandGuardSampleMetricsNotice}`);
+    }
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

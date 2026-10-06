@@ -51,6 +51,10 @@ try {
     (await page.locator(".askjamie-mermaid-shell svg").count()) > 0,
     "Universe Mermaid diagram did not render an SVG"
   );
+  check(
+    !(await page.locator('.askjamie-hero--universe [data-mermaid-failure-status]').isVisible()),
+    "Universe failure status should remain hidden after a successful Mermaid render"
+  );
 
   const noJsContext = await browser.newContext({ javaScriptEnabled: false });
   const noJsPage = await noJsContext.newPage();
@@ -60,10 +64,48 @@ try {
     "Universe static fallback is not visible without JavaScript"
   );
   check(
+    !(await noJsPage.locator('.askjamie-hero--universe [data-mermaid-failure-status]').isVisible()),
+    "Universe failure status should remain hidden without JavaScript"
+  );
+  check(
     (await noJsPage.locator('.mermaid-noscript a[href="/contact/"]').count()) === 1,
     "Universe static fallback is missing its contact link"
   );
   await noJsContext.close();
+
+  const renderFailurePage = await context.newPage();
+  await renderFailurePage.route("**/*", (route) => {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.pathname === "/assets/vendor/mermaid/mermaid.esm.min.mjs") {
+      return route.fulfill({
+        status: 200,
+        contentType: "text/javascript",
+        body: 'export default { initialize() {}, run() { throw new Error("simulated render failure"); } };',
+      });
+    }
+    if (/fonts\.(gstatic|googleapis)\.com|google-analytics\.com|googletagmanager\.com/.test(requestUrl.hostname)) {
+      return route.abort();
+    }
+    return route.continue();
+  });
+  await renderFailurePage.goto(`${baseUrl}${universePath}`, { waitUntil: "domcontentloaded" });
+  const renderFailureStatus = renderFailurePage.locator(
+    '.askjamie-hero--universe [data-mermaid-failure-status]'
+  );
+  await renderFailureStatus.waitFor({ state: "visible", timeout: 15000 });
+  check(
+    (await renderFailureStatus.textContent()).includes("could not be displayed") &&
+      await renderFailureStatus.getAttribute("role") === "status" &&
+      await renderFailureStatus.getAttribute("aria-live") === "polite",
+    "Universe render failure did not show an accessible unavailable status"
+  );
+  check(
+    await renderFailurePage.locator(
+      ".askjamie-hero--universe .mermaid[data-universe-ready='1']"
+    ).count() === 0,
+    "Universe render failure incorrectly reported the diagram as ready"
+  );
+  await renderFailurePage.close();
 
   try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });

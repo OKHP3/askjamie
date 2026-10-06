@@ -194,6 +194,27 @@ body.askjamie-main a {
   flex: 0 0 auto;
 }
 
+.askjamie-main .glee-color-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.askjamie-main .glee-color-toggle .tt-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
 @media (max-width: 720px) {
   .askjamie-main .okh-search-trigger kbd,
   .askjamie-main .okh-search-trigger .okh-search-label {
@@ -312,6 +333,14 @@ body.askjamie-main a {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  margin-bottom: 0.75rem;
+}
+
+.askjamie-main .askjamie-breadcrumb .breadcrumb-label {
+  white-space: nowrap;
 }
 
 .askjamie-main .askjamie-logo--crumb {
@@ -338,6 +367,7 @@ body.askjamie-main a {
   color: #4b5563;
   font-family: "Kalam", "Segoe UI", sans-serif;
   font-size: 1.02rem;
+  letter-spacing: 0.01em;
 }
 
 .askjamie-main .askjamie-hero-copy .hero-tagline,
@@ -399,6 +429,14 @@ body.askjamie-main a {
   min-height: 22rem;
 }
 
+.askjamie-main .universe-map-group[data-map-node-count="4"] .mermaid-scroll-wrap {
+  min-height: 22rem;
+}
+
+.askjamie-main .universe-map-group[data-map-node-count="5"] .mermaid-scroll-wrap {
+  min-height: 17rem;
+}
+
 @media (max-width: 640px) {
   .askjamie-main .askjamie-hero--universe .mermaid-scroll-wrap {
     min-height: 18rem;
@@ -450,6 +488,21 @@ body.askjamie-main a {
     letter-spacing: 0.08em;
   }
 
+  /* Keep the desktop dropdown out of header flow before the shared theme loads. */
+  .askjamie-main .primary-nav .has-submenu {
+    position: relative;
+  }
+
+  .askjamie-main .primary-nav .has-submenu > .submenu {
+    position: absolute;
+    display: none;
+  }
+
+  .askjamie-main .primary-nav .has-submenu:hover > .submenu,
+  .askjamie-main .primary-nav .has-submenu:focus-within > .submenu {
+    display: block;
+  }
+
   .askjamie-main .nav-toggle {
     display: none;
   }
@@ -480,8 +533,87 @@ body.askjamie-main a {
     padding-inline: 0;
   }
 
+  .askjamie-brandguard-page .askjamie-hero-copy .hero-tagline {
+    max-width: 32rem;
+  }
+
+  .askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label {
+    min-width: 15.25rem;
+  }
+
   .askjamie-brandguard-page .askjamie-hero-copy h1 {
     font-size: 2rem;
     letter-spacing: -0.02em;
+  }
+}
+
+@media (max-width: 340px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-label {
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-separator,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-separator {
+    display: none;
+  }
+}
+
+/* At 360px, keep fallback and deferred BrandGuard text on the same line counts
+   without applying the 390px-specific tracking across narrower phone widths. */
+@media (min-width: 350px) and (max-width: 370px) {
+  /* Reserve the loaded font's line counts across narrower system fallbacks. */
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2) {
+    min-height: 9.6rem;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:last-of-type {
+    min-height: 3.2rem;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .capability-transition > p:last-of-type {
+    min-height: 3.2rem;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy .hero-tagline {
+    min-height: 4.8rem;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .capability-transition h2 {
+    letter-spacing: -0.05em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {
+    letter-spacing: -0.08em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    font-size: 1rem;
+    letter-spacing: -1.25px;
+  }
+
+}
+
+/* At 390px, small tracking adjustments keep the fallback and deferred fonts
+   on the same line counts without leaving reserved blank space in the copy. */
+@media (min-width: 381px) and (max-width: 400px) {
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2) {
+    letter-spacing: -0.005em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {
+    letter-spacing: -0.03em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    letter-spacing: -0.04em;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .askjamie-hero-tagline {
+    letter-spacing: -0.04em;
   }
 }

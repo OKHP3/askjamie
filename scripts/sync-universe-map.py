@@ -32,14 +32,20 @@ def generate(root=ROOT):
         parent = nodes[diagram["parent"]]
         title = html.escape(parent["title"])
         source = outputs[diagram["file"]]
+        # Wider page groups lay out better top-to-bottom: the maps remain
+        # horizontally scrollable, while the rendered SVG uses much less height.
+        if len(diagram["nodes"]) > 2:
+            source = re.sub(r"^flowchart\s+LR\b", "flowchart TB", source, count=1, flags=re.M)
         # Navigation is added from validated ordinary links after strict rendering.
         source = re.sub(r"^\s*click\s+.*$", "", source, flags=re.M)
         source = re.sub(r"^\s*classDef\s+.*$", "", source, flags=re.M)
-        blocks.extend([f'<details class="card universe-map-group"><summary>{title} (group {number})</summary>',
+        blocks.extend([f'<details class="card universe-map-group" data-map-node-count="{len(diagram["nodes"])}"><summary>{title} (group {number})</summary>',
                        '<figure class="askjamie-mermaid-shell">',
                        '<div class="mermaid-scroll-wrap" aria-hidden="true" tabindex="-1">',
                        f'<div class="mermaid" inert data-diagram-label="{title}">{html.escape(source)}</div>',
-                       '</div>', REFERRAL, f'<figcaption>Pages beneath {title}. The links below provide the same navigation.</figcaption>', '</figure>', '<ul class="link-list">'])
+                       '</div>',
+                       '<p class="mermaid-render-status" data-mermaid-failure-status role="status" aria-live="polite" hidden></p>',
+                       REFERRAL, f'<figcaption>Pages beneath {title}. The links below provide the same navigation.</figcaption>', '</figure>', '<ul class="link-list">'])
         for key in diagram["nodes"]:
             node = nodes[key]
             label = html.escape(node["title"])

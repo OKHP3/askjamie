@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 from urllib.parse import quote, urlparse
 
 
@@ -64,6 +64,8 @@ IGNORED_DIRS = {
 }
 KEBAB_OK = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REPLIT_BRANCH_PATTERNS = re.compile(r"^(subrepl-|replit-agent$|agent/)")
+HOSTED_COMMAND_TIMEOUT_SECONDS = 30
+HOSTED_HISTORY_MAX_PAGES = 10
 
 
 class AuditError(RuntimeError):
@@ -172,7 +174,7 @@ def audit_branches(root: Path, base: str) -> tuple[list[dict[str, object]], str]
 
 
 def hosted_command(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    """Run a hosted read-only command without allowing interactive auth."""
+    """Bound a hosted read-only command without allowing interactive auth."""
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     ssh_command = env.get("GIT_SSH_COMMAND", "ssh").strip() or "ssh"
@@ -186,7 +188,7 @@ def hosted_command(args: list[str], cwd: Path) -> subprocess.CompletedProcess[st
     env["GIT_SSH_COMMAND"] = ssh_command
     return subprocess.run(
         args, cwd=cwd, capture_output=True, text=True,
-        stdin=subprocess.DEVNULL, env=env,
+        stdin=subprocess.DEVNULL, env=env, timeout=HOSTED_COMMAND_TIMEOUT_SECONDS,
     )
 
 
@@ -245,7 +247,12 @@ def gh_api_json(root: Path, endpoint: str) -> tuple[object | None, str | None]:
     """Read one GitHub API endpoint, returning an explicit failure reason."""
     if shutil.which("gh") is None:
         return None, "GitHub CLI (`gh`) is not installed"
-    result = hosted_command(["gh", "api", endpoint], root)
+    try:
+        result = hosted_command(["gh", "api", endpoint], root)
+    except subprocess.TimeoutExpired as exc:
+        return None, f"GitHub API request timed out after {exc.timeout} seconds"
+    except OSError as exc:
+        return None, f"GitHub API command could not start: {exc}"
     if result.returncode:
         detail = result.stderr.strip() or result.stdout.strip() or "no output"
         return None, f"GitHub API request failed ({result.returncode}): {detail}"
@@ -253,6 +260,42 @@ def gh_api_json(root: Path, endpoint: str) -> tuple[object | None, str | None]:
         return json.loads(result.stdout), None
     except json.JSONDecodeError as exc:
         return None, f"GitHub API returned invalid JSON: {exc}"
+
+
+def valid_pull_request_classification(record: object) -> bool:
+    """Require explicit classification fields; null means unmerged, not missing."""
+    if not isinstance(record, dict) or record.get("state") not in ("open", "closed"):
+        return False
+    if "merged_at" not in record:
+        return False
+    merged_at = record["merged_at"]
+    return merged_at is None or (isinstance(merged_at, str) and bool(merged_at.strip()))
+
+
+def gh_api_list(
+    root: Path, endpoint: str, label: str,
+    record_validator: Callable[[object], bool] | None = None,
+) -> tuple[list | None, str | None]:
+    """Read at most 10 100-item pages; discard history unless completion is proven."""
+    items: list = []
+    for page in range(1, HOSTED_HISTORY_MAX_PAGES + 1):
+        data, error = gh_api_json(root, f"{endpoint}&per_page=100&page={page}")
+        if error:
+            return None, f"GitHub {label} history incomplete at page {page}: {error}"
+        if not isinstance(data, list):
+            return None, f"GitHub {label} response on page {page} was not a list"
+        if len(data) > 100 or any(not isinstance(item, dict) for item in data):
+            return None, f"GitHub {label} response on page {page} contained invalid records"
+        if record_validator is not None and any(not record_validator(item) for item in data):
+            return None, f"GitHub {label} response on page {page} contained invalid classification fields"
+        items.extend(data)
+        if len(data) < 100:
+            return items, None
+    return None, (
+        f"GitHub {label} history incomplete after page {HOSTED_HISTORY_MAX_PAGES}: "
+        f"pagination budget exhausted ({HOSTED_HISTORY_MAX_PAGES} pages); "
+        "no short or empty page confirmed completion"
+    )
 
 
 def github_hosted_evidence(
@@ -290,8 +333,8 @@ def github_hosted_evidence(
     else:
         protection = unknown_hosted_evidence("GitHub branch response was not an object")
 
-    deployments_data, deployments_error = gh_api_json(
-        root, f"repos/{encoded_repo}/deployments?ref={encoded_branch}&per_page=100",
+    deployments_data, deployments_error = gh_api_list(
+        root, f"repos/{encoded_repo}/deployments?ref={encoded_branch}", "deployments",
     )
     if deployments_error:
         deployments: dict[str, object] = unknown_hosted_evidence(deployments_error)
@@ -310,15 +353,12 @@ def github_hosted_evidence(
         deployments = unknown_hosted_evidence("GitHub deployments response was not a list")
 
     head = quote(f"{owner}:{branch}", safe="")
-    pull_requests_data, pull_requests_error = gh_api_json(
-        root, f"repos/{encoded_repo}/pulls?state=all&head={head}&per_page=100",
+    pull_requests_data, pull_requests_error = gh_api_list(
+        root, f"repos/{encoded_repo}/pulls?state=all&head={head}", "pull-request",
+        record_validator=valid_pull_request_classification,
     )
     if pull_requests_error:
         pull_requests: dict[str, object] = unknown_hosted_evidence(pull_requests_error)
-    elif isinstance(pull_requests_data, list) and len(pull_requests_data) >= 100:
-        pull_requests = unknown_hosted_evidence(
-            "GitHub pull-request history reached the 100-result limit; additional history may be missing"
-        )
     elif isinstance(pull_requests_data, list):
         pull_requests = {
             "status": "available", "source": "github-api",
@@ -349,12 +389,18 @@ def audit_hosted_branches(root: Path, requested: Iterable[str]) -> dict[str, obj
             "remote": remote, "remote_url": remote_url,
         }
         probe = None
+        probe_error = None
         if remote_url is not None:
-            probe = hosted_command(
-                ["git", "ls-remote", "--heads", remote, entry["full_ref"]], root,
-            )
+            try:
+                probe = hosted_command(
+                    ["git", "ls-remote", "--heads", remote, entry["full_ref"]], root,
+                )
+            except subprocess.TimeoutExpired as exc:
+                probe_error = f"hosted remote lookup timed out after {exc.timeout} seconds"
+            except OSError as exc:
+                probe_error = f"hosted remote command could not start: {exc}"
         if probe is None or probe.returncode:
-            detail = (
+            detail = probe_error or (
                 f"configured remote is not available: {provider}" if probe is None
                 else probe.stderr.strip() or probe.stdout.strip() or "no output"
             )
@@ -405,12 +451,17 @@ def audit_hosted_branches(root: Path, requested: Iterable[str]) -> dict[str, obj
         if pull_requests.get("status") != "available":
             blocking_reasons.append("hosted-pull-request-evidence-unknown")
         else:
-            for pull_request in pull_requests.get("items", []):
-                if not isinstance(pull_request, dict):
+            items = pull_requests.get("items")
+            if not isinstance(items, list):
+                blocking_reasons.append("hosted-pull-request-evidence-unknown")
+                items = []
+            for pull_request in items:
+                if not valid_pull_request_classification(pull_request):
+                    blocking_reasons.append("hosted-pull-request-evidence-unknown")
                     continue
-                if pull_request.get("state") == "open":
+                if pull_request["state"] == "open":
                     blocking_reasons.append("hosted-open-pull-request")
-                elif pull_request.get("state") == "closed" and not pull_request.get("merged_at"):
+                elif pull_request["merged_at"] is None:
                     blocking_reasons.append("hosted-closed-unmerged-pull-request")
         entry["deletion_blocked"] = bool(blocking_reasons)
         entry["blocking_reasons"] = sorted(set(blocking_reasons))
@@ -570,6 +621,19 @@ def parse_args() -> argparse.Namespace:
         "--validate-retirement-ledger", metavar="POLICY",
         help="validate committed decision records before removal; never deletes",
     )
+    recovery_mode.add_argument(
+        "--audit-retirement-history", metavar="BASELINE_POLICY",
+        help="read-only retention audit from --ledger-baseline through HEAD",
+    )
+    parser.add_argument("--ledger-baseline", metavar="COMMIT")
+    parser.add_argument(
+        "--ledger-baseline-policy", metavar="POLICY",
+        help="policy at owner-selected baseline for migration proof in preflight/verification",
+    )
+    parser.add_argument(
+        "--approve-ledger-migration", action="append", default=[],
+        metavar="FULL_COMMIT=OLD_POLICY,NEW_POLICY",
+    )
     parser.add_argument("--approve-local-deletion", action="append", default=[])
     parser.add_argument(
         "--approve-recovery-retirement", action="append", default=[],
@@ -622,6 +686,7 @@ def main() -> int:
         ensure_repository(root)
         recovery_mode = (
             args.snapshot_recovery or args.verify_recovery or args.validate_retirement_ledger
+            or args.audit_retirement_history
         )
         if recovery_mode and (args.fetch or args.check_delete or args.hosted_branches):
             raise AuditError("recovery modes cannot be combined with fetch, branch deletion checks, or hosted probes")
@@ -635,6 +700,24 @@ def main() -> int:
             raise AuditError("--retirement-ledger requires --verify-recovery")
         if args.approve_recovery_retirement and args.verify_recovery and not args.retirement_ledger:
             raise AuditError("recovery retirement requires --retirement-ledger")
+        migration_preflight = args.validate_retirement_ledger or (
+            args.verify_recovery and args.retirement_ledger
+        )
+        if args.ledger_baseline_policy and not migration_preflight:
+            raise AuditError("--ledger-baseline-policy requires ledger preflight or ledger verification")
+        if (args.ledger_baseline or args.approve_ledger_migration) and not (
+            args.audit_retirement_history or migration_preflight
+        ):
+            raise AuditError("--ledger-baseline and --approve-ledger-migration require --audit-retirement-history or ledger preflight/verification")
+        if args.audit_retirement_history:
+            if not args.ledger_baseline:
+                raise AuditError("--audit-retirement-history requires --ledger-baseline")
+            result = retirement_ledger.audit_history(
+                root, args.audit_retirement_history, args.ledger_baseline,
+                args.approve_ledger_migration,
+            )
+            print(json.dumps({"retirement_history": result}, indent=2))
+            return 0 if result["passed"] else 1
         if args.snapshot_recovery:
             snapshot = recovery_guard.recovery_snapshot(root, run)
             path = Path(args.snapshot_recovery).resolve()
@@ -649,6 +732,9 @@ def main() -> int:
             result = retirement_ledger.validate_ledger(
                 root, args.validate_retirement_ledger,
                 recovery_guard.recovery_snapshot(root, run), approvals,
+                baseline=args.ledger_baseline,
+                baseline_policy=args.ledger_baseline_policy,
+                migrations=args.approve_ledger_migration,
             )
             print(json.dumps({"retirement_ledger": result}, indent=2))
             return 0
@@ -660,6 +746,9 @@ def main() -> int:
                     root, args.retirement_ledger, before,
                     [recovery_guard.parse_recovery_retirement(value)
                      for value in args.approve_recovery_retirement],
+                    baseline=args.ledger_baseline,
+                    baseline_policy=args.ledger_baseline_policy,
+                    migrations=args.approve_ledger_migration,
                 )
             result = recovery_guard.compare_recovery_snapshots(
                 before, recovery_guard.recovery_snapshot(root, run),

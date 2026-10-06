@@ -130,10 +130,45 @@ pair with `--hosted-branch origin=feature/example` (repeat as needed).
 the remote ref without fetching or pruning. For GitHub remotes it reads
 protection, deployment, and PR evidence through an installed, authenticated
 `gh` CLI; unavailable evidence remains an explicit hold.
-An API page containing 100 PR results is treated as incomplete history and
-retains an unknown-evidence hold. Run hosted inspection separately from
+Deployment and PR history are read in 100-record pages, with a **10-page budget
+per history lookup**. Only a short or empty page within that budget confirms
+completion. A full tenth page exhausts the budget: the entire partial history
+is discarded, the affected evidence stays `unknown`, and its existing
+`hosted-deployment-evidence-unknown` or `hosted-pull-request-evidence-unknown`
+hold blocks deletion. The reason identifies the last page and the page limit.
+This also bounds providers that continually return full or repeated pages.
+A failed or malformed page likewise discards partial history and retains its
+unknown-evidence hold, with the failing page identified.
+Run hosted inspection separately from
 `--check-delete`; combining those options is rejected before fetching or
 preparing deletion commands.
+
+Each hosted `git ls-remote` or `gh api` command has a **30-second timeout**.
+A timed-out remote probe is `inaccessible` with an unknown ref and a
+`hosted-remote-inaccessible` deletion hold. A timed-out GitHub request leaves
+its protection, deployment, or PR evidence `unknown` and retains the
+corresponding unknown-evidence hold. The reason states that the command timed
+out and gives the time limit. Partial output is discarded, never interpreted
+as a missing branch, empty history, or deletion approval. Other evidence
+lookups and requested provider/ref pairs still run, including after a history
+lookup exhausts its page budget. The timeout is per command, not a total audit
+deadline. Combined with the independent 10-page budgets, each present GitHub ref
+uses at most 22 hosted commands (remote and protection probes plus up to 10
+deployment and 10 PR pages), or 660 seconds of command timeout allowances,
+excluding process-start and local processing overhead. Budgets reset for each
+history lookup and requested provider/ref pair; they are not shared across the
+audit.
+This limit does not apply to local Git checks or the separate opt-in `--fetch`.
+
+If a hosted process cannot start (`OSError`, including a missing executable or
+permission denied), the same holds apply: a remote probe is `inaccessible` with
+an unknown ref, while the affected GitHub API evidence stays `unknown`. The
+reason states that the command could not start and includes the operating-system
+error. This also covers `gh` disappearing after its availability check. Failed
+history pages discard partial evidence rather than report empty or complete
+history. Later evidence lookups and provider/ref pairs still run, with no deletion
+approval. Local Git precondition and opt-in fetch failures still stop the audit
+visibly; they are not converted into hosted holds.
 
 ### 3. Classify every branch
 
@@ -266,6 +301,24 @@ changes, stash changes, or loss of previously reachable objects still fail.
 Keep the ledger and verification evidence after cleanup; a JSON stdout report
 is not a replacement for the committed decision.
 
+During later cleanup, verify append-only retention from an owner-selected
+committed baseline with `--audit-retirement-history '<baseline policy path>'`
+and `--ledger-baseline '<baseline commit>'`. Require exit zero and
+`retirement_history.passed: true`. The read-only audit checks every first-parent
+state through HEAD, including intermediate deletions or rewrites later
+restored, without requiring retired refs or objects to exist. Policy/location
+migrations need exact owner-reviewed `--approve-ledger-migration
+'<full commit>=<old policy>,<new policy>'` allowances and must preserve all
+old decision fields. See `references/retirement-ledger.md` for scope,
+approval syntax, and failure reporting; do not infer migration approval
+from committed metadata or move the baseline to conceal a hold.
+When a later retirement's preflight encounters older migrated decisions, supply
+`--ledger-baseline`, `--ledger-baseline-policy`, and the exact
+`--approve-ledger-migration` allowances in preflight and verification. This
+reuses the passing retention history as provenance, not retirement permission;
+new decisions still must meet the active approval date. The reference includes
+the complete command and scope.
+
 ### 7. Verify and report
 
 After every approved batch:
@@ -348,9 +401,12 @@ unblocked entries are not deletion approvals and are omitted from this plan.
 | Condition | Result |
 |---|---|
 | Base ref missing | Stop; ask which verified base ref to use |
-| Git command or fetch fails | Stop; show the failed command and stderr |
+| Local Git command or opt-in fetch fails | Stop; show the failure |
 | Detached HEAD | Audit may continue, but no branch deletion may be recommended until the active work is identified |
 | PR lookup unavailable | Put affected branches in `review`; never infer abandonment |
+| Hosted command times out | Preserve an inaccessible or unknown-evidence hold with a timeout reason; continue other requested checks, never approve deletion |
+| Hosted history reaches 10 full pages | Discard partial history, retain its unknown-evidence deletion hold with the page-budget reason, and continue other requested checks |
+| Hosted command cannot start | Preserve an inaccessible or unknown-evidence hold with the operating-system error; continue other lookups and provider/ref pairs, never approve deletion |
 | Unique unmerged commits | Preserve in `review` unless the owner explicitly abandons them |
 | Rename affects public URL | Require redirect or transition plan before execution |
 | Approval is broad or ambiguous | Ask for exact approved line items |

@@ -65,12 +65,29 @@ include patch-equivalent versus unrepresented commits, tree hashes, and
 name-status file differences. The JSON field `file_difference_direction` is
 `active-line-to-archive-tip`: **A** means a path is present at the archive tip
 but not on the active line, while **D** means it is present on the active line
-but not at the archive tip. Branch-decision rows accept only the retention
-labels **keep** and **archive**; unsupported labels are reported with their
-line and branch and fail the consistency gate. The ledger check also reports
-missing branches, tip-SHA drift, and stale ledger rows, while archive
-verification reports unrepresented or unverifiable archive work; either
-condition exits nonzero.
+but not at the archive tip. **M** means the same path exists on both sides but
+its contents differ; the archive-tip version differs from the active-line
+version, so the path is not unique to either side. In `file_differences`, a
+valid UTF-8 path is a readable JSON string. A path containing invalid UTF-8
+bytes is represented as `{"encoding":"base64","data":"..."}`, where `data` is
+standard Base64 of the exact path bytes. Commit metadata and archive commit
+subjects use the same representation per text field: valid UTF-8 stays a
+readable string, while invalid UTF-8 is Base64 of the exact field bytes.
+Branch-decision rows accept only the retention labels **keep** and **archive**;
+unsupported labels are reported with their line and branch and fail the
+consistency gate. Each branch must have exactly one branch-decision row,
+regardless of its retention label or tip SHA. Identical repeats and conflicting
+rows both fail `--check-ledger` and the full audit. Both checks report
+`duplicate_decision_rows` with the branch, original and repeated line numbers
+and contents, and a repair reason; every repeat points to the first row.
+All rows remain available as evidence, but duplicated branch keys do not count
+as decision coverage, and their archive rows are `unverifiable`: neither
+promotion nor reconciliation evidence can authorize cleanup for them.
+Resolve duplicates to one unambiguous row before planning cleanup. This rule
+is separate from archive-reconciliation evidence keys and historical retirement
+drift. The ledger check also reports missing branches, tip-SHA
+drift, and stale ledger rows, while archive verification reports unrepresented
+or unverifiable archive work; either condition exits nonzero.
 By default, the audit selects `.agents/branch-decision-ledger.md` when that
 stable active-ledger path exists. Otherwise it selects the newest valid
 `.agents/branch-decision-ledger-YYYY-MM-DD.md` by ISO date. Pass
@@ -92,7 +109,7 @@ python3 .agents/skills/okhp3-repl-repo-janitor/scripts/audit-repo.py \
 
 This focused, read-only check parses only the ledger file. It does not require
 the root to be a Git repository, run any Git command, refresh remotes, or use
-network access. It reports the same line-level malformed decision rows,
+network access. It reports the same line-level malformed and duplicate decision rows,
 unsupported decision labels, malformed exclusions, duplicate exclusions, and
 `malformed_archive_reconciliation_rows` as the full audit's `decision_ledger`.
 Archive reconciliation rows require exactly six cells: one backticked branch
@@ -102,6 +119,13 @@ rationale. SHAs may be plain or enclosed in one pair of backticks. Blank lines,
 table headers and separators, and introductory prose are not evidence rows.
 Invalid table-like rows report their line number, original content, and a
 repair reason; they are not used as supersession evidence and fail both checks.
+Each branch and archive tip SHA must have only one reconciliation row. Both
+checks report repeats in `duplicate_archive_reconciliation_rows`, with the
+branch, normalized archive tip SHA, original and repeated line numbers and
+contents, and a repair reason. Identical repeats also fail validation; SHA case
+and backticks do not distinguish keys. The parser preserves the first valid
+review, but no duplicated key can authorize supersession in the archive audit.
+Reviews for different archive tips or different branches remain separate.
 It exits `0` for a clean ledger and `1` when findings or a
 ledger-selection error are present. Omit `--decision-ledger` to use the same
 active-ledger discovery rules as the full audit.
