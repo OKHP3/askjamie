@@ -74,6 +74,9 @@ jobs:
       - name: Verify shared asset fingerprints and deferred loading
         run: python3 scripts/cache-bust.py --check
 
+      - name: Verify visual capture and responsive avatar contracts
+        run: node --test tests/test_capture_visual_baseline.mjs
+
       - name: Run link checker
         run: python3 scripts/check-links.py
 
@@ -129,6 +132,7 @@ jobs:
 
   deploy:
     name: Deploy validated site to GitHub Pages
+    timeout-minutes: 6
     needs: [validate, python-compatibility]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -144,6 +148,19 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Checkout exact revision probe tooling
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: probe-tools
+          sparse-checkout: scripts/check-deployed-pages.py
+          sparse-checkout-cone-mode: false
+
+      - name: Set up probe Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
       - name: Download validated Pages artifact
         uses: actions/download-artifact@v8
         with:
@@ -163,3 +180,27 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5.0.1
+
+      - name: Verify served sample against deployed artifact
+        run: |
+          python3 probe-tools/scripts/check-deployed-pages.py \
+            --artifact-root dist-pages --base https://askjamie.bot \
+            --expected-source-revision "$GITHUB_SHA" --runner-revision "$GITHUB_SHA" \
+            --expected-artifact-name "pages-site-$GITHUB_SHA" \
+            --report artifacts/deployed-pages/report.json
+
+      - name: Summarize served sample
+        if: always()
+        run: |
+          if [ -f artifacts/deployed-pages/report.md ]; then
+            cat artifacts/deployed-pages/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Retain served sample evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployed-pages-evidence-${{ github.sha }}
+          path: artifacts/deployed-pages
+          if-no-files-found: warn
+          retention-days: 90

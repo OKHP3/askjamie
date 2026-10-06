@@ -154,6 +154,13 @@ and leaves persistent HTML notices and links available without JavaScript.
 Published GPT names and links remain historical source references. A notice
 does not establish a tested or available replacement skill or plugin.
 
+The October 6, 2026 Replit integration keeps 27 content routes and expands
+responsive QA to ten viewports, including 320px and 360px, for 270
+route/viewport rows. CI serves the prepared Pages artifact for browser QA.
+Universe checks cover generated map geometry, color-scheme changes, blocked
+Mermaid, and no-JavaScript navigation. These checks do not establish human
+screen-reader spoken output or Firefox/WebKit compatibility.
+
 ### Agent skills
 
 The `.agents/skills/` directory holds Agent Skills for AI assistants. Not all
@@ -236,11 +243,16 @@ changes:
 python3 scripts/validate-site.py
 python3 scripts/check-links.py
 python3 -m pytest
+node --test tests/test_capture_visual_baseline.mjs
 python3 scripts/cache-bust.py --check
 python3 scripts/build-search-index.py --check
 node scripts/responsive-qa.mjs --static
 python3 scripts/audit-site.py --quiet
 ```
+
+The Node visual-capture regression checks safe capture destinations, readiness,
+and the small responsive header-avatar sources across tracked public pages.
+Site Validation runs this command as a required check.
 
 `validate-site.py` is the structural validator. `check-links.py` writes a
 dated JSON report under `assets/audit/`. `responsive-qa.mjs --static` checks
@@ -322,6 +334,13 @@ smoke behavior, and the canonical audit. On a successful push to `main`, it
 prepares `.scratch/pages-release/` and passes that exact commit-named artifact
 to a deploy job that depends on validation. The isolated deploy runner downloads
 that artifact into `dist-pages/`. `CNAME` declares `askjamie.bot`.
+
+After the Pages action succeeds, `scripts/check-deployed-pages.py` compares four
+served files with the exact downloaded artifact and checks three representative
+repository-only exclusions. JSON and Markdown evidence is retained outside the
+public artifact even on probe failure. This finite sample does not identify a
+remote revision or establish complete route, exclusion, behavior or performance
+coverage. A failed post-deployment probe does not undo the successful Pages action.
 
 `hosted-js-smoke.yml` and `public-gpt-links.yml` provide separate scheduled
 hosted and outbound checks with retained reports. Their presence does not
@@ -412,3 +431,5 @@ before making cross-repository changes.
 
 At the end of work, summarize what changed, why it changed, which checks ran,
 and any unresolved questions.
+
+## Imported Claude Cowork project instructions

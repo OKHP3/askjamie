@@ -201,6 +201,30 @@ class PagesArtifactSafetyTests(unittest.TestCase):
         self.assertEqual(pages_upload.count("include-hidden-files: true"), 1)
         self.assertEqual(workflow.count("include-hidden-files: true"), 2)
 
+    def test_deployed_probe_uses_exact_artifact_after_publication_and_retains_failure_evidence(self):
+        workflow = (SCRIPT.parent.parent / ".github/workflows/validate.yml").read_text()
+        deploy = workflow.split("  deploy:", 1)[1]
+        checkout = deploy.split("- name: Checkout exact revision probe tooling", 1)[1].split(
+            "- name: Set up probe Python", 1
+        )[0]
+        self.assertIn("ref: ${{ github.sha }}", checkout)
+        self.assertIn("path: probe-tools", checkout)
+        self.assertLess(deploy.index("Checkout exact revision"), deploy.index("Download validated"))
+        self.assertLess(deploy.index("uses: actions/deploy-pages@"), deploy.index("Verify served sample"))
+        after_deploy = deploy.split("uses: actions/deploy-pages@", 1)[1]
+        self.assertIn("python3 probe-tools/scripts/check-deployed-pages.py", after_deploy)
+        self.assertIn("--artifact-root dist-pages", after_deploy)
+        self.assertIn('--expected-artifact-name "pages-site-$GITHUB_SHA"', after_deploy)
+        self.assertNotIn("prepare-pages-artifact.py", deploy)
+        self.assertNotIn("upload-pages-artifact", after_deploy)
+        self.assertNotIn("--output", deploy)
+        self.assertIn("timeout-minutes: 6", deploy)
+        for name in ("Summarize served sample", "Retain served sample evidence"):
+            step = deploy.split("- name: " + name, 1)[1].split("- name:", 1)[0]
+            self.assertIn("if: always()", step)
+        self.assertIn("path: artifacts/deployed-pages", after_deploy)
+        self.assertIn("retention-days: 90", after_deploy)
+
 
 if __name__ == "__main__":
     unittest.main()

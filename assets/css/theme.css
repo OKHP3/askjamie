@@ -7281,6 +7281,11 @@ html[data-theme="light"] .askjamie-main {
 }
 
 
+/* Keep AskJamie surface tokens ahead of the generic light-theme body rule. */
+html body.askjamie-main {
+  background: var(--color-bg);
+}
+
 /* Neutralize dark blueprint vibe inside AskJamie */
 .askjamie-main .hero {
   background: none;
@@ -7414,6 +7419,10 @@ html[data-theme="light"] .askjamie-main {
   margin-bottom: 0.5rem;
 }
 
+.askjamie-main .askjamie-hero-copy .eyebrow {
+  color: var(--color-inline-link, #1f5a67);
+}
+
 .askjamie-hero-copy h1 {
   font-size: clamp(2.2rem, 4vw, 2.8rem);
   font-family: "Baloo 2", system-ui, -apple-system, BlinkMacSystemFont,
@@ -7507,7 +7516,7 @@ html[data-theme="light"] .askjamie-main {
 .askjamie-main .eyebrow {
   text-transform: none;      /* overrides the uppercase version above */
   font-size: 0.95rem;
-  color: #3c8ea1;
+  color: var(--color-inline-link, #1f5a67);
 }
 /* AskJamie: logo + text breadcrumb for inner-page heroes */
 .askjamie-main .askjamie-breadcrumb {
@@ -7518,12 +7527,12 @@ html[data-theme="light"] .askjamie-main {
   font-size: 0.95rem;
   line-height: 1.6;
   letter-spacing: 0.01em;
-  color: #3c8ea1; /* same teal accent */
+  color: var(--color-inline-link, #1f5a67);
   margin-bottom: 0.75rem;
 }
 
 .askjamie-main .askjamie-breadcrumb .breadcrumb-separator {
-  opacity: 0.8;
+  opacity: 1;
 }
 
 .askjamie-main .askjamie-breadcrumb .breadcrumb-label {

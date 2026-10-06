@@ -16,6 +16,7 @@ cannot be mistaken for current pipeline commands.
 | `cache-bust.py` | active | Generate/check LF-normalized shared asset hashes, deferred app loading, and the brand import map |
 | `check-links.py` | active | Check internal and external links |
 | `prepare-pages-artifact.py` | active | Build the allowlisted static release artifact |
+| `check-deployed-pages.py` | active | Compare four served files with the exact deployed artifact and check three representative exclusions |
 | `validate-site.py` | active | Structural site validation, including external-font-origin regression checks |
 | `check-critical-theme-drift.py` | active | Verify the first-viewport critical CSS contract against the shared AskJamie theme |
 | `sync-foundation-files.py` | active | 3-way sync of theme.css/app.js/mermaid-init.js across the three sibling repos |
@@ -74,6 +75,32 @@ It preserves shared asset bytes and routes; SHA-256 prefixes normalize CRLF/LF.
 The import map versions the brand module loaded by the shared app, keeping
 analytics initialization in the existing dynamic-import order.
 The archived cache tool remains historical provenance only.
+
+## Deployed Pages sample
+
+After a successful Pages action, Site Validation runs `check-deployed-pages.py`
+against the downloaded commit-named artifact, without rebuilding it. The probe
+uses GET requests for the homepage, two public `.well-known` files, and shared
+browser JavaScript. It checks three representative repository-only paths for
+404/410. Four byte matches and three explicit absent responses are a sample,
+not proof of every route, all exclusions, behavior, performance, or a remote
+commit identifier. A failed probe does not undo the already completed deployment.
+
+The production CLI accepts only `https://askjamie.bot`. It uses at most three
+logical attempts per path, two same-path redirects per attempt, 63 HTTP request
+starts, 2 MiB per expected file, 20 MiB total response bytes, a 20-second response
+wall deadline and a 180-second total deadline. Socket I/O is limited to ten
+seconds or the remaining deadline. A daemon worker owns the entire request,
+including headers and chunk framing, and closes late responses. The reporting
+thread never waits on a blocked response close. No further redirects are followed
+after cancellation.
+Retries are limited to network/transient service failures and unavailable or
+stale positives. Negative 200, 401/403, TLS, redirect, encoding and size failures
+are terminal. Requests ask for identity encoding and responses must honor it.
+
+JSON and Markdown reports stay outside the public artifact and are retained by
+an always-running upload step. The independent scheduled hosted browser smoke
+test remains separate from this exact-deployment sample.
 
 ## Public GPT reachability
 
