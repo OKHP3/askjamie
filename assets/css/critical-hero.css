@@ -367,6 +367,7 @@ body.askjamie-main a {
   color: #4b5563;
   font-family: "Kalam", "Segoe UI", sans-serif;
   font-size: 1.02rem;
+  letter-spacing: 0.01em;
 }
 
 .askjamie-main .askjamie-hero-copy .hero-tagline,
