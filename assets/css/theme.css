@@ -7679,6 +7679,16 @@ html body.askjamie-main {
     font-size: 0.97rem;
     letter-spacing: -1.1px;
   }
+
+  /* Reserve the taller BFS line counts across system and branded fonts. */
+  .askjamie-main.brandguard-bfs-page .capability-transition > p:last-of-type {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy .hero-subtitle,
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy .hero-tagline {
+    min-height: 5lh;
+  }
 }
 
 /* Keep the 390px fallback and deferred BrandGuard fonts on the same line
