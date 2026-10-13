@@ -5,7 +5,7 @@
   "sources": [
     {
       "origin": "https://askjamie.bot",
-      "sha256": "7c3520cebbb39c505e3b6ac509d254537375ec1e621f039753cfccf6b72cba76",
+      "sha256": "e5379e5d510a582fbaaeb3e237d2735e3e80c0c0a171ecdf9039210b1d88e972",
       "records": 27
     }
   ],
@@ -164,7 +164,7 @@
       "id": "https://askjamie.bot/lens-system/okhp3-brandguard/hershey/",
       "url": "https://askjamie.bot/lens-system/okhp3-brandguard/hershey/",
       "title": "AskJamie™ — GPT‑BRG06: Hershey: Brandguard",
-      "description": "GPT‑BRG06: Hershey BrandGuard™ — a warm, public‑source‑only GPT showing how an iconic confection brand keeps its tone, ethics, and identity on track.",
+      "description": "Hershey: Brandguard. An original public-source custom GPT case study. Explore its design and guardrails during the transition to agent skills and plugins.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
