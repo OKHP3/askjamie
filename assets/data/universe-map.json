@@ -5,7 +5,7 @@
   "sources": [
     {
       "origin": "https://askjamie.bot",
-      "sha256": "e5379e5d510a582fbaaeb3e237d2735e3e80c0c0a171ecdf9039210b1d88e972",
+      "sha256": "2f0a978455b52a389e018c497b47902586d79d3a80f1eb1016bb289347510e25",
       "records": 27
     }
   ],
@@ -154,7 +154,7 @@
       "id": "https://askjamie.bot/lens-system/okhp3-brandguard/dollar-general/",
       "url": "https://askjamie.bot/lens-system/okhp3-brandguard/dollar-general/",
       "title": "AskJamie™ — GPT‑BRG08: Dollar General: Brandguard",
-      "description": "GPT‑BRG08: Dollar General BrandGuard™ — a public OKHP³ proof‑of‑concept GPT helping people understand the brand without going off‑voice or off‑ethics.",
+      "description": "Dollar General: Brandguard. An original public-source custom GPT case study. Explore its design and guardrails during the transition to agent skills and plugins.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
