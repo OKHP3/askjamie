@@ -102,6 +102,9 @@ jobs:
       - name: Verify committed search index is current
         run: python3 scripts/build-search-index.py --check
 
+      - name: Verify committed Universe map is current
+        run: python3 scripts/sync-universe-map.py --check
+
       - name: Prepare public Pages artifact for browser QA
         run: python3 scripts/prepare-pages-artifact.py --output .scratch/pages-release
 
