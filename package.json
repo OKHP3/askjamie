@@ -4,7 +4,7 @@
   },
   "devDependencies": {
     "lighthouse": "13.5.0",
-    "playwright": "1.63.0"
+    "playwright": "1.64.0"
   },
   "scripts": {
     "validate": "python3 scripts/validate-site.py",
