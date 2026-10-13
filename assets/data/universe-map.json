@@ -5,7 +5,7 @@
   "sources": [
     {
       "origin": "https://askjamie.bot",
-      "sha256": "5aacc082838bfbb884e16f126a9bc107404ad5cf3bb6c27a8a1af2a19a356bcd",
+      "sha256": "2f0a978455b52a389e018c497b47902586d79d3a80f1eb1016bb289347510e25",
       "records": 27
     }
   ],
@@ -154,7 +154,7 @@
       "id": "https://askjamie.bot/lens-system/okhp3-brandguard/dollar-general/",
       "url": "https://askjamie.bot/lens-system/okhp3-brandguard/dollar-general/",
       "title": "AskJamie™ — GPT‑BRG08: Dollar General: Brandguard",
-      "description": "GPT‑BRG08: Dollar General BrandGuard™ — a public OKHP³ proof‑of‑concept GPT helping people understand the brand without going off‑voice or off‑ethics.",
+      "description": "Dollar General: Brandguard. An original public-source custom GPT case study. Explore its design and guardrails during the transition to agent skills and plugins.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
@@ -164,7 +164,7 @@
       "id": "https://askjamie.bot/lens-system/okhp3-brandguard/hershey/",
       "url": "https://askjamie.bot/lens-system/okhp3-brandguard/hershey/",
       "title": "AskJamie™ — GPT‑BRG06: Hershey: Brandguard",
-      "description": "GPT‑BRG06: Hershey BrandGuard™ — a warm, public‑source‑only GPT showing how an iconic confection brand keeps its tone, ethics, and identity on track.",
+      "description": "Hershey: Brandguard. An original public-source custom GPT case study. Explore its design and guardrails during the transition to agent skills and plugins.",
       "origin": "https://askjamie.bot",
       "status": "Published page",
       "indexed": true,
