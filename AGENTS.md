@@ -246,6 +246,7 @@ python3 -m pytest
 node --test tests/test_capture_visual_baseline.mjs
 python3 scripts/cache-bust.py --check
 python3 scripts/build-search-index.py --check
+python3 scripts/sync-universe-map.py --check
 node scripts/responsive-qa.mjs --static
 python3 scripts/audit-site.py --quiet
 ```
@@ -253,6 +254,10 @@ python3 scripts/audit-site.py --quiet
 The Node visual-capture regression checks safe capture destinations, readiness,
 and the small responsive header-avatar sources across tracked public pages.
 Site Validation runs this command as a required check.
+
+The Universe freshness check verifies generated page content and the search
+index provenance hash without rewriting outputs. CI runs it after search-index
+freshness and before preparing the Pages artifact.
 
 `validate-site.py` is the structural validator. `check-links.py` writes a
 dated JSON report under `assets/audit/`. `responsive-qa.mjs --static` checks
