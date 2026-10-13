@@ -1,12 +1,12 @@
 # Universe diagram failure announcement check
 
-**Status:** Deferred — human screen-reader acceptance check remains required  
+**Status:** Deferred. Human screen-reader acceptance check remains required.
 **Updated:** 2026-10-13
 
 ## Verified automated behavior
 
-- Latest rerun: 2026-10-13 19:22:43–19:22:56 UTC.
-- Browser pair actually used in this checkout: Playwright 1.60.0 with Chromium
+- Replit task #230 rerun: 2026-10-13 19:22:43 to 19:22:56 UTC.
+- Browser pair used in that isolated task checkout: Playwright 1.60.0 with Chromium
   152.0.7977.64.
 - Before failure, the empty status is present in Chromium's accessibility tree as
   a `status` node with `live=polite`, `atomic=true`, and relevant changes set to
@@ -23,12 +23,18 @@
 These checks establish browser semantics and keyboard behavior only. They do
 not establish that a screen reader spoke the message.
 
-The fetched `origin/main` is `d4c0dcb` and declares Playwright 1.64.0. This
-checkout still declares/locks Playwright 1.63.0 and has Playwright 1.60.0 and
-Chromium 152.0.7977.64 installed. The Playwright 1.64.0 / Chromium 156.0.8078.4
-pair has **not** been run here; no dependencies were installed or changed.
+The isolated Replit task checkout fetched `origin/main` at `d4c0dcb`, which
+declares Playwright 1.64.0. That task checkout still declares and locks
+Playwright 1.63.0 and has Playwright 1.60.0 and Chromium 152.0.7977.64 installed.
+Its dated rerun does not establish behavior with Playwright 1.64.0 and Chromium
+156.0.8078.4. The separate Replit project checkout has the newer installed pair.
 
-## Required human check — not performed
+The integration candidate is based on the reviewed current main. Its required
+CI checks use the current lockfile and matching Chromium. Those results must
+be read for the exact PR head before claiming candidate compatibility. Browser
+semantics and keyboard checks still do not establish actual spoken output.
+
+## Required human check. Not performed
 
 No actual screen-reader speech test has been performed or supplied. The reader,
 browser, and spoken result are **not tested**; polite speech announcement is
