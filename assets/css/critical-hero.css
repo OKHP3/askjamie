@@ -597,6 +597,17 @@ body.askjamie-main a {
 
 }
 
+/* Keep the 350px hub reservation present before deferred theme activation. */
+@media (min-width: 350px) and (max-width: 355px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+}
+
 /* Keep the hub's font reservation present before and after deferred theme activation. */
 @media (min-width: 381px) and (max-width: 400px) {
   .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2) {

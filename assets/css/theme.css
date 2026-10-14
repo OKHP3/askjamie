@@ -7692,6 +7692,32 @@ html body.askjamie-main {
 
   /* Reserve only line counts that the 360px browser measurements showed
      changing between system fallbacks and the loaded BrandGuard fonts. */
+  .askjamie-main:has(.brandguard-demo-notice) .capability-transition > p:last-of-type {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.brandguard-case-costco .site-header {
+    min-height: 11.37rem;
+  }
+
+  .askjamie-main.brandguard-case-lego .askjamie-hero-copy .hero-tagline {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.brandguard-case-discount-tire .askjamie-hero-copy .hero-tagline {
+    min-height: 5lh;
+  }
+
+  .askjamie-main.brandguard-case-ping .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.brandguard-case-dollar-general .askjamie-hero-copy .hero-tagline {
+    min-height: 7lh;
+  }
+
+  .askjamie-main.brandguard-case-dollar-general .askjamie-hero-copy .hero-subtitle {
+    min-height: 2lh;
+  }
+
   .askjamie-main.brandguard-case-lego .askjamie-hero-copy h1,
   .askjamie-main.brandguard-case-hershey .askjamie-hero-copy h1,
   .askjamie-main.brandguard-case-discount-tire .askjamie-hero-copy h1 {
@@ -7816,6 +7842,11 @@ html body.askjamie-main {
 
 /* Reserve only the line counts measured at the 350px edge. */
 @media (min-width: 350px) and (max-width: 355px) {
+  .askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2) {
+    min-height: 7lh;
+  }
+
   .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1,
   .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
     min-height: 4lh;

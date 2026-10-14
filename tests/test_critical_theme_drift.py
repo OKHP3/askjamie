@@ -314,6 +314,26 @@ def test_brandguard_mobile_360_reserves_only_measured_font_reflow_routes():
     assert ".askjamie-main.coke-brandguard .manifesto-blockquote" in theme
 
 
+def test_missing_350px_hub_heading_reservation_is_reported(tmp_path):
+    (tmp_path / "assets/css").mkdir(parents=True)
+    critical = (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
+    theme = (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+    reservation = (
+        ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {\n"
+        "    min-height: 4lh;\n"
+        "  }"
+    )
+    assert reservation in critical
+    critical = critical.replace(reservation, "", 1)
+    (tmp_path / "assets/css/critical-hero.css").write_text(critical, encoding="utf-8")
+    (tmp_path / "assets/css/theme.css").write_text(theme, encoding="utf-8")
+
+    assert any(
+        "BrandGuard mobile heading fallback wrapping: min-height drifted" in finding
+        for finding in drift.check_contracts(tmp_path)
+    )
+
+
 def test_capability_transition_geometry_drift_is_reported(tmp_path):
     (tmp_path / "assets/css").mkdir(parents=True)
     critical = (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
