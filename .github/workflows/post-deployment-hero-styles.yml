@@ -46,6 +46,9 @@ jobs:
 
       - name: Check published hero styles
         id: check
+        env:
+          SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+          DEPLOYMENT_RUN_URL: ${{ github.event.workflow_run.html_url || github.server_url }}
         run: node scripts/check-deployed-hero-styles.mjs --output=artifacts/deployed-hero-style-check
 
       - name: Add route-specific receipt to the run summary

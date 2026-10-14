@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 
@@ -84,6 +84,7 @@ export async function runDeployedHeroCheck({
 
       try {
         await page.goto(row.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(300);
         row.computed = await page.evaluate(({ route, stylesheetPath, width }) => {
           const link = [...document.querySelectorAll('link[rel~="stylesheet"]')]
             .find((candidate) => new URL(candidate.href).pathname === stylesheetPath);
@@ -186,6 +187,8 @@ export async function runDeployedHeroCheck({
   return {
     checked_at: new Date().toISOString(),
     origin,
+    source_revision: process.env.SOURCE_REVISION ?? null,
+    deployment_run_url: process.env.DEPLOYMENT_RUN_URL ?? null,
     viewport: VIEWPORT,
     routes,
     outcome: routes.length === HERO_ROUTES.length && routes.every((route) => route.passed)
@@ -201,9 +204,14 @@ function markdownReport(report) {
     `- Result: **${report.outcome}**`,
     `- Checked (UTC): ${report.checked_at}`,
     `- Origin: ${report.origin}`,
+    `- Deployment source revision: ${report.source_revision ?? 'not supplied'}`,
+    `- Deployment run: ${report.deployment_run_url ?? 'not supplied'}`,
     `- Viewport: ${report.viewport.width} × ${report.viewport.height}`,
     '',
   ];
+  if (report.fatal_error) {
+    lines.push('## Fatal check error', '', '```text', report.fatal_error, '```', '');
+  }
   for (const route of report.routes) {
     lines.push(`## ${route.path}`, '', `- Result: ${route.passed ? 'PASS' : 'FAIL'}`);
     lines.push(`- Critical stylesheet: ${JSON.stringify(route.stylesheet_response)}`);
@@ -233,6 +241,8 @@ async function main() {
     report = {
       checked_at: new Date().toISOString(),
       origin: PRODUCTION_ORIGIN,
+      source_revision: process.env.SOURCE_REVISION ?? null,
+      deployment_run_url: process.env.DEPLOYMENT_RUN_URL ?? null,
       viewport: VIEWPORT,
       routes: [],
       outcome: 'FAIL',
