@@ -38,6 +38,32 @@ def test_python_year_based_stable_versions_are_accepted(monkeypatch):
     assert audit.latest_package(("pypi", "packaging"))[1]["latest"] == "26.3"
 
 
+def test_prerelease_latest_tag_retains_channel_and_selects_numeric_stable(monkeypatch):
+    def fake_fetch(url):
+        if url.endswith("/latest"):
+            return {"version": "158.0.8104-0"}
+        return {"versions": {"1.9.0": {}, "1.10.0": {"engines": {"node": ">=20"}},
+                             "158.0.8104-0": {}}}
+    monkeypatch.setattr(audit, "fetch", fake_fetch)
+    row = audit.latest_package(("npm", "example"))[1]
+    assert row["latest"] == "1.10.0"
+    assert row["tagged_latest"] == "158.0.8104-0"
+    assert row["source"] == "https://registry.npmjs.org/example"
+    assert "older release line" in row["release_note"]
+    assert row["requires"] == {"node": ">=20"}
+
+
+def test_prerelease_fallback_lookup_failure_remains_evidence_gap(monkeypatch):
+    def fake_fetch(url):
+        if url.endswith("/latest"):
+            return {"version": "2.0.0-rc.1"}
+        raise OSError("registry unavailable")
+    monkeypatch.setattr(audit, "fetch", fake_fetch)
+    row = audit.latest_package(("npm", "example"))[1]
+    assert row["latest"] is None
+    assert "registry unavailable" in row["error"]
+
+
 def test_fetch_handles_compressed_publisher_response(monkeypatch):
     class Response:
         def __enter__(self):
