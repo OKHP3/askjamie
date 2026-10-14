@@ -419,8 +419,9 @@ def test_deferred_font_script_reserves_brandguard_tablet_geometry_before_activat
     assert '".askjamie-hero-copy > *"' in source
     assert 'element.style.minHeight = `${Math.ceil(height * 100) / 100}px`' in source
     assert 'element.dataset.fontGeometryReserved = "true"' in source
-    assert 'themeStylesheet.addEventListener("load", reserveAfterThemeStyles' in source
+    assert 'themeStylesheet.addEventListener("load", () => {' in source
     assert 'document.querySelector("link[data-brandguard-tablet-fonts]")' in source
+    assert 'tabletFontStylesheet.addEventListener("load", () => {' in source
     assert 'tabletFontStylesheet.media = "all"' in source
     qa_source = (ROOT / "scripts/responsive-qa.mjs").read_text(encoding="utf-8")
     assert "responsive geometry was not reserved " in qa_source
@@ -597,3 +598,18 @@ def test_responsive_qa_measures_universe_page_map_geometry_with_dark_theme_and_3
     assert "async function checkUniversePageMapNarrowUsability" in source
     assert "UNIVERSE PAGE MAP 320PX" in source
     assert "ORDINARY LINK DID NOT RESPOND TO A TAP" in source
+
+
+def test_responsive_qa_separates_universe_font_geometry_from_svg_readiness():
+    source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
+    assert """UNIVERSE_FONT_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-390',
+  'tablet-768',
+  'desktop-1280',
+]);""" in source
+    assert "async function checkUniversePageMapFontGeometry" in source
+    assert "UNIVERSE PAGE MAP FONT GEOMETRY SHIFT" in source
+    assert "UNIVERSE PAGE MAP FONT LOAD NOT OBSERVED" in source
+    assert "universeFontGate.then(() => route.continue())" in source
+    assert "universe_font_geometry: universeFontGeometry.evidence" in source
+    assert "svg_readiness:" in source

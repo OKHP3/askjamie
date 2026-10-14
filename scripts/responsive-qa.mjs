@@ -153,6 +153,11 @@ const UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS = new Set([
   'tablet-768',
   'desktop-1280',
 ]);
+const UNIVERSE_FONT_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-390',
+  'tablet-768',
+  'desktop-1280',
+]);
 const UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX = 1;
 const UNIVERSE_PAGE_MAP_GROUP_SELECTOR = '.universe-map-generated .universe-map-group';
 const UNIVERSE_PAGE_MAP_RESERVATIONS_PX = new Map([
@@ -349,6 +354,158 @@ async function captureUniversePageMapGeometry(page, groupIndex) {
       },
     };
   }, groupIndex);
+}
+
+async function checkUniversePageMapFontGeometry(page, releaseFontRequests, fontResponses) {
+  const errors = [];
+  const timeoutMs = 15000;
+  const group = page.locator(UNIVERSE_PAGE_MAP_GROUP_SELECTOR).first();
+  const capture = () => page.evaluate(() => {
+    const groups = [...document.querySelectorAll(
+      '.universe-map-generated .universe-map-group'
+    )];
+    const box = element => {
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return Object.fromEntries(['x', 'y', 'width', 'height'].map(property => [
+        property,
+        Math.round(rect[property] * 100) / 100,
+      ]));
+    };
+    const target = groups[0];
+    const wrap = target?.querySelector('.mermaid-scroll-wrap');
+    return {
+      open: Boolean(target?.open),
+      svg_ready: Boolean(target?.querySelector('.mermaid svg .node')),
+      geometry: {
+        group: box(target),
+        summary: box(target?.querySelector('summary')),
+        shell: box(wrap),
+        previous_summary: box(groups[0 - 1]?.querySelector('summary')),
+        next_summary: box(groups[1]?.querySelector('summary')),
+      },
+    };
+  });
+  let before = null;
+  let after = null;
+  let fonts = null;
+  try {
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('link[rel~="stylesheet"]')].some(link => {
+        try {
+          return new URL(link.href).hostname === 'fonts.googleapis.com' &&
+            Boolean(link.sheet);
+        } catch {
+          return false;
+        }
+      }), undefined, { timeout: timeoutMs });
+    await group.locator('summary').click();
+    await page.waitForFunction(() =>
+      Boolean(document.querySelector(
+        '.universe-map-generated .universe-map-group .mermaid svg .node'
+      )) && Boolean(document.querySelector(
+        '.universe-map-generated .universe-map-group[open]'
+      )), undefined, { timeout: timeoutMs });
+    fonts = await page.evaluate(() => {
+      const text = [...document.querySelectorAll(
+        '.universe-map-generated .universe-map-group summary, ' +
+        '.universe-map-generated .universe-map-group .link-list a'
+      )];
+      const samples = [...new Map(text.map(element => {
+        const style = getComputedStyle(element);
+        return [`${style.font}\n${element.textContent.trim()}`, {
+          font: style.font,
+          text: element.textContent.trim(),
+        }];
+      })).values()];
+      window.__universeQaFontPromises = samples.map(sample =>
+        document.fonts.load(sample.font, sample.text)
+      );
+      return {
+        samples,
+        fallback_checks: samples.map(sample => ({
+          font: sample.font,
+          loaded_before_release: document.fonts.check(sample.font, sample.text),
+        })),
+      };
+    });
+    before = await capture();
+    releaseFontRequests();
+    await Promise.race([
+      page.evaluate(async () => {
+        await Promise.all(window.__universeQaFontPromises ?? []);
+        await document.fonts.ready;
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`font readiness exceeded ${timeoutMs}ms`)), timeoutMs)
+      ),
+    ]);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
+      requestAnimationFrame(resolve)
+    )));
+    after = await capture();
+    if (!before.open || !before.svg_ready || !after.open || !after.svg_ready) {
+      errors.push(
+        `UNIVERSE PAGE MAP FONT GEOMETRY STATE INVALID: ` +
+        `before=${JSON.stringify(before)}; after=${JSON.stringify(after)}`
+      );
+    }
+    const fontResponsesLoaded = fontResponses.filter(
+      response => response.resource_type === 'font' && response.status < 400
+    );
+    if (fontResponsesLoaded.length === 0) {
+      errors.push(
+        `UNIVERSE PAGE MAP FONT LOAD NOT OBSERVED: no successful hosted font response; ` +
+        `responses=${JSON.stringify(fontResponses)}`
+      );
+    }
+    for (const [selector, beforeRect] of Object.entries(before.geometry ?? {})) {
+      const afterRect = after.geometry?.[selector];
+      if (!beforeRect || !afterRect) {
+        if (selector === 'previous_summary') continue;
+        errors.push(
+          `UNIVERSE PAGE MAP FONT GEOMETRY MISSING: ${selector}; ` +
+          `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+        );
+        continue;
+      }
+      const changes = ['x', 'y', 'width', 'height'].flatMap(property => {
+        const delta = Math.round((afterRect[property] - beforeRect[property]) * 100) / 100;
+        return Math.abs(delta) > UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX
+          ? [`${property}=${delta}px`]
+          : [];
+      });
+      if (changes.length) {
+        errors.push(
+          `UNIVERSE PAGE MAP FONT GEOMETRY SHIFT: ${selector} changed ` +
+          `${changes.join(', ')} with ${UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX}px tolerance; ` +
+          `before=${JSON.stringify(beforeRect)}; after=${JSON.stringify(afterRect)}`
+        );
+      }
+    }
+  } catch (error) {
+    errors.push(
+      `UNIVERSE PAGE MAP FONT BASELINE/LOAD UNAVAILABLE: ${error.message.split('\n')[0]}; ` +
+      `before=${JSON.stringify(before)}; after=${JSON.stringify(after)}`
+    );
+  } finally {
+    releaseFontRequests();
+  }
+  return {
+    errors,
+    evidence: {
+      threshold_px: UNIVERSE_DIAGRAM_GEOMETRY_TOLERANCE_PX,
+      before,
+      after,
+      font_samples: fonts?.samples ?? [],
+      fallback_checks: fonts?.fallback_checks ?? [],
+      font_resources: fontResponses,
+      svg_readiness: {
+        before: before?.svg_ready ?? false,
+        after: after?.svg_ready ?? false,
+      },
+    },
+  };
 }
 
 async function openUniversePageMapGroupForGeometryCheck(page, groupIndex, groupCount) {
@@ -2426,6 +2583,9 @@ async function runWithPlaywright() {
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
+    const checkUniverseFonts =
+      path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
+      UNIVERSE_FONT_GEOMETRY_VIEWPORTS.has(vp.name);
     const checkUniverseFailure =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH && vp.name === 'mobile-390';
     let releaseBrandGuardFontRequests = () => {};
@@ -2469,12 +2629,25 @@ async function runWithPlaywright() {
         { timeout: 15000 }
       ).then(() => true, () => false);
     }
+    let releaseUniverseFontRequests = () => {};
+    let universeFontGate = Promise.resolve();
+    if (checkUniverseFonts) {
+      let release;
+      universeFontGate = new Promise(resolve => { release = resolve; });
+      let released = false;
+      releaseUniverseFontRequests = () => {
+        if (released) return;
+        released = true;
+        release();
+      };
+    }
     const blockedExternal = new Set();
     const consoleErrors = [];
     const requestFailures = [];
     const failedResponses = [];
     const criticalHeroStylesheetResponses = [];
     const brandGuardFontResponses = [];
+    const universeFontResponses = [];
     const requestInfo = new WeakMap();
     const requestedUrls = new Set();
     const requestedAtByUrl = new Map();
@@ -2530,6 +2703,15 @@ async function runWithPlaywright() {
           status: resp.status(),
         });
       }
+      if (checkUniverseFonts &&
+          ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(responseUrl.hostname)) {
+        universeFontResponses.push({
+          host: responseUrl.hostname,
+          path: responseUrl.pathname,
+          resource_type: resp.request().resourceType(),
+          status: resp.status(),
+        });
+      }
       if (resp.status() < 400 || blockedExternal.has(resp.url())) return;
       const info = requestInfo.get(resp.request());
       failedResponses.push({
@@ -2559,6 +2741,19 @@ async function runWithPlaywright() {
         }
         if (requestUrl.hostname === 'fonts.gstatic.com' && requestType === 'font') {
           return brandGuardFontGate.then(() => route.continue());
+        }
+        blockedExternal.add(route.request().url());
+        return route.abort();
+      }
+      if (checkUniverseFonts &&
+          ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(requestUrl.hostname)) {
+        const requestType = route.request().resourceType();
+        if (requestUrl.hostname === 'fonts.googleapis.com' &&
+            requestType === 'stylesheet') {
+          return route.continue();
+        }
+        if (requestUrl.hostname === 'fonts.gstatic.com' && requestType === 'font') {
+          return universeFontGate.then(() => route.continue());
         }
         blockedExternal.add(route.request().url());
         return route.abort();
@@ -2668,6 +2863,13 @@ async function runWithPlaywright() {
           universeMermaidRequestSeen
         )
         : null;
+      const universeFontGeometry = checkUniverseFonts
+        ? await checkUniversePageMapFontGeometry(
+          page,
+          releaseUniverseFontRequests,
+          universeFontResponses
+        )
+        : null;
       const universeMermaidFailure = checkUniverseFailure
         ? await checkUniverseMermaidFailure(browser, vp, url)
         : null;
@@ -2743,6 +2945,7 @@ async function runWithPlaywright() {
         ...(heroFontGeometry?.errors ?? []),
         ...(brandGuardNarrowContent?.errors ?? []),
         ...(universeDiagramGeometry?.errors ?? []),
+        ...(universeFontGeometry?.errors ?? []),
         ...(universeMermaidFailure?.errors ?? []),
         ...(overflow ? [`OVERFLOW: scrollWidth > ${vp.width}px`] : []),
         ...consoleErrors.slice(0, 5).map(e => 'CONSOLE: ' + e),
@@ -2775,6 +2978,9 @@ async function runWithPlaywright() {
                     ...(universeDiagramGeometry
                       ? { universe_diagram_geometry: universeDiagramGeometry.evidence }
                       : {}),
+                     ...(universeFontGeometry
+                       ? { universe_font_geometry: universeFontGeometry.evidence }
+                       : {}),
                     ...(universeMermaidFailure
                       ? { universe_mermaid_failure: universeMermaidFailure.evidence }
                       : {}) };
@@ -2785,6 +2991,7 @@ async function runWithPlaywright() {
       return row;
     } finally {
       releaseBrandGuardFontRequests();
+      releaseUniverseFontRequests();
       page.removeListener('console', onConsole);
       page.removeListener('request', onRequest);
       page.removeListener('requestfailed', onRequestFailed);

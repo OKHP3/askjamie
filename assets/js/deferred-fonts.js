@@ -39,20 +39,30 @@ if (needsBrandGuardFontReservation) {
     const tabletFontStylesheet = document.querySelector("link[data-brandguard-tablet-fonts]");
     const themeStylesheet = [...document.querySelectorAll('link[rel~="stylesheet"]')]
       .find((link) => new URL(link.href).pathname === "/assets/css/theme.css");
-    const reserveAndActivateTabletFonts = () => {
+    let themeReady = !themeStylesheet || Boolean(themeStylesheet.sheet?.cssRules.length);
+    let fontStylesReady = !tabletFontStylesheet;
+    let reservationScheduled = false;
+    const scheduleReservation = () => {
+      if (!themeReady || !fontStylesReady || reservationScheduled) return;
+      reservationScheduled = true;
       requestAnimationFrame(() => requestAnimationFrame(() => {
         reserveBrandGuardTabletGeometry();
-        if (tabletFontStylesheet) tabletFontStylesheet.media = "all";
       }));
     };
-    const reserveAfterThemeStyles = () => {
-      reserveAndActivateTabletFonts();
-    };
-    if (!themeStylesheet || themeStylesheet.sheet?.cssRules.length) {
-      reserveAfterThemeStyles();
-    } else {
-      themeStylesheet.addEventListener("load", reserveAfterThemeStyles, { once: true });
+    if (themeStylesheet && !themeReady) {
+      themeStylesheet.addEventListener("load", () => {
+        themeReady = true;
+        scheduleReservation();
+      }, { once: true });
     }
+    if (tabletFontStylesheet) {
+      tabletFontStylesheet.addEventListener("load", () => {
+        fontStylesReady = true;
+        scheduleReservation();
+      }, { once: true });
+      tabletFontStylesheet.media = "all";
+    }
+    scheduleReservation();
   }
 }
 

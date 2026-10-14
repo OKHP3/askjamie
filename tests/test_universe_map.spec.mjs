@@ -58,6 +58,72 @@ const assertGroupLayoutStable = (before, after, index, count, expectedTheme) => 
   }
 };
 
+const assertSvgLabelContrast = async (group, theme) => {
+  const evidence = await group.evaluate(root => {
+    const channels = color => {
+      const values = color.match(/[\d.]+/g)?.map(Number) ?? [];
+      return values.length >= 3 ? values.slice(0, 3) : null;
+    };
+    const luminance = color => {
+      const rgb = channels(color);
+      if (!rgb) return null;
+      const linear = rgb.map(value => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+    };
+    const contrast = (foreground, background) => {
+      const a = luminance(foreground);
+      const b = luminance(background);
+      return a === null || b === null ? null : (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+    const nodeLabels = [...root.querySelectorAll('svg .node')].map(node => {
+      const label = node.querySelector('.nodeLabel p, .nodeLabel');
+      const surface = node.querySelector('rect');
+      const foreground = label && (
+        getComputedStyle(label).color !== 'rgba(0, 0, 0, 0)'
+          ? getComputedStyle(label).color
+          : getComputedStyle(label).fill
+      );
+      const background = surface && getComputedStyle(surface).fill;
+      return {
+        text: label?.textContent.trim() ?? '',
+        foreground,
+        background,
+        ratio: contrast(foreground, background),
+      };
+    });
+    const edgeLabels = [...root.querySelectorAll(
+      'svg .edgeLabel text, svg .edgeLabel p, svg .edgeLabel span'
+    )].filter(label => label.textContent.trim()).map(label => {
+      const surface = label.closest('.edgeLabel')?.querySelector('rect');
+      const foreground = label.tagName.toLowerCase() === 'text'
+        ? getComputedStyle(label).fill
+        : getComputedStyle(label).color;
+      const background = surface
+        ? getComputedStyle(surface).fill
+        : getComputedStyle(label.closest('.edgeLabel')).backgroundColor;
+      return {
+        text: label.textContent.trim(),
+        foreground,
+        background,
+        ratio: contrast(foreground, background),
+      };
+    });
+    return { nodeLabels, edgeLabels };
+  });
+  assert.ok(evidence.nodeLabels.length > 0, `${theme}: rendered SVG has no node labels`);
+  for (const sample of [...evidence.nodeLabels, ...evidence.edgeLabels]) {
+    assert.ok(
+      sample.ratio !== null && sample.ratio >= 4.5,
+      `${theme}: unreadable SVG ${evidence.edgeLabels.includes(sample) ? "edge" : "node"} label ` +
+        `${JSON.stringify(sample)}`
+    );
+  }
+  return evidence;
+};
+
 try {
   const report = await (await fetch(`${base}/assets/data/universe-map.json`)).json();
   for (const width of [390, 1280]) {
@@ -112,6 +178,7 @@ try {
       await switchGroup.locator("summary").click();
       await switchGroup.locator("svg .node").first().waitFor({ timeout: 20000 });
       const layoutBeforeSwitch = await captureGroupLayout(page, switchIndex);
+      await assertSvgLabelContrast(switchGroup, theme);
       const groupCount = await groups.count();
       const toggle = page.locator(".askjamie-main .glee-color-toggle");
       assert.equal(await toggle.getAttribute("data-state"), theme);
@@ -127,6 +194,7 @@ try {
       )));
       const layoutAfterSwitch = await captureGroupLayout(page, switchIndex);
       assertGroupLayoutStable(layoutBeforeSwitch, layoutAfterSwitch, switchIndex, groupCount, nextTheme);
+      const afterSwitchReadability = await assertSvgLabelContrast(switchGroup, nextTheme);
 
       const clicksToReturn = nextTheme === "dark" ? 2 : 1;
       for (let click = 0; click < clicksToReturn; click += 1) {
@@ -139,6 +207,12 @@ try {
       )));
       const layoutAfterReturn = await captureGroupLayout(page, switchIndex);
       assertGroupLayoutStable(layoutBeforeSwitch, layoutAfterReturn, switchIndex, groupCount, theme);
+      const afterReturnReadability = await assertSvgLabelContrast(switchGroup, theme);
+      assert.equal(
+        afterSwitchReadability.nodeLabels.length,
+        afterReturnReadability.nodeLabels.length,
+        "Theme changes must not rerender or drop SVG node labels"
+      );
 
       await switchGroup.locator("summary").focus();
       await page.keyboard.press("Enter");
@@ -163,6 +237,72 @@ try {
   assert.equal(await noJs.locator(".universe-map-group[open] .mermaid").first().evaluate(e => getComputedStyle(e).visibility), "hidden", "Raw diagram syntax must stay hidden without JavaScript");
   await noJs.locator(".universe-map-group[open] .mermaid").first().evaluate(e => e.setAttribute("data-processed", "true"));
   assert.equal(await noJs.locator(".universe-map-group[open] .mermaid").first().evaluate(e => getComputedStyle(e).visibility), "hidden", "Mermaid's early processed flag must not expose source before SVG insertion");
+
+  const noMermaid = await browser.newPage();
+  await noMermaid.route("**/assets/vendor/mermaid/mermaid.esm.min.mjs", route => route.abort());
+  await noMermaid.goto(`${base}/universe/`);
+  const fallbackGroups = noMermaid.locator(".universe-map-group");
+  for (let i = 0; i < report.diagrams.length; i++) {
+    const group = fallbackGroups.nth(i);
+    await group.locator("summary").click();
+    const links = group.locator("a[data-universe-node]");
+    assert.equal(await links.count(), report.diagrams[i].nodes.length, `Fallback links missing in group ${i + 1}`);
+    for (let j = 0; j < report.diagrams[i].nodes.length; j++) {
+      const expectedNode = report.nodes.find(node => node.id === report.diagrams[i].nodes[j]);
+      const href = await links.nth(j).getAttribute("href");
+      const destination = new URL(href, noMermaid.url());
+      const expectedPath = new URL(expectedNode.url).pathname;
+      assert.equal(destination.origin, new URL(base).origin, `Group ${i + 1} link ${j + 1} is not local`);
+      assert.equal(destination.pathname, expectedPath, `Group ${i + 1} link ${j + 1} points to the wrong path`);
+      const response = await noMermaid.context().request.get(destination.href);
+      assert.ok(
+        response.ok() && new URL(response.url()).pathname === expectedPath,
+        `Group ${i + 1} link ${j + 1} failed: ${destination.href} -> HTTP ${response.status()} ${response.url()}`
+      );
+    }
+  }
+
+  const narrow = await browser.newPage({ viewport: { width: 320, height: 740 }, colorScheme: "dark" });
+  await narrow.addInitScript(() => localStorage.setItem("askjamie-color-scheme", "dark"));
+  await narrow.goto(`${base}/universe/`);
+  const narrowGroups = narrow.locator(".universe-map-group");
+  const narrowGroup = narrowGroups.first();
+  await narrowGroup.locator("summary").click();
+  await narrowGroup.locator("svg .node").first().waitFor({ timeout: 20000 });
+  const narrowToggle = narrow.locator(".askjamie-main .glee-color-toggle");
+  await narrowToggle.click();
+  await narrowToggle.click();
+  await narrow.waitForFunction(() => document.documentElement.getAttribute("data-color-scheme") === "light");
+  assert.equal(await narrowGroup.evaluate(group => group.open), true, "Light mode must leave the narrow map open");
+  assert.equal(await narrowGroups.evaluateAll(groups => groups.filter(group => group.open).length), 1);
+  const narrowWrap = narrowGroup.locator(".mermaid-scroll-wrap");
+  assert.ok(await narrowWrap.evaluate(element => element.scrollWidth > element.clientWidth));
+  await narrowWrap.hover();
+  await narrow.mouse.wheel(240, 0);
+  await narrow.waitForFunction(
+    element => element.scrollLeft > 0,
+    await narrowWrap.elementHandle(),
+    { timeout: 3000 }
+  );
+  const usableLink = narrowGroup.locator("a[data-universe-node]").first();
+  assert.ok(await usableLink.isVisible(), "Ordinary map links must remain visible in light mode at 320px");
+  await usableLink.focus();
+  assert.ok(await usableLink.evaluate(element => element === document.activeElement), "Map links must remain focusable after panning");
+  await assertSvgLabelContrast(narrowGroup, "light at 320px");
+
+  const zoom = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await zoom.goto(`${base}/universe/`);
+  const zoomBefore = await zoom.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio }));
+  for (let i = 0; i < 5; i++) await zoom.keyboard.press("Control+Shift+Equal");
+  const zoomAfter = await zoom.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio }));
+  if (zoomAfter.width > zoomBefore.width / 1.9) {
+    console.warn(
+      `NOT RUN: native 200% browser zoom is unavailable in this Chromium session; ` +
+      `refused to substitute a resized viewport (${JSON.stringify({ zoomBefore, zoomAfter })})`
+    );
+  } else {
+    console.log(`Native browser zoom verified: ${JSON.stringify({ zoomBefore, zoomAfter })}`);
+  }
   const keyboard = await browser.newPage();
   await keyboard.goto(`${base}/universe/`);
   await keyboard.locator(".universe-map-group summary").first().focus();
