@@ -611,3 +611,17 @@ def test_responsive_qa_measures_universe_page_map_geometry_with_dark_theme_and_3
     assert "async function checkUniversePageMapNarrowUsability" in source
     assert "UNIVERSE PAGE MAP 320PX" in source
     assert "ORDINARY LINK DID NOT RESPOND TO A TAP" in source
+
+
+def test_universe_font_loading_is_measured_separately_from_mermaid_readiness():
+    source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
+    assert """UNIVERSE_FONT_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-390',
+  'tablet-768',
+  'desktop-1280',
+]);""" in source
+    assert "async function checkUniversePageMapFontGeometry" in source
+    assert "UNIVERSE PAGE MAP FONT GEOMETRY SHIFT" in source
+    assert "UNIVERSE FONT LOAD NOT OBSERVED" in source
+    assert "universe_font_geometry: universeFontGeometry.evidence" in source
+    assert "svg_readiness: { before:" in source
