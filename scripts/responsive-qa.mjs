@@ -386,6 +386,7 @@ async function checkUniversePageMapFontGeometry(page, releaseFontRequests, fontR
   let before = null;
   let after = null;
   let fonts = null;
+  let loadedFaces = [];
   try {
     await group.locator('summary').click();
     await page.waitForFunction(() =>
@@ -427,10 +428,16 @@ async function checkUniversePageMapFontGeometry(page, releaseFontRequests, fontR
     });
     before = await capture();
     releaseFontRequests();
-    await Promise.race([
+    loadedFaces = await Promise.race([
       page.evaluate(async () => {
-        await Promise.all(window.__universeFontPromises ?? []);
+        const facesBySample = await Promise.all(window.__universeFontPromises ?? []);
         await document.fonts.ready;
+        return facesBySample.map(faces => faces.map(face => ({
+          family: face.family,
+          weight: face.weight,
+          style: face.style,
+          status: face.status,
+        })));
       }),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error(`font readiness exceeded ${timeoutMs}ms`)), timeoutMs)
@@ -440,6 +447,10 @@ async function checkUniversePageMapFontGeometry(page, releaseFontRequests, fontR
       requestAnimationFrame(() => requestAnimationFrame(resolve))
     ));
     after = await capture();
+    if (!loadedFaces.length || loadedFaces.length !== fonts.samples.length ||
+        loadedFaces.some(faces => !faces.length || faces.some(face => face.status !== 'loaded'))) {
+      errors.push(`UNIVERSE FONT FACES NOT LOADED: ${JSON.stringify(loadedFaces)}`);
+    }
     if (!before.open || !before.svg_ready || !after.open || !after.svg_ready) {
       errors.push(`UNIVERSE FONT CHECK SVG/GROUP STATE INVALID: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
     }
@@ -474,6 +485,7 @@ async function checkUniversePageMapFontGeometry(page, releaseFontRequests, fontR
       before,
       after,
       font_samples: fonts?.samples ?? [],
+      loaded_faces_by_sample: loadedFaces,
       fallback_checks: fonts?.fallback_checks ?? [],
       font_resources: fontResponses,
       svg_readiness: { before: before?.svg_ready ?? false, after: after?.svg_ready ?? false },
