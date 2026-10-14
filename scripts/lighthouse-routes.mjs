@@ -606,7 +606,10 @@ export function summarizePage({ report, path, baselinePage = {} }) {
   };
 }
 
-export function formatUnavailableMetricsNotice(pages, { includeSources = false } = {}) {
+export function formatUnavailableMetricsNotice(
+  pages,
+  { includeSources = false, reportNames = {} } = {},
+) {
   const affectedRoutes = Object.entries(pages ?? {}).flatMap(([name, page]) => {
     const metrics = Array.isArray(page?.unavailableMetrics) ? page.unavailableMetrics : [];
     const fields = [...new Set(
@@ -616,7 +619,11 @@ export function formatUnavailableMetricsNotice(pages, { includeSources = false }
     )];
     if (fields.length === 0) return [];
 
-    const lines = [`  ${page.path || name}: ${fields.join(", ")}`];
+    const reportName = reportNames[name];
+    const reportLabel = typeof reportName === "string" && reportName.length > 0
+      ? ` (${reportName})`
+      : "";
+    const lines = [`  ${page.path || name}${reportLabel}: ${fields.join(", ")}`];
     if (includeSources) {
       const sources = new Set();
       for (const metric of metrics) {
@@ -638,25 +645,53 @@ export function formatUnavailableMetricsNotice(pages, { includeSources = false }
     : "";
 }
 
-export function formatUnavailableBrandGuardSampleMetricsNotice(samples) {
+export function formatUnavailableBrandGuardSampleMetricsNotice(
+  samples,
+  { includeSources = false, alreadyReportedFirstSampleMetrics = [] } = {},
+) {
   const numericFields = ["fcpMs", "speedIndexMs", "lcpMs", "tbtMs"];
+  const alreadyReported = new Set(
+    alreadyReportedFirstSampleMetrics
+      .map((metric) => metric?.field)
+      .filter((field) => typeof field === "string" && field.length > 0),
+  );
   const affectedSamples = (Array.isArray(samples) ? samples : [])
     .flatMap(({ report, page }, index) => {
-      const fields = new Set(
-        (Array.isArray(page?.unavailableMetrics) ? page.unavailableMetrics : [])
-          .map((metric) => metric?.field)
-          .filter((field) => typeof field === "string" && field.length > 0),
-      );
-      for (const field of numericFields) {
-        if (typeof page?.[field] !== "number" || !Number.isFinite(page[field])) fields.add(field);
+      const fieldSources = new Map();
+      for (const metric of Array.isArray(page?.unavailableMetrics)
+        ? page.unavailableMetrics
+        : []) {
+        if (typeof metric?.field !== "string" || metric.field.length === 0) continue;
+        if (!fieldSources.has(metric.field)) fieldSources.set(metric.field, new Set());
+        if (typeof metric.source === "string" && metric.source.length > 0) {
+          fieldSources.get(metric.field).add(metric.source);
+        }
       }
-      if (typeof page?.lcpInvalidated !== "boolean") fields.add("lcpInvalidated");
-      if (fields.size === 0) return [];
+      for (const field of numericFields) {
+        if (typeof page?.[field] !== "number" || !Number.isFinite(page[field])) {
+          if (!fieldSources.has(field)) fieldSources.set(field, new Set());
+        }
+      }
+      if (typeof page?.lcpInvalidated !== "boolean" && !fieldSources.has("lcpInvalidated")) {
+        fieldSources.set("lcpInvalidated", new Set());
+      }
+      if (index === 0) {
+        for (const field of alreadyReported) fieldSources.delete(field);
+      }
+      if (fieldSources.size === 0) return [];
 
       const reportName = typeof report === "string" && report.length > 0
         ? report
         : "report unavailable";
-      return [`  sample ${index + 1} (${reportName}): ${[...fields].join(", ")}`];
+      const lines = [
+        `  sample ${index + 1} (${reportName}): ${[...fieldSources.keys()].join(", ")}`,
+      ];
+      if (includeSources) {
+        for (const [field, sources] of fieldSources) {
+          for (const source of sources) lines.push(`    ${field}: ${source}`);
+        }
+      }
+      return lines;
     });
   return affectedSamples.length
     ? `Unavailable repeated BrandGuard sample metrics:\n${affectedSamples.join("\n")}`
@@ -952,8 +987,11 @@ function main() {
   console.log(`Measurement stack: Lighthouse ${lighthouseVersion}; Chromium ${chromiumVersion}`);
   if (summary.brandguardRepeatSamples) {
     const { condition, sampleCount, metrics } = summary.brandguardRepeatSamples;
+    const lcpRange = metrics.lcpMs.min === null || metrics.lcpMs.max === null
+      ? "unavailable"
+      : `${metrics.lcpMs.min}–${metrics.lcpMs.max} ms`;
     console.log(
-      `BrandGuard ${condition} samples: ${sampleCount}; LCP ${metrics.lcpMs.min}–${metrics.lcpMs.max} ms`,
+      `BrandGuard ${condition} samples: ${sampleCount}; LCP ${lcpRange}`,
     );
   }
   if (summary.measurementStackReview.status === "required") {
@@ -977,11 +1015,15 @@ function main() {
   ])));
   const unavailableMetricsNotice = formatUnavailableMetricsNotice(summary.pages, {
     includeSources: showUnavailableSources,
+    reportNames: { brandguard: "brandguard.json" },
   });
   if (unavailableMetricsNotice) console.warn(`\n${unavailableMetricsNotice}`);
   if (summary.brandguardRepeatSamples) {
     const unavailableBrandGuardSampleMetricsNotice =
-      formatUnavailableBrandGuardSampleMetricsNotice(repeatedBrandGuardSamples);
+      formatUnavailableBrandGuardSampleMetricsNotice(repeatedBrandGuardSamples, {
+        includeSources: showUnavailableSources,
+        alreadyReportedFirstSampleMetrics: pages.brandguard.unavailableMetrics,
+      });
     if (unavailableBrandGuardSampleMetricsNotice) {
       console.warn(`\n${unavailableBrandGuardSampleMetricsNotice}`);
     }

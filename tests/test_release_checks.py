@@ -1824,6 +1824,7 @@ const sampleIndex = reportName === "brandguard.json"
   ? 1
   : Number(reportName.match(/sample-(\\d+)/)?.[1] || 0);
 const isBrandGuard = args[0].includes("/lens-system/okhp3-brandguard/");
+const baseUrl = new URL(args[0]).origin;
 const sampleOffset = isBrandGuard ? sampleIndex : 0;
 const report = {
   lighthouseVersion: "12.8.2",
@@ -1898,6 +1899,19 @@ const report = {
 if (sampleIndex === 3 || (args[0].includes("single-sample.invalid") && isBrandGuard)) {
   delete report.audits["first-contentful-paint"];
 }
+if (
+  isBrandGuard
+  && (
+    baseUrl === "https://all-lcp-unavailable.invalid"
+    || (baseUrl === "https://incomplete-first.invalid" && sampleIndex === 1)
+    || (baseUrl === "https://partial-lcp.invalid" && sampleIndex === 2)
+  )
+) {
+  delete report.audits["largest-contentful-paint"];
+}
+if (isBrandGuard && process.env.FAKE_MISSING_PERFORMANCE_CATEGORY === "1") {
+  delete report.categories.performance.score;
+}
 fs.writeFileSync(reportPath, JSON.stringify(report));
 """,
         encoding="utf-8",
@@ -1905,7 +1919,12 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
     fake_lighthouse.chmod(0o755)
 
     fake_chrome = root / "fake-chrome"
-    fake_chrome.write_text("#!/bin/sh\necho 'Chromium 148.0.7778.96'\n", encoding="utf-8")
+    fake_chrome_log = root / "fake-chrome-arguments.txt"
+    fake_chrome.write_text(
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$FAKE_CHROME_ARGS_LOG\"\n"
+        "echo 'Chromium 148.0.7778.96'\n",
+        encoding="utf-8",
+    )
     fake_chrome.chmod(0o755)
 
     script = root / "scripts/lighthouse-routes.mjs"
@@ -1917,7 +1936,11 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
         "--date=2099-02-03",
         "--base-url=https://fixture.invalid",
     ]
-    environment = {**os.environ, "CHROME_PATH": str(fake_chrome)}
+    environment = {
+        **os.environ,
+        "CHROME_PATH": str(fake_chrome),
+        "FAKE_CHROME_ARGS_LOG": str(fake_chrome_log),
+    }
     normal_run = subprocess.run(
         common_args,
         cwd=root,
@@ -1932,6 +1955,126 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
     ) in normal_run.stderr
     assert "sample 1 (brandguard.json)" not in normal_run.stderr
     assert "sample 2 (brandguard-sample-02.json)" not in normal_run.stderr
+
+    all_lcp_args = [
+        *common_args[:5],
+        "--base-url=https://all-lcp-unavailable.invalid",
+        "--run-id=all-lcp-unavailable",
+    ]
+    all_lcp_run = subprocess.run(
+        all_lcp_args,
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert all_lcp_run.returncode == 0, all_lcp_run.stderr
+    assert "BrandGuard normal samples: 3; LCP unavailable" in all_lcp_run.stdout
+    assert "LCP null–null ms" not in all_lcp_run.stdout
+    all_lcp_summary = json.loads(
+        (
+            audit_dir
+            / "lighthouse-2099-02-03-mobile-all-lcp-unavailable/summary.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert all_lcp_summary["brandguardRepeatSamples"]["metrics"]["lcpMs"] == {
+        "availableCount": 0,
+        "unavailableCount": 3,
+        "min": None,
+        "max": None,
+        "spread": None,
+    }
+
+    partial_lcp_run = subprocess.run(
+        [
+            *common_args[:5],
+            "--base-url=https://partial-lcp.invalid",
+            "--run-id=partial-lcp",
+        ],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert partial_lcp_run.returncode == 0, partial_lcp_run.stderr
+    assert "BrandGuard normal samples: 3; LCP 3500–3700 ms" in partial_lcp_run.stdout
+    partial_lcp_summary = json.loads(
+        (audit_dir / "lighthouse-2099-02-03-mobile-partial-lcp/summary.json")
+        .read_text(encoding="utf-8")
+    )
+    assert partial_lcp_summary["brandguardRepeatSamples"]["metrics"]["lcpMs"] == {
+        "availableCount": 2,
+        "unavailableCount": 1,
+        "min": 3500,
+        "max": 3700,
+        "spread": 200,
+    }
+
+    incomplete_first_run = subprocess.run(
+        [
+            *common_args[:5],
+            "--base-url=https://incomplete-first.invalid",
+            "--run-id=incomplete-first",
+        ],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert incomplete_first_run.returncode == 0, incomplete_first_run.stderr
+    assert (
+        "  /lens-system/okhp3-brandguard/ (brandguard.json): lcpMs"
+    ) in incomplete_first_run.stderr
+    assert "sample 1 (brandguard.json): lcpMs" not in incomplete_first_run.stderr
+    assert (
+        "sample 3 (brandguard-sample-03.json): fcpMs"
+    ) in incomplete_first_run.stderr
+
+    source_environment = {
+        **environment,
+        "FAKE_MISSING_PERFORMANCE_CATEGORY": "1",
+    }
+    concise_sources_run = subprocess.run(
+        [
+            *common_args[:5],
+            "--base-url=https://source-fixture.invalid",
+            "--run-id=source-concise",
+        ],
+        cwd=root,
+        env=source_environment,
+        capture_output=True,
+        text=True,
+    )
+    assert concise_sources_run.returncode == 0, concise_sources_run.stderr
+    assert "categories.performance.score" not in concise_sources_run.stderr
+    assert "audits.first-contentful-paint.numericValue" not in concise_sources_run.stderr
+
+    detailed_sources_run = subprocess.run(
+        [
+            *common_args[:5],
+            "--base-url=https://source-fixture.invalid",
+            "--run-id=source-detailed",
+            "--show-unavailable-sources",
+        ],
+        cwd=root,
+        env=source_environment,
+        capture_output=True,
+        text=True,
+    )
+    assert detailed_sources_run.returncode == 0, detailed_sources_run.stderr
+    assert "categories.performance.score" in detailed_sources_run.stderr
+    assert "audits.first-contentful-paint.numericValue" in detailed_sources_run.stderr
+    concise_summary = json.loads(
+        (audit_dir / "lighthouse-2099-02-03-mobile-source-concise/summary.json")
+        .read_text(encoding="utf-8")
+    )
+    detailed_summary = json.loads(
+        (audit_dir / "lighthouse-2099-02-03-mobile-source-detailed/summary.json")
+        .read_text(encoding="utf-8")
+    )
+    assert detailed_summary == concise_summary
+    assert fake_chrome_log.read_text(encoding="utf-8").splitlines()
+    assert set(fake_chrome_log.read_text(encoding="utf-8").splitlines()) == {"--version"}
 
     single_sample_run = subprocess.run(
         [
