@@ -1,0 +1,4183 @@
+{
+  "measuredSourceCommit": "2f7d415458ca8cc08f329dcdafb08f5401eb3116",
+  "equivalentMainCommit": "f5d3aed2cc793b329dc7ec5e1798a729710bfe96",
+  "sourceTree": "aec1f910ee6f328399557bf6fee962cc3c120e30",
+  "lighthouseVersion": "13.5.0",
+  "chromiumVersion": "156.0.8078.4",
+  "nodeProcess": "26.10.0",
+  "origin": "http://127.0.0.1:5055",
+  "condition": "normal mobile, third parties not isolated",
+  "visitState": "Independent Lighthouse CLI invocation per route/sample with a fresh temporary Chromium profile and storage reset enabled. First visits only. Returning visits not measured.",
+  "historicalBaseline": {
+    "source": "Verified retained retired-worktrees archive, f3e6/assets/audit/lighthouse-baseline-2026-08-22.json",
+    "sha256": "03b989bceda7f1a61cdc3d12e0e317877c59afe0abfb1f62fa511357cf0ea18f",
+    "lighthouseVersion": "12.8.2",
+    "chromiumMajor": "148",
+    "exactPatch": "148.0.7778.96 inferred, not independently established",
+    "approval": "Historical record only. Current stack and conditions require review before budget/trend interpretation."
+  },
+  "budgetsChanged": false,
+  "statistics": {
+    "homepage": {
+      "performance": {
+        "median": 81,
+        "min": 68,
+        "max": 83,
+        "count": 5
+      },
+      "lcpMs": {
+        "median": 4276,
+        "min": 3976,
+        "max": 6529,
+        "count": 5
+      },
+      "cls": {
+        "median": 0.03781,
+        "min": 0.035597,
+        "max": 0.03806,
+        "count": 5
+      },
+      "tbtMs": {
+        "median": 22,
+        "min": 15,
+        "max": 57,
+        "count": 5
+      },
+      "fcpMs": {
+        "median": 2701,
+        "min": 2701,
+        "max": 4001,
+        "count": 5
+      },
+      "speedIndexMs": {
+        "median": 2701,
+        "min": 2701,
+        "max": 4001,
+        "count": 5
+      }
+    },
+    "brandguard": {
+      "performance": {
+        "median": 93,
+        "min": 93,
+        "max": 93,
+        "count": 5
+      },
+      "lcpMs": {
+        "median": 3151,
+        "min": 3076,
+        "max": 3152,
+        "count": 5
+      },
+      "cls": {
+        "median": 0.002428,
+        "min": 0.002168,
+        "max": 0.05915,
+        "count": 5
+      },
+      "tbtMs": {
+        "median": 20,
+        "min": 15,
+        "max": 21,
+        "count": 5
+      },
+      "fcpMs": {
+        "median": 1201,
+        "min": 1201,
+        "max": 1201,
+        "count": 5
+      },
+      "speedIndexMs": {
+        "median": 2816,
+        "min": 2804,
+        "max": 2883,
+        "count": 5
+      }
+    },
+    "universe": {
+      "performance": {
+        "median": 89,
+        "min": 89,
+        "max": 90,
+        "count": 5
+      },
+      "lcpMs": {
+        "median": 3152,
+        "min": 3152,
+        "max": 3152,
+        "count": 5
+      },
+      "cls": {
+        "median": 0.066771,
+        "min": 0.066226,
+        "max": 0.066771,
+        "count": 5
+      },
+      "tbtMs": {
+        "median": 84,
+        "min": 71,
+        "max": 88,
+        "count": 5
+      },
+      "fcpMs": {
+        "median": 1589,
+        "min": 1427,
+        "max": 1590,
+        "count": 5
+      },
+      "speedIndexMs": {
+        "median": 4459,
+        "min": 4203,
+        "max": 4698,
+        "count": 5
+      }
+    },
+    "search": {
+      "performance": {
+        "median": 86,
+        "min": 86,
+        "max": 86,
+        "count": 5
+      },
+      "lcpMs": {
+        "median": 3601,
+        "min": 3601,
+        "max": 3601,
+        "count": 5
+      },
+      "cls": {
+        "median": 0.038162,
+        "min": 0.038162,
+        "max": 0.039018,
+        "count": 5
+      },
+      "tbtMs": {
+        "median": 28,
+        "min": 23,
+        "max": 34,
+        "count": 5
+      },
+      "fcpMs": {
+        "median": 2551,
+        "min": 2551,
+        "max": 2551,
+        "count": 5
+      },
+      "speedIndexMs": {
+        "median": 2551,
+        "min": 2551,
+        "max": 2551,
+        "count": 5
+      }
+    }
+  },
+  "samples": {
+    "homepage": [
+      {
+        "sample": 1,
+        "path": "/",
+        "performance": 68,
+        "accessibility": 100,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 6529,
+        "cls": 0.035597,
+        "tbtMs": 57,
+        "fcpMs": 4001,
+        "speedIndexMs": 4001,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > dialog.capability-transition-dialog > div.capability-transition-dialog-content > p#transition-dialog-summary",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:21:41.227Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-3-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": -10,
+                  "bottom": 1780,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1789
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.03559662291146548,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTVOmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 2,
+        "path": "/",
+        "performance": 80,
+        "accessibility": 100,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 4426,
+        "cls": 0.03781,
+        "tbtMs": 15,
+        "fcpMs": 2701,
+        "speedIndexMs": 2701,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > dialog.capability-transition-dialog > div.capability-transition-dialog-content > p#transition-dialog-summary",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:22:23.411Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": -10,
+                  "bottom": 1780,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1789
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.03555094717633528
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-2-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,2,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 443,
+                  "bottom": 556,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 113
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Your friendly AI helpdesk."
+              },
+              "score": 0.002259188064047176,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 3,
+        "path": "/",
+        "performance": 81,
+        "accessibility": 100,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 4276,
+        "cls": 0.03806,
+        "tbtMs": 22,
+        "fcpMs": 2701,
+        "speedIndexMs": 2701,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > dialog.capability-transition-dialog > div.capability-transition-dialog-content > p#transition-dialog-summary",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:23:05.293Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": -10,
+                  "bottom": 1780,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1789
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.03555094717633528
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-2-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,2,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 443,
+                  "bottom": 556,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 113
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Your friendly AI helpdesk."
+              },
+              "score": 0.002509027213073534,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 4,
+        "path": "/",
+        "performance": 82,
+        "accessibility": 100,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 4201,
+        "cls": 0.037816,
+        "tbtMs": 29,
+        "fcpMs": 2701,
+        "speedIndexMs": 2701,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > dialog.capability-transition-dialog > div.capability-transition-dialog-content > p#transition-dialog-summary",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:24:44.390Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": -10,
+                  "bottom": 1780,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1789
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.03555094717633528
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-2-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,2,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 443,
+                  "bottom": 556,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 113
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Your friendly AI helpdesk."
+              },
+              "score": 0.001519603980724573,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-4-P",
+                "path": "1,HTML,1,BODY,13,DIALOG,0,DIV,4,P",
+                "selector": "body.askjamie-main > dialog.capability-transition-dialog > div.capability-transition-dialog-content > p.note",
+                "boundingRect": {
+                  "top": 472,
+                  "bottom": 574,
+                  "left": 40,
+                  "right": 372,
+                  "width": 332,
+                  "height": 102
+                },
+                "snippet": "<p class=\"note\">",
+                "nodeLabel": "The GPT pages remain as case studies during the transition. A replacement is av…"
+              },
+              "score": 0.000745260291183443,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 5,
+        "path": "/",
+        "performance": 83,
+        "accessibility": 100,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3976,
+        "cls": 0.03781,
+        "tbtMs": 15,
+        "fcpMs": 2701,
+        "speedIndexMs": 2701,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > dialog.capability-transition-dialog > div.capability-transition-dialog-content > p#transition-dialog-summary",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:25:26.103Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": -10,
+                  "bottom": 1780,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1789
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.03555094717633528
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-2-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,2,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 443,
+                  "bottom": 556,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 113
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Your friendly AI helpdesk."
+              },
+              "score": 0.002259188064047176,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "brandguard": [
+      {
+        "sample": 1,
+        "path": "/lens-system/okhp3-brandguard/",
+        "performance": 93,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3151,
+        "cls": 0.002428,
+        "tbtMs": 21,
+        "fcpMs": 1201,
+        "speedIndexMs": 2883,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > main#main > aside.container > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:21:52.092Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,2,SECTION,2,DIV,0,DIV,0,DIV,1,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 706,
+                  "bottom": 821,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 115
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Guardrails for tone, ethics, and identity — at GPT speed."
+              },
+              "score": 0.002428377479759266,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 2,
+        "path": "/lens-system/okhp3-brandguard/",
+        "performance": 93,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3152,
+        "cls": 0.002168,
+        "tbtMs": 19,
+        "fcpMs": 1201,
+        "speedIndexMs": 2816,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > main#main > aside.container > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:22:33.793Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-2-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,2,SECTION,2,DIV,0,DIV,0,DIV,1,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 706,
+                  "bottom": 821,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 115
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Guardrails for tone, ethics, and identity — at GPT speed."
+              },
+              "score": 0.001911595585326469,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-A",
+                "path": "1,HTML,1,BODY,2,MAIN,0,ASIDE,3,P,2,A",
+                "selector": "main#main > aside.container > p > a",
+                "boundingRect": {
+                  "top": 436,
+                  "bottom": 458,
+                  "left": 232,
+                  "right": 343,
+                  "width": 111,
+                  "height": 22
+                },
+                "snippet": "<a href=\"/contact/\">",
+                "nodeLabel": "Talk with Jamie"
+              },
+              "score": 0.0002564976741093266,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 3,
+        "path": "/lens-system/okhp3-brandguard/",
+        "performance": 93,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3076,
+        "cls": 0.05915,
+        "tbtMs": 15,
+        "fcpMs": 1201,
+        "speedIndexMs": 2804,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > main#main > aside.container > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:23:15.620Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,2,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": 381,
+                  "bottom": 1708,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1327
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.05914998471939042
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-7-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,2,SECTION,2,DIV,0,DIV,0,DIV,1,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 706,
+                  "bottom": 821,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 115
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Guardrails for tone, ethics, and identity — at GPT speed."
+              },
+              "score": 0.001489653383943702,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-3-P",
+                "path": "1,HTML,1,BODY,2,MAIN,0,ASIDE,0,P",
+                "selector": "body.askjamie-main > main#main > aside.container > p.eyebrow",
+                "boundingRect": {
+                  "top": 204,
+                  "bottom": 229,
+                  "left": 20,
+                  "right": 395,
+                  "width": 375,
+                  "height": 24
+                },
+                "snippet": "<p class=\"eyebrow\">",
+                "nodeLabel": "Replatforming in progress"
+              },
+              "score": 0.0007358918270196582,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 4,
+        "path": "/lens-system/okhp3-brandguard/",
+        "performance": 93,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3151,
+        "cls": 0.05915,
+        "tbtMs": 21,
+        "fcpMs": 1201,
+        "speedIndexMs": 2808,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > main#main > aside.container > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:24:54.756Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,2,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": 381,
+                  "bottom": 1708,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1327
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.05914998471939042
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-3-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,2,SECTION,2,DIV,0,DIV,0,DIV,1,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 706,
+                  "bottom": 821,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 115
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Guardrails for tone, ethics, and identity — at GPT speed."
+              },
+              "score": 0.002428377479759266,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 5,
+        "path": "/lens-system/okhp3-brandguard/",
+        "performance": 93,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3151,
+        "cls": 0.002226,
+        "tbtMs": 20,
+        "fcpMs": 1201,
+        "speedIndexMs": 2821,
+        "lcpInvalidated": false,
+        "lcpElement": "body.askjamie-main > main#main > aside.container > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:25:36.414Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-5-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,2,SECTION,2,DIV,0,DIV,0,DIV,1,H1",
+                "selector": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title",
+                "boundingRect": {
+                  "top": 706,
+                  "bottom": 821,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 115
+                },
+                "snippet": "<h1 id=\"hero-title\">",
+                "nodeLabel": "Guardrails for tone, ethics, and identity — at GPT speed."
+              },
+              "score": 0.001489653383943702,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-P",
+                "path": "1,HTML,1,BODY,2,MAIN,0,ASIDE,0,P",
+                "selector": "body.askjamie-main > main#main > aside.container > p.eyebrow",
+                "boundingRect": {
+                  "top": 204,
+                  "bottom": 229,
+                  "left": 20,
+                  "right": 395,
+                  "width": 375,
+                  "height": 24
+                },
+                "snippet": "<p class=\"eyebrow\">",
+                "nodeLabel": "Replatforming in progress"
+              },
+              "score": 0.0007358918270196582,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "universe": [
+      {
+        "sample": 1,
+        "path": "/universe/",
+        "performance": 89,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3152,
+        "cls": 0.066226,
+        "tbtMs": 84,
+        "fcpMs": 1589,
+        "speedIndexMs": 4698,
+        "lcpInvalidated": false,
+        "lcpElement": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > p.askjamie-hero-tagline",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:22:02.519Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": 28,
+                  "bottom": 1427,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1399
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.06484431863983382
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-5-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,1,DIV,0,H1",
+                "selector": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > h1#hero-title",
+                "boundingRect": {
+                  "top": 232,
+                  "bottom": 316,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 84
+                },
+                "snippet": "<h1 id=\"hero-title\" class=\"askjamie-hero-title\">",
+                "nodeLabel": "The OverKill Hill P³ universe, at a glance."
+              },
+              "score": 0.0009587201080107819,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-3-P",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,1,DIV,1,P",
+                "selector": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > p.hero-subtitle",
+                "boundingRect": {
+                  "top": 328,
+                  "bottom": 406,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 78
+                },
+                "snippet": "<p class=\"hero-subtitle\">",
+                "nodeLabel": "Explore the connected brands, then browse AskJamie pages in maps maintained fro…"
+              },
+              "score": 0.0004226194761843447,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 2,
+        "path": "/universe/",
+        "performance": 90,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3152,
+        "cls": 0.066771,
+        "tbtMs": 73,
+        "fcpMs": 1427,
+        "speedIndexMs": 4234,
+        "lcpInvalidated": false,
+        "lcpElement": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > p.askjamie-hero-tagline",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:22:44.303Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": 28,
+                  "bottom": 1427,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1399
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.06484431863983382
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-3-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,1,DIV,0,H1",
+                "selector": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > h1#hero-title",
+                "boundingRect": {
+                  "top": 232,
+                  "bottom": 316,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 84
+                },
+                "snippet": "<h1 id=\"hero-title\" class=\"askjamie-hero-title\">",
+                "nodeLabel": "The OverKill Hill P³ universe, at a glance."
+              },
+              "score": 0.001926570883716905,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 3,
+        "path": "/universe/",
+        "performance": 89,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3152,
+        "cls": 0.066771,
+        "tbtMs": 71,
+        "fcpMs": 1590,
+        "speedIndexMs": 4459,
+        "lcpInvalidated": false,
+        "lcpElement": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > p.askjamie-hero-tagline",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:23:26.062Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": 28,
+                  "bottom": 1427,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1399
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.06484431863983382
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-3-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,1,DIV,0,H1",
+                "selector": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > h1#hero-title",
+                "boundingRect": {
+                  "top": 232,
+                  "bottom": 316,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 84
+                },
+                "snippet": "<h1 id=\"hero-title\" class=\"askjamie-hero-title\">",
+                "nodeLabel": "The OverKill Hill P³ universe, at a glance."
+              },
+              "score": 0.001926570883716905,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 4,
+        "path": "/universe/",
+        "performance": 89,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3152,
+        "cls": 0.066771,
+        "tbtMs": 88,
+        "fcpMs": 1589,
+        "speedIndexMs": 4504,
+        "lcpInvalidated": false,
+        "lcpElement": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > p.askjamie-hero-tagline",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:25:05.168Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": 28,
+                  "bottom": 1427,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1399
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.06484431863983382
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-3-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,1,DIV,0,H1",
+                "selector": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > h1#hero-title",
+                "boundingRect": {
+                  "top": 232,
+                  "bottom": 316,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 84
+                },
+                "snippet": "<h1 id=\"hero-title\" class=\"askjamie-hero-title\">",
+                "nodeLabel": "The OverKill Hill P³ universe, at a glance."
+              },
+              "score": 0.001926570883716905,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 5,
+        "path": "/universe/",
+        "performance": 90,
+        "accessibility": 96,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3152,
+        "cls": 0.066771,
+        "tbtMs": 87,
+        "fcpMs": 1427,
+        "speedIndexMs": 4203,
+        "lcpInvalidated": false,
+        "lcpElement": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > p.askjamie-hero-tagline",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:25:46.876Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-DIV",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,0,DIV",
+                "selector": "body.askjamie-main > main#main > section.hero > div.brand-stripes",
+                "boundingRect": {
+                  "top": 28,
+                  "bottom": 1427,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 1399
+                },
+                "snippet": "<div class=\"brand-stripes brand-stripes--jamie\" aria-hidden=\"true\">",
+                "nodeLabel": "body.askjamie-main > main#main > section.hero > div.brand-stripes"
+              },
+              "score": 0.06484431863983382
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-3-H1",
+                "path": "1,HTML,1,BODY,2,MAIN,1,SECTION,2,DIV,0,DIV,0,DIV,1,DIV,0,H1",
+                "selector": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > h1#hero-title",
+                "boundingRect": {
+                  "top": 232,
+                  "bottom": 316,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 84
+                },
+                "snippet": "<h1 id=\"hero-title\" class=\"askjamie-hero-title\">",
+                "nodeLabel": "The OverKill Hill P³ universe, at a glance."
+              },
+              "score": 0.001926570883716905,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "search": [
+      {
+        "sample": 1,
+        "path": "/search/",
+        "performance": 86,
+        "accessibility": 97,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3601,
+        "cls": 0.038162,
+        "tbtMs": 23,
+        "fcpMs": 2551,
+        "speedIndexMs": 2551,
+        "lcpInvalidated": false,
+        "lcpElement": "footer.site-footer > div.container > div.footer-column > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:22:12.938Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.02733162170820974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.009789278805647603,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-6-H1",
+                "path": "1,HTML,1,BODY,3,MAIN,0,DIV,0,SECTION,1,H1",
+                "selector": "main#main > div.container > section.search-hero > h1",
+                "boundingRect": {
+                  "top": 224,
+                  "bottom": 270,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 46
+                },
+                "snippet": "<h1>",
+                "nodeLabel": "Search AskJamie™"
+              },
+              "score": 0.001041140688724974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 2,
+        "path": "/search/",
+        "performance": 86,
+        "accessibility": 97,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3601,
+        "cls": 0.038162,
+        "tbtMs": 28,
+        "fcpMs": 2551,
+        "speedIndexMs": 2551,
+        "lcpInvalidated": false,
+        "lcpElement": "footer.site-footer > div.container > div.footer-column > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:22:54.688Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.02733162170820974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.009789278805647603,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-6-H1",
+                "path": "1,HTML,1,BODY,3,MAIN,0,DIV,0,SECTION,1,H1",
+                "selector": "main#main > div.container > section.search-hero > h1",
+                "boundingRect": {
+                  "top": 224,
+                  "bottom": 270,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 46
+                },
+                "snippet": "<h1>",
+                "nodeLabel": "Search AskJamie™"
+              },
+              "score": 0.001041140688724974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 3,
+        "path": "/search/",
+        "performance": 86,
+        "accessibility": 97,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3601,
+        "cls": 0.038162,
+        "tbtMs": 34,
+        "fcpMs": 2551,
+        "speedIndexMs": 2551,
+        "lcpInvalidated": false,
+        "lcpElement": "footer.site-footer > div.container > div.footer-column > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:23:36.536Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.02733162170820974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.009789278805647603,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-6-H1",
+                "path": "1,HTML,1,BODY,3,MAIN,0,DIV,0,SECTION,1,H1",
+                "selector": "main#main > div.container > section.search-hero > h1",
+                "boundingRect": {
+                  "top": 224,
+                  "bottom": 270,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 46
+                },
+                "snippet": "<h1>",
+                "nodeLabel": "Search AskJamie™"
+              },
+              "score": 0.001041140688724974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 4,
+        "path": "/search/",
+        "performance": 86,
+        "accessibility": 97,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3601,
+        "cls": 0.038162,
+        "tbtMs": 28,
+        "fcpMs": 2551,
+        "speedIndexMs": 2551,
+        "lcpInvalidated": false,
+        "lcpElement": "footer.site-footer > div.container > div.footer-column > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:25:15.611Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.02733162170820974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.009789278805647603,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-6-H1",
+                "path": "1,HTML,1,BODY,3,MAIN,0,DIV,0,SECTION,1,H1",
+                "selector": "main#main > div.container > section.search-hero > h1",
+                "boundingRect": {
+                  "top": 224,
+                  "bottom": 270,
+                  "left": 24,
+                  "right": 388,
+                  "width": 364,
+                  "height": 46
+                },
+                "snippet": "<h1>",
+                "nodeLabel": "Search AskJamie™"
+              },
+              "score": 0.001041140688724974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-8-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "sample": 5,
+        "path": "/search/",
+        "performance": 86,
+        "accessibility": 97,
+        "bestPractices": 100,
+        "seo": 100,
+        "lcpMs": 3601,
+        "cls": 0.039018,
+        "tbtMs": 31,
+        "fcpMs": 2551,
+        "speedIndexMs": 2551,
+        "lcpInvalidated": false,
+        "lcpElement": "footer.site-footer > div.container > div.footer-column > p",
+        "unavailableMetrics": [],
+        "fetchTime": "2026-10-14T06:25:57.425Z",
+        "runConditions": {
+          "formFactor": "mobile",
+          "throttlingMethod": "simulate",
+          "throttling": {
+            "rttMs": 150,
+            "throughputKbps": 1638.4,
+            "requestLatencyMs": 562.5,
+            "downloadThroughputKbps": 1474.5600000000002,
+            "uploadThroughputKbps": 675,
+            "cpuSlowdownMultiplier": 4
+          },
+          "screenEmulation": {
+            "mobile": true,
+            "width": 412,
+            "height": 823,
+            "deviceScaleFactor": 1.75,
+            "disabled": false
+          },
+          "emulatedUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36",
+          "blockedUrlPatterns": null,
+          "collectionTiming": {
+            "maxWaitForFcp": 30000,
+            "maxWaitForLoad": 45000,
+            "pauseAfterFcpMs": 1000,
+            "pauseAfterLoadMs": 1000,
+            "networkQuietThresholdMs": 1000,
+            "cpuQuietThresholdMs": 1000
+          },
+          "locale": "en-US",
+          "storage": {
+            "disableStorageReset": false,
+            "clearStorageTypes": [
+              "file_systems",
+              "shader_cache",
+              "service_workers",
+              "cache_storage"
+            ]
+          },
+          "additionalConfigSettings": {
+            "auditMode": false,
+            "gatherMode": false,
+            "debugNavigation": false,
+            "channel": "cli",
+            "usePassiveGathering": false,
+            "disableFullPageScreenshot": false,
+            "skipAboutBlank": false,
+            "blankPage": "about:blank",
+            "ignoreStatusCode": false,
+            "additionalTraceCategories": null,
+            "extraHeaders": null,
+            "precomputedLanternData": null,
+            "onlyAudits": null,
+            "onlyCategories": null,
+            "skipAudits": null
+          },
+          "nonComparabilitySettings": {
+            "output": [
+              "json"
+            ]
+          },
+          "unclassifiedConfigSettings": {}
+        },
+        "layoutShiftDetails": {
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              },
+              "label": "Element"
+            },
+            {
+              "key": "score",
+              "valueType": "numeric",
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              },
+              "granularity": 0.001,
+              "label": "Layout shift score"
+            }
+          ],
+          "items": [
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.02733162170820974,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-6-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  }
+                ]
+              }
+            },
+            {
+              "node": {
+                "type": "node",
+                "lhId": "page-1-FOOTER",
+                "path": "1,HTML,1,BODY,4,FOOTER",
+                "selector": "body.askjamie-main > footer.site-footer",
+                "boundingRect": {
+                  "top": 722,
+                  "bottom": 1530,
+                  "left": 0,
+                  "right": 412,
+                  "width": 412,
+                  "height": 809
+                },
+                "snippet": "<footer class=\"site-footer\">",
+                "nodeLabel": "AskJamie™\n\nYour articulate, architected AI persona — clarity, confidence, and c…"
+              },
+              "score": 0.01168633806699207,
+              "subItems": {
+                "type": "subitems",
+                "items": [
+                  {
+                    "extra": {
+                      "type": "node",
+                      "lhId": "page-6-IMG",
+                      "path": "1,HTML,1,BODY,1,HEADER,0,DIV,0,DIV,0,A,0,IMG",
+                      "selector": "div.container > div.logo > a > img",
+                      "boundingRect": {
+                        "top": 10,
+                        "bottom": 50,
+                        "left": 24,
+                        "right": 64,
+                        "width": 40,
+                        "height": 40
+                      },
+                      "snippet": "<img src=\"http://127.0.0.1:5055/assets/img/askjamie-header-avatar-80.png\" srcset=\"/assets/img/askjamie-header-avatar-40.png 1x, /assets/img/askjamie-header-…\" alt=\"AskJamie™ avatar\" width=\"40\" height=\"40\" decoding=\"async\" loading=\"lazy\">",
+                      "nodeLabel": "AskJamie™ avatar"
+                    },
+                    "cause": "Media element lacking an explicit size"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/kalam/v18/YA9dr0Wd4kDdMthROCfhsCkA.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  },
+                  {
+                    "extra": {
+                      "type": "url",
+                      "value": "https://fonts.gstatic.com/s/baloo2/v23/wXKrE3kTposypRyd51jcAM4olXc.woff2"
+                    },
+                    "cause": "Web font loaded"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "rawReports": [
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-1/homepage.json",
+      "sha256": "b1ef2e42d599bc9dd0effae850aa0a0d8794576def0788f3d2aa2507e5ac620a"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-2/homepage.json",
+      "sha256": "e5bb98db5b59625672fe9340d523f1b1c7f3bd5498bd1e3877fff22153069c77"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-3/homepage.json",
+      "sha256": "2d1be0ceb08d1b7dccd55e06d4f1f6b76259d5c9bb141587acabe072e8d43a43"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-4/homepage.json",
+      "sha256": "692fc0707c147e82b7d2ee9c39f9680d0b70bbc9e7652e6aabb6234ee26d1378"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-5/homepage.json",
+      "sha256": "f165dcd3edd8ea74399e09894da7c30690f193e480927007c2a04329ba2091fe"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-1/brandguard.json",
+      "sha256": "97d00527d3e98d96eb81e51ac948bb6cadc621063eedebb041bbdfc5563e00bf"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-2/brandguard.json",
+      "sha256": "703e680f4fc19c8f8fc0428b558fe89a69c5da7a386fc4476f09765cb8afe073"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-3/brandguard.json",
+      "sha256": "de8fa9634163cd2c1623c75f82a82681d55d3f7e8a9a6bd5bf7887b9d9283ce8"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-4/brandguard.json",
+      "sha256": "312751383f9b08b34fe72e452fc1db6d0ac5e830ef45baef96ce6721fd5f17cf"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-5/brandguard.json",
+      "sha256": "b13e2eba2e0043a0e8af39a153cf6bdc60ffe604569b64597526c5f1e8a967de"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-1/universe.json",
+      "sha256": "20aee83825ab4a38c44fd4a7be194eedab8c590d5c689ab0025675dda3805949"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-2/universe.json",
+      "sha256": "9dc0685a9f5dfbdc34919d609c1b067151ff89a95704e34533c4741d979fe17c"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-3/universe.json",
+      "sha256": "4fe04bce78f44aa70ceb805ce4d1f756de0420f2e0e7e4d692d406d581faed31"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-4/universe.json",
+      "sha256": "d0725332baf139a1fc2bedd7ab6e8ab238e9c301b764d6a6a4d2ce459052942b"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-5/universe.json",
+      "sha256": "c739949e2c10e33720a477055727d0c7bdefa1b33eecc76ad824a840ac8c9566"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-1/search.json",
+      "sha256": "c16acd6ff18746ca80117b8e17c0842fbeeaffab5ca6fdc4c4ff01e91df6dbb3"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-2/search.json",
+      "sha256": "05e6b2520a0a58c43c01e2a7a3215d2d84eab4929aac3c3bb5069aed1e729fb2"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-3/search.json",
+      "sha256": "2295bd54949e0f97e6723c411663c0f5684b695c79eefa2164e104646f23658d"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-4/search.json",
+      "sha256": "d79f8dbfa80102f8e6f69771d030d54d8426b6c8270f1263d089ad0f1ebbef5e"
+    },
+    {
+      "path": "assets/audit/lighthouse-2026-10-14-mobile-aj-p4-sample-5/search.json",
+      "sha256": "fc19af980abfedeb6f7c195b9d8a4a8d98d0fd015a84bd7772966fb19b448d81"
+    }
+  ]
+}

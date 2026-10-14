@@ -203,14 +203,30 @@ def latest_package(key):
         data = fetch(url)
         info = data if kind == "npm" else data["info"]
         latest = info["version"]
+        note = None
         if kind == "npm":
-            version(latest)  # Reject prereleases, even if mislabeled as latest.
+            if not STABLE.fullmatch(latest):
+                tagged_latest = latest
+                source = f"https://registry.npmjs.org/{quote(name, safe='')}"
+                url = source
+                metadata = fetch(url)
+                stable = [v for v in metadata.get("versions", {}) if STABLE.fullmatch(v)]
+                if not stable:
+                    raise ValueError(f"No exact stable release; latest tag is {tagged_latest}")
+                latest = max(stable, key=version)
+                info = metadata["versions"][latest]
+                note = (f"latest tag is {tagged_latest}; showing highest published exact stable "
+                        "version instead. This may be an older release line, not a compatible upgrade.")
         elif not re.fullmatch(r"\d+(?:\.\d+)*(?:\.post\d+)?", latest):
             raise ValueError(f"Not a stable Python release: {latest}")
         if kind == "pypi" and info.get("yanked"):
             raise ValueError("Latest release is yanked")
-        return key, {"latest": latest, "source": url,
-                     "requires": info.get("engines", info.get("requires_python"))}
+        result = {"latest": latest, "source": url,
+                  "requires": info.get("engines", info.get("requires_python"))}
+        if note:
+            result["release_note"] = note
+            result["tagged_latest"] = tagged_latest
+        return key, result
     except Exception as exc:
         return key, {"latest": None, "source": url, "error": str(exc)}
 
@@ -357,6 +373,9 @@ def markdown(report):
         lines.append(f"| {row['name']} | {cell(row['current'])} | {cell(row['latest'])} | [Publisher]({row['source']}) |")
     errors = report["contracts"] + [f"{r['name']}: {r['error']}" for r in report["dependencies"] + report["runtimes"] + report["local_python_packages"] + [report["npm_tool"]] if r.get("error")]
     lines.extend(["", "## Evidence gaps", ""] + ([f"- {cell(e)}" for e in errors] or ["No release lookup or manifest-contract failures."]))
+    notes = {(r["name"], r["release_note"]) for r in report["dependencies"] + [report["npm_tool"]] if r.get("release_note")}
+    if notes:
+        lines.extend(["", "## Publisher channel distinctions", ""] + [f"- {cell(name)}: {cell(note)}" for name, note in sorted(notes)])
     return "\n".join(lines) + "\n"
 
 

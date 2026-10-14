@@ -41,7 +41,7 @@ jobs:
           fi
       - name: Retain complete version evidence
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: technology-versions-${{ github.sha }}-${{ github.run_attempt }}
           path: .scratch/technology-audit/

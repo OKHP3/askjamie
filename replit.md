@@ -13,7 +13,7 @@ runtime and workflow configuration. Keep project facts here aligned with
 - Deployment target: static.
 - Development server: `python3 scripts/serve-site.py`.
 - Local port: 5000, exposed as port 80 by the Replit workflow.
-- Nix modules: web, Node.js 22, and Python 3.11.
+- Nix modules: web, Node.js 24, and Python 3.11.
 - No application build step is required.
 
 ## Current stack
@@ -21,7 +21,7 @@ runtime and workflow configuration. Keep project facts here aligned with
 - `assets/css/theme.css` is the single shared stylesheet.
 - `assets/js/app.js` provides analytics bootstrap, search, navigation, theme
   behavior, reading progress, scroll behavior, and related shared browser work.
-- `assets/js/mermaid-init.js` initializes the locally vendored Mermaid v11
+- `assets/js/mermaid-init.js` initializes the locally vendored Mermaid 12.2.0
   runtime from `assets/vendor/mermaid/` for the Universe page.
 - Baloo 2, Open Sans, and Kalam are intentionally loaded from Google Fonts in
   each page shell. No local font bundle is published.
@@ -44,7 +44,7 @@ responsive-qa:      node scripts/responsive-qa.mjs --static
 site-audit:         python3 scripts/audit-site.py --quiet
 ```
 
-The post-merge hook is `scripts/post-merge.sh`, with a 240-second timeout. It
+The post-merge hook is `scripts/post-merge.sh`, with a 480-second timeout. It
 verifies key files, rebuilds the search index, and checks the audit, structure,
 links, asset fingerprints, Python regressions, responsive browser behavior,
 and JavaScript smoke tests. A failed gate stops the hook. Review generated-file

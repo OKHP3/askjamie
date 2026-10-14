@@ -41,7 +41,7 @@ lens-system/          # Lens System hub — four purpose-built GPTs
 assets/
   css/theme.css        # Single stylesheet — GLOBAL → OKH → GLEE → ASKJAMIE tiers
   js/app.js            # Single JS file — analytics, search modal, nav, GA4 events
-  js/mermaid-init.js   # Mermaid v11 ESM init (universe page only)
+  js/mermaid-init.js   # Mermaid 12.2.0 ESM init (universe page only)
   data/search-index.json  # Pre-built search index (26 content pages)
   img/                 # Brand assets, avatars, case study images
   docs/                # Generated docs (audit reports, QA results, specs)
@@ -65,6 +65,14 @@ deliberate, reviewed step, never automatic. `scripts/validate-site.py`
 checks the VERSION pin matches the vendored bundle and that every page
 rendering a live diagram carries a CSP class that actually allows Mermaid's
 runtime-generated inline styles (see `scripts/csp.py`).
+
+The reviewed vendor pin is 12.2.0. Initialization explicitly retains the
+previous dagre layout, default/classic appearance and 200px flowchart label
+wrapping, with per-diagram front matter taking precedence. Mermaid 12 targets
+ES2024 and Safari 17.4+. Native page-map disclosures and links remain available
+when diagram rendering is unavailable. See the
+[compatibility review](assets/docs/mermaid-12-compatibility-2026-10-14.md) for
+provenance, browser checks and unverified coverage.
 
 ## Analytics and typography
 

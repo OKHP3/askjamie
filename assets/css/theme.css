@@ -7720,6 +7720,11 @@ html body.askjamie-main {
     letter-spacing: -0.04em;
   }
 
+  /* Preserve the BFS fallback heading's three lines when Baloo 2 loads. */
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 3lh;
+  }
+
   .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-subtitle {
     font-size: 1rem;
     letter-spacing: -0.04em;

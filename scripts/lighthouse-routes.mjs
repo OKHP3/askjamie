@@ -559,7 +559,14 @@ export function summarizePage({ report, path, baselinePage = {} }) {
     }
     return Math.round(value * 100);
   };
-  const lcpElement = audits["largest-contentful-paint-element"]?.details?.items?.[0]?.items?.[0]?.node;
+  const legacyLcpElement = audits["largest-contentful-paint-element"]?.details?.items?.[0]?.items?.[0]?.node;
+  const insightItems = audits["lcp-breakdown-insight"]?.details?.items;
+  const insightLcpElement = Array.isArray(insightItems)
+    ? insightItems.find((item) => item?.type === "node"
+      && typeof item.selector === "string" && item.selector.trim().length > 0)
+    : null;
+  const lcpElement = typeof legacyLcpElement?.selector === "string"
+    && legacyLcpElement.selector.trim().length > 0 ? legacyLcpElement : insightLcpElement;
   const lcpInvalidated = audits.metrics?.details?.items
     ?.find((item) => typeof item?.lcpInvalidated === "boolean")
     ?.lcpInvalidated ?? null;
@@ -575,7 +582,7 @@ export function summarizePage({ report, path, baselinePage = {} }) {
   if (!lcpElement?.selector) {
     unavailableMetrics.push({
       field: "lcpElement",
-      source: "audits.largest-contentful-paint-element.details.items[0].items[0].node.selector",
+      source: "audits.largest-contentful-paint-element.details.items[0].items[0].node.selector or audits.lcp-breakdown-insight.details.items[type=node].selector",
     });
   }
   const lcpMs = lcpValue === null ? null : Math.round(lcpValue);

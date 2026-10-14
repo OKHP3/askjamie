@@ -70,12 +70,12 @@
        STYLESHEETS & FONTS
        ======================================== -->
     <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
-    <!-- AUTOGEN:SHARED-ASSETS --><link rel="preload" href="/assets/css/theme.css?v=aa2f071c" as="style" />
+    <!-- AUTOGEN:SHARED-ASSETS --><link rel="preload" href="/assets/css/theme.css?v=ad5d022d" as="style" />
     <script>!function(){try{var s=localStorage.getItem("askjamie-color-scheme");document.documentElement.setAttribute("data-theme","light");if(s==="dark"||s==="light")document.documentElement.setAttribute("data-color-scheme",s);else document.documentElement.removeAttribute("data-color-scheme")}catch(e){document.documentElement.setAttribute("data-theme","light")}}();</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Open+Sans:wght@400;600&family=Kalam:wght@400&display=swap" />
-    <!-- AUTOGEN:SHARED-ASSETS --><link rel="stylesheet" href="/assets/css/theme.css?v=aa2f071c" />
+    <!-- AUTOGEN:SHARED-ASSETS --><link rel="stylesheet" href="/assets/css/theme.css?v=ad5d022d" />
 
       <!-- BreadcrumbList JSON-LD (v0.5) -->
     <script type="application/ld+json">
@@ -323,41 +323,27 @@
         </div>
       </section>
 
-      <!-- WHAT THIS SITE DEMONSTRATES -->
-      <section class="content-section container reveal-on-scroll">
+      <!-- HOW THIS SITE IS BUILT -->
+      <section class="content-section container reveal-on-scroll" aria-labelledby="site-build-heading">
         <header class="section-header">
-          <h2>What this site demonstrates</h2>
-          <p class="note">
-            This repository is itself a portfolio artifact — a proof of what
-            intentional, discipline-driven static-site development looks like in 2026.
-          </p>
+          <h2 id="site-build-heading">How this site is built</h2>
+          <p class="note">This site is a working portfolio. Its pages, release process and checks are available to inspect.</p>
         </header>
         <div class="grid grid-3">
           <article class="card">
-            <h3>Static-site discipline</h3>
-            <p>
-              Pure HTML/CSS/JS, zero build tools, zero frameworks. Every quality gate,
-              script, and audit convention is explicit, reproducible, and documented
-              in the repo.
-            </p>
+            <h3>Readable source, reviewed release</h3>
+            <p>Pages use HTML, shared CSS and browser JavaScript. GitHub Actions verifies the committed search index and page maps, checks the source, then publishes the validated release files to GitHub Pages. Private work and development tooling stay outside that release.</p>
           </article>
           <article class="card">
-            <h3>GPT portfolio packaging</h3>
-            <p>
-              Each Lens System page is a self-contained case study — structured for
-              both human readers and AI crawlers, with <code>llms.txt</code> as a
-              machine-readable entry point.
-            </p>
+            <h3>Checks with clear limits</h3>
+            <p>Browser checks cover responsive layouts, keyboard behavior and diagram fallbacks. A small post-publication sample compares served files with the release artifact. Repeated Lighthouse runs provide lab measurements; they do not represent every visitor's device or connection.</p>
           </article>
           <article class="card">
-            <h3>Agent-assisted build culture</h3>
-            <p>
-              Built and maintained with the Replit AI agent. The audit tooling,
-              responsive QA script, and site conventions were co-designed for
-              human-agent collaboration from the start.
-            </p>
+            <h3>Human-agent collaboration</h3>
+            <p>Replit, Claude and Codex help maintain the site through reviewed changes. Automated checks support that review. Human screen-reader speech and owner acceptance require their own evidence. The Lens System pages preserve case studies, with replacement availability stated separately.</p>
           </article>
         </div>
+        <p class="note"><a href="https://github.com/OKHP3/askjamie/blob/main/assets/docs/performance-review-2026-10-14.md" target="_blank" rel="noopener noreferrer">Read the measurement and validation record</a>.</p>
       </section>
 
       <!-- NEXT STEP CTA -->

@@ -96,6 +96,14 @@ All online requests are bounded. GitHub metadata uses the workflow's
 read-only token; it is not sent to registries. The auditor never installs
 code, rewrites a version, opens an issue, or changes GitHub settings.
 
+If an npm publisher assigns a prerelease version to its `latest` tag, the
+auditor retains that tag and queries the complete package metadata for the
+highest exact stable version. The report makes both observations explicit.
+That stable version may belong to an older release line and is not a
+compatible upgrade recommendation. A failed fallback lookup or absence of
+any stable release remains an evidence gap. Locked prerelease versions
+remain unresolved in the stable-only comparison.
+
 ## Initial upgrade queue
 
 1. **Restore local reproducibility.** Use the configured Node version in an
@@ -133,6 +141,15 @@ Each future version audit refreshes these candidates. The dates and versions
 above are a starting point, not permanent hard-coded requirements.
 
 ## Upgrade validation and recovery
+
+The October 14, 2026 compatibility matrix tests stable Python 3.15 alongside
+3.11 and 3.14. This is a candidate check, not a primary-runtime migration.
+Primary workflow selectors and the Replit module remain 3.11. A read-only
+Replit Free Mode inspection reported Python 3.11.14 and a provider module
+catalog whose highest Python entry was 3.13, with no 3.15 module or installed
+interpreter. Remote Nixpkgs coverage remains unknown. Track provider availability
+and migration acceptance in issue #95. Preserve the intentional audit alert
+until supported selector/module agreement and compatibility are established.
 
 `npm run check:stack` now routes to the offline technology contract check.
 It checks Node and Python configuration agreement with Replit as well as

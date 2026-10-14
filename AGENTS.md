@@ -16,7 +16,7 @@ boundaries. Never invent credentials or secrets.
 - Git repository: `OKHP3/AskJamie`, with `main` tracking `origin/main`.
 - Site origin: `https://askjamie.bot`.
 - Deployment model: source HTML remains at the repository root. GitHub Actions
-  refreshes the search index and universe maps, validates the source, prepares
+  verifies the committed search index and universe maps, validates the source, prepares
   an allowlisted release artifact, and deploys that exact artifact to GitHub
   Pages. There is no application compilation or server-side runtime.
 - No nested independent Git repository was found during the July 13, 2026
@@ -83,8 +83,12 @@ Out of scope unless explicitly requested:
 ### Confirmed architecture
 
 - Frontend: vanilla HTML5, CSS3 custom properties, and browser JavaScript.
-- Diagramming: Mermaid.js v11 is vendored locally under
+- Diagramming: Mermaid.js 12.2.0 is vendored locally under
   `assets/vendor/mermaid/` and imported by `universe/index.html`.
+  Initialization preserves dagre, default/classic appearance and 200px
+  flowchart label wrapping. Mermaid 12 requires ES2024 and Safari 17.4+;
+  native page-map links remain the fallback. Chromium checks do not establish
+  Firefox/WebKit or human screen-reader acceptance.
 - Typography: AskJamie pages load Baloo 2, Open Sans, and Kalam from the
   Google Fonts stylesheet declared in each page shell.
 - Search: zero-dependency client-side search in `assets/js/app.js`, backed by
