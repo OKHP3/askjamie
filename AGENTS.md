@@ -180,6 +180,14 @@ activating fonts at 320px and tablet widths. Theme and font activation evidence
 remain separate, with the existing 1px tolerance. Human spoken output remains
 incomplete.
 
+Universe QA measures the first expanded group's geometry before and after real
+web-font loading at 390px, 768px and 1280px, with SVG readiness and the existing
+1px tolerance. Browser checks also sample rendered label contrast across theme
+changes, horizontal panning at 320px in light mode, and every generated fallback
+link's local destination with Mermaid blocked. Native 200% browser zoom remains
+a separate incomplete acceptance check. Headless shortcuts, viewport resizing
+and CSS scaling do not establish native zoom or human spoken output.
+
 ### Agent skills
 
 The `.agents/skills/` directory holds Agent Skills for AI assistants. Not all

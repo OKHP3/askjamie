@@ -290,13 +290,6 @@ try {
   await usableLink.focus();
   assert.ok(await usableLink.evaluate(element => element === document.activeElement));
   await assertSvgLabelContrast(narrowGroup, "light at 320px");
-  const zoom = await browser.newPage({ viewport: { width: 390, height: 900 } });
-  await zoom.goto(`${base}/universe/`);
-  const zoomBefore = await zoom.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio }));
-  for (let i = 0; i < 5; i++) await zoom.keyboard.press("Control+Shift+Equal");
-  const zoomAfter = await zoom.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio }));
-  console.warn(`BLOCKED: native 200% browser zoom was not provided by this headless Chromium session; ` +
-    `no CSS/viewport simulation used. ${JSON.stringify({ zoomBefore, zoomAfter })}`);
   const keyboard = await browser.newPage();
   await keyboard.goto(`${base}/universe/`);
   await keyboard.locator(".universe-map-group summary").first().focus();

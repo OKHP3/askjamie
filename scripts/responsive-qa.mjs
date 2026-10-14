@@ -11,6 +11,7 @@
  *   - BrandGuard hero geometry stays stable when its deferred theme activates
  *   - BrandGuard hero geometry stays stable after its branded web fonts load
  *   - Universe diagram shell stays stable while its rendered SVG initializes
+ *   - The first expanded Universe page-map group stays stable after web fonts load
  *   - Universe caption and links remain usable when Mermaid fails or JavaScript is off
  *   - Every generated Universe page-map group keeps its caption and links usable when Mermaid is blocked
  *   - Every opened Universe page-map group keeps its shell and adjacent summaries stable across light/dark switches
@@ -25,8 +26,9 @@
  * Usage:
  *   node scripts/responsive-qa.mjs [--base=http://localhost:5000]
  *
- * Third-party resources are deliberately blocked in browser mode so the
- * result measures the local site, not CDN availability. Navigation therefore
+ * Third-party resources are blocked except for designated real-font checks,
+ * which retain observed font responses and fail when font loading is unavailable.
+ * Other checks measure the local site, not CDN availability. Navigation therefore
  * waits for the local document to commit, then gives DOMContentLoaded a short
  * bounded window. Blocked resources are retained as `warnings` in each row,
  * not silently treated as passes.
