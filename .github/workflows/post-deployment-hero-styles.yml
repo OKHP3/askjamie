@@ -1,0 +1,67 @@
+name: Post-deployment Hero Styles
+
+on:
+  workflow_run:
+    workflows: ["Site Validation"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-deployment-hero-styles
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify published BrandGuard and Universe hero styles
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out the deployment source revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+
+      - name: Install locked browser-test dependencies
+        run: |
+          npm ci --no-audit --no-fund --prefer-offline
+          npx playwright install --with-deps chromium
+
+      - name: Test route-specific evidence and failure handling
+        run: node --test tests/test_deployed_hero_styles.mjs
+
+      - name: Check published hero styles
+        id: check
+        run: node scripts/check-deployed-hero-styles.mjs --output=artifacts/deployed-hero-style-check
+
+      - name: Add route-specific receipt to the run summary
+        if: always()
+        run: |
+          if [ -f artifacts/deployed-hero-style-check/report.md ]; then
+            cat artifacts/deployed-hero-style-check/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The deployed hero-style check did not produce a report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Retain deployed hero-style evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployed-hero-style-check-${{ github.event.workflow_run.head_sha || github.sha }}
+          path: artifacts/deployed-hero-style-check/
+          if-no-files-found: warn
+          retention-days: 90
