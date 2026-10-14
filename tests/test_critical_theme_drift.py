@@ -252,6 +252,42 @@ def test_brandguard_case_study_390px_font_tracking_is_scoped_to_case_studies():
     ) in theme
 
 
+def test_brandguard_mobile_390_reserves_font_geometry_for_affected_routes():
+    theme = (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+    route_classes = {
+        "brandguard-case-lego": "lego",
+        "brandguard-case-costco": "costco",
+        "brandguard-case-discount-tire": "discount-tire",
+        "brandguard-case-hershey": "hershey",
+        "brandguard-case-mathews-archery": "mathews-archery",
+        "brandguard-case-scheels": "scheels",
+    }
+
+    for body_class, route in route_classes.items():
+        page = (
+            ROOT
+            / "lens-system/okhp3-brandguard"
+            / route
+            / "index.html"
+        ).read_text(encoding="utf-8")
+        assert f'<body class="askjamie-main {body_class}"' in page
+        assert f".askjamie-main.{body_class}" in theme
+
+    for selector, line_height in [
+        (".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle", "6lh"),
+        (".askjamie-main.coke-brandguard .site-header", "11.37rem"),
+        (".askjamie-main.brandguard-case-costco .site-header", "11.37rem"),
+        (".askjamie-main.brandguard-case-lego .askjamie-hero-copy h1", "3lh"),
+        (".askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-subtitle", "8lh"),
+        (".askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-tagline", "5lh"),
+        (".askjamie-main.brandguard-case-mathews-archery .askjamie-hero-copy .hero-subtitle", "7lh"),
+        (".askjamie-main.brandguard-case-scheels .askjamie-hero-copy .hero-subtitle", "7lh"),
+        (".askjamie-main.coke-brandguard .manifesto-blockquote", "3lh"),
+    ]:
+        assert selector in theme
+        assert line_height in theme
+
+
 def test_capability_transition_geometry_drift_is_reported(tmp_path):
     (tmp_path / "assets/css").mkdir(parents=True)
     critical = (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
