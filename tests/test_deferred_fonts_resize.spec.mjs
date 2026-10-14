@@ -74,6 +74,7 @@ async function openAt(path, width) {
       used.push({selector, primary, branded, faces: faces.map(face =>
         ({family: normalize(face.family), status: face.status}))});
     }
+    await document.fonts.ready;
     return {status: document.fonts.status, used};
   }, selectors);
   assert.equal(fonts.status, 'loaded', `${path} ${width}: font set unsettled`);
