@@ -17,6 +17,7 @@ cannot be mistaken for current pipeline commands.
 | `check-links.py` | active | Check internal and external links |
 | `prepare-pages-artifact.py` | active | Build the allowlisted static release artifact |
 | `check-deployed-pages.py` | active | Compare four served files with the exact deployed artifact and check three representative exclusions |
+| `check-deployed-hero-styles.mjs` | active | Check published BrandGuard and Universe critical CSS, computed hero styles, and route-specific browser failures |
 | `validate-site.py` | active | Structural site validation, including external-font-origin regression checks |
 | `check-critical-theme-drift.py` | active | Verify the first-viewport critical CSS contract against the shared AskJamie theme |
 | `sync-foundation-files.py` | active | 3-way sync of theme.css/app.js/mermaid-init.js across the three sibling repos |
@@ -77,6 +78,23 @@ analytics initialization in the existing dynamic-import order.
 The archived cache tool remains historical provenance only.
 
 ## Deployed Pages sample
+
+`post-deployment-hero-styles.yml` separately runs the Chromium hero-style
+checker after a successful main push completes Site Validation, or by manual
+dispatch. It checks the BrandGuard hub and Universe at 390 by 844 pixels,
+including the critical stylesheet response and attachment, selected computed
+styles, console/page errors, and local request failures or bad responses.
+The workflow retains JSON and Markdown evidence outside the public release.
+Its source revision records the triggering checkout, not a proven served
+revision. This two-route sample does not establish full-site behavior,
+performance, other browser engines, or actual screen-reader speech.
+
+The workflow runs `node --test tests/test_deployed_hero_styles.mjs` before the
+production check. These browser fixtures cover passing styles and injected
+route-specific failures. For a deliberate local checker run, provide `--output`
+with the project's approved private evidence directory; do not retain its
+default output inside the source checkout. The existing PR validation workflow
+does not run this new fixture test.
 
 After a successful Pages action, Site Validation runs `check-deployed-pages.py`
 against the downloaded commit-named artifact, without rebuilding it. The probe

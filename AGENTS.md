@@ -351,6 +351,17 @@ public artifact even on probe failure. This finite sample does not identify a
 remote revision or establish complete route, exclusion, behavior or performance
 coverage. A failed post-deployment probe does not undo the successful Pages action.
 
+`post-deployment-hero-styles.yml` separately follows a successful main push's
+Site Validation run, or manual dispatch. It runs Chromium fixtures and checks
+the published BrandGuard hub and Universe at 390 by 844 pixels for the critical
+stylesheet response, selected computed hero styles, and route-specific browser
+failures. It retains JSON and Markdown receipts outside the public artifact.
+The triggering source revision is not a served-revision identity. This finite
+two-route check does not establish complete behavior, performance, other
+browser engines, or human spoken output. For local use of
+`scripts/check-deployed-hero-styles.mjs`, set `--output` to the approved private
+evidence home. See `scripts/README.md` for the fixture command and scope.
+
 `hosted-js-smoke.yml` and `public-gpt-links.yml` provide separate scheduled
 hosted and outbound checks with retained reports. Their presence does not
 prove the most recent run passed. `.replit` still declares `publicDir = "."`
