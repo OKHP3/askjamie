@@ -234,8 +234,13 @@ function loadMermaid() {
       ({ default: mermaid }) => {
         mermaid.initialize({
           startOnLoad: false,
+          // Preserve the previous defaults across the Mermaid 12 upgrade.
+          // A diagram's explicit front matter still overrides these values.
+          layout: "dagre",
+          theme: "default",
+          look: "classic",
           securityLevel: usesClickableLinks ? "loose" : "strict",
-          flowchart: { curve: "basis", nodeSpacing: 55, rankSpacing: 65, htmlLabels: true },
+          flowchart: { curve: "basis", nodeSpacing: 55, rankSpacing: 65, htmlLabels: true, wrappingWidth: 200 },
         });
         return mermaid;
       }

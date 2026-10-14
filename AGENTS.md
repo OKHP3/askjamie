@@ -83,8 +83,12 @@ Out of scope unless explicitly requested:
 ### Confirmed architecture
 
 - Frontend: vanilla HTML5, CSS3 custom properties, and browser JavaScript.
-- Diagramming: Mermaid.js v11 is vendored locally under
+- Diagramming: Mermaid.js 12.2.0 is vendored locally under
   `assets/vendor/mermaid/` and imported by `universe/index.html`.
+  Initialization preserves dagre, default/classic appearance and 200px
+  flowchart label wrapping. Mermaid 12 requires ES2024 and Safari 17.4+;
+  native page-map links remain the fallback. Chromium checks do not establish
+  Firefox/WebKit or human screen-reader acceptance.
 - Typography: AskJamie pages load Baloo 2, Open Sans, and Kalam from the
   Google Fonts stylesheet declared in each page shell.
 - Search: zero-dependency client-side search in `assets/js/app.js`, backed by
