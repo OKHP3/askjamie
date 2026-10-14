@@ -383,6 +383,7 @@ def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_w
     )
     assert font_viewports
     assert set(re.findall(r"'([^']+)'", font_viewports.group(1))) == {
+        "mobile-320",
         "mobile-360",
         "mobile-390",
         "tablet-768",
@@ -413,6 +414,7 @@ def test_deferred_font_script_reserves_brandguard_tablet_geometry_before_activat
     assert 'classList.contains("askjamie-main")' in source
     assert 'document.querySelector(".askjamie-breadcrumb")' in source
     assert '".site-header .container"' in source
+    assert '".site-specials"' in source
     assert '".capability-transition > *"' in source
     assert '".askjamie-hero-copy > *"' in source
     assert 'element.style.minHeight = `${Math.ceil(height * 100) / 100}px`' in source
@@ -421,12 +423,12 @@ def test_deferred_font_script_reserves_brandguard_tablet_geometry_before_activat
     assert 'document.querySelector("link[data-brandguard-tablet-fonts]")' in source
     assert 'tabletFontStylesheet.media = "all"' in source
     qa_source = (ROOT / "scripts/responsive-qa.mjs").read_text(encoding="utf-8")
-    assert "tablet geometry was not reserved " in qa_source
+    assert "responsive geometry was not reserved " in qa_source
     assert source.index("fontGeometryReserved") < source.index("const enableAfterLoad")
     case_pages = sorted((ROOT / "lens-system/okhp3-brandguard").glob("*/index.html"))
     assert len(case_pages) == 13
     assert all(
-        'media="(max-width: 767px), (min-width: 900px)" data-brandguard-tablet-fonts'
+        'media="(max-width: 319px), (min-width: 321px) and (max-width: 767px), (min-width: 900px)" data-brandguard-tablet-fonts'
         in page.read_text(encoding="utf-8")
         for page in case_pages
     )

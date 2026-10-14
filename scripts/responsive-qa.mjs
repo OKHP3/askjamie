@@ -114,6 +114,7 @@ const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
   'tablet-900-edge',
 ]);
 const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-320',
   'mobile-360',
   'mobile-390',
   'tablet-768',
@@ -1209,13 +1210,12 @@ async function checkBrandGuardHeroGeometry(page, releaseThemeStyles = () => {}) 
 
 async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontResponses) {
   const errors = [];
-  const tabletReservationRequired = await page.evaluate(() =>
-    window.innerWidth >= 768 &&
-    window.innerWidth <= 899 &&
+  const reservationRequired = await page.evaluate(() =>
+    (window.innerWidth === 320 || (window.innerWidth >= 768 && window.innerWidth <= 899)) &&
     document.body?.classList.contains('askjamie-main') &&
     Boolean(document.querySelector('.askjamie-breadcrumb'))
   );
-  if (tabletReservationRequired) {
+  if (reservationRequired) {
     try {
       await page.waitForFunction(
         () => Boolean(document.querySelector('[data-font-geometry-reserved="true"]')),
@@ -1225,7 +1225,7 @@ async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontRes
     } catch (error) {
       releaseFontRequests();
       errors.push(
-        `BRANDGUARD WEB FONT BASELINE UNAVAILABLE: tablet geometry was not reserved ` +
+        `BRANDGUARD WEB FONT BASELINE UNAVAILABLE: responsive geometry was not reserved ` +
         `before font measurement (${error.message.split('\n')[0]}); font geometry was not compared`
       );
       return {
