@@ -398,6 +398,47 @@ def test_responsive_qa_checks_brandguard_content_at_320px_from_sitemap_routes():
     assert "brandguard_320_content" in source
 
 
+def test_responsive_qa_checks_brandguard_font_geometry_at_350_and_370_edges():
+    import re
+
+    source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
+    assert "{ name: 'mobile-350-edge', width: 350, height: 780 }" in source
+    assert "{ name: 'mobile-370-edge', width: 370, height: 780 }" in source
+    assert "BRANDGUARD_FONT_EDGE_GEOMETRY_PATHS = new Set([" in source
+    assert "'/lens-system/okhp3-brandguard/'" in source
+    assert "'/lens-system/okhp3-brandguard/lvmh/'" in source
+    assert "'/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/'" in source
+    edge_viewports = re.search(
+        r"const BRANDGUARD_FONT_EDGE_GEOMETRY_VIEWPORTS = new Set\(\[(.*?)\]\);",
+        source,
+        re.DOTALL,
+    )
+    assert edge_viewports
+    assert set(re.findall(r"'([^']+)'", edge_viewports.group(1))) == {
+        "mobile-350-edge",
+        "mobile-370-edge",
+    }
+    assert "BRANDGUARD_FONT_EDGE_GEOMETRY_PATHS.has(path)" in source
+    assert "BRANDGUARD_FONT_EDGE_GEOMETRY_VIEWPORTS.has(vp.name)" in source
+    assert "BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1" in source
+
+
+def test_brandguard_font_reservations_are_scoped_to_measured_edge_widths():
+    theme = (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+
+    assert "@media (min-width: 350px) and (max-width: 355px)" in theme
+    assert "@media (min-width: 365px) and (max-width: 370px)" in theme
+    assert (
+        ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1,\n"
+        "  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {\n"
+        "    min-height: 4lh;"
+    ) in theme
+    assert ".askjamie-main.brandguard-lvmh-page .askjamie-hero-copy h1" in theme
+    assert ".askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1" in theme
+    assert ".askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2)" in theme
+    assert ".askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2)" in theme
+
+
 def test_responsive_qa_measures_brandguard_geometry_after_branded_fonts_load():
     source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
 
