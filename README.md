@@ -66,6 +66,14 @@ checks the VERSION pin matches the vendored bundle and that every page
 rendering a live diagram carries a CSP class that actually allows Mermaid's
 runtime-generated inline styles (see `scripts/csp.py`).
 
+The reviewed vendor pin is 12.2.0. Initialization explicitly retains the
+previous dagre layout, default/classic appearance and 200px flowchart label
+wrapping, with per-diagram front matter taking precedence. Mermaid 12 targets
+ES2024 and Safari 17.4+. Native page-map disclosures and links remain available
+when diagram rendering is unavailable. See the
+[compatibility review](assets/docs/mermaid-12-compatibility-2026-10-14.md) for
+provenance, browser checks and unverified coverage.
+
 ## Analytics and typography
 
 GA4 is intentionally loaded unconditionally from each public page shell with
