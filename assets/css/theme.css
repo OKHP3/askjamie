@@ -7735,8 +7735,7 @@ html body.askjamie-main {
 
   .askjamie-main.brandguard-case-lego .askjamie-hero-copy .hero-subtitle,
   .askjamie-main.brandguard-starbucks .askjamie-hero-copy .hero-subtitle,
-  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-subtitle,
-  .askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-subtitle {
+  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-subtitle {
     min-height: 6lh;
   }
 
@@ -7759,12 +7758,6 @@ html body.askjamie-main {
 
   .askjamie-main.coke-brandguard .manifesto-blockquote {
     min-height: 3lh;
-  }
-}
-
-@media (min-width: 381px) and (max-width: 400px) {
-  .askjamie-main.brandguard-case-costco .askjamie-hero-copy h1 {
-    min-height: 2lh;
   }
 }
 

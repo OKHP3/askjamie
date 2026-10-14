@@ -252,40 +252,32 @@ def test_brandguard_case_study_390px_font_tracking_is_scoped_to_case_studies():
     ) in theme
 
 
-def test_brandguard_mobile_390_reserves_font_geometry_for_affected_routes():
-    theme = (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
-    route_classes = {
-        "brandguard-case-lego": "lego",
-        "brandguard-case-costco": "costco",
-        "brandguard-case-discount-tire": "discount-tire",
-        "brandguard-case-hershey": "hershey",
-        "brandguard-case-mathews-archery": "mathews-archery",
-        "brandguard-case-scheels": "scheels",
+def test_responsive_qa_includes_new_brandguard_routes_at_390_without_expanding_360():
+    import json
+    import subprocess
+
+    script = r"""
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync('scripts/responsive-qa.mjs', 'utf8');
+const config = source.slice(source.indexOf('const BRANDGUARD_GEOMETRY_PATH ='),
+  source.indexOf('const BRANDGUARD_NARROW_CONTENT_VIEWPORT ='));
+const predicate = source.match(/const checkBrandGuardFonts = [\s\S]*?;/)[0];
+const routes = ['/lens-system/okhp3-brandguard/',
+  '/lens-system/okhp3-brandguard/lvmh/',
+  '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
+  '/lens-system/okhp3-brandguard/new-case/', '/about/'];
+console.log(JSON.stringify(Object.fromEntries(['mobile-390', 'mobile-360', 'tablet-768'].map(name =>
+  [name, routes.map(path => vm.runInNewContext(config + '\n' + predicate + '\ncheckBrandGuardFonts',
+    {PUBLIC_PATHS: routes, path, vp: {name}}))]))));
+"""
+    result = subprocess.run(['node', '-e', script], cwd=ROOT, text=True,
+                            capture_output=True, check=True)
+    assert json.loads(result.stdout) == {
+        'mobile-390': [True, True, True, True, False],
+        'mobile-360': [True, True, True, False, False],
+        'tablet-768': [False, False, False, False, False],
     }
-
-    for body_class, route in route_classes.items():
-        page = (
-            ROOT
-            / "lens-system/okhp3-brandguard"
-            / route
-            / "index.html"
-        ).read_text(encoding="utf-8")
-        assert f'<body class="askjamie-main {body_class}"' in page
-        assert f".askjamie-main.{body_class}" in theme
-
-    for selector, line_height in [
-        (".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle", "6lh"),
-        (".askjamie-main.coke-brandguard .site-header", "11.37rem"),
-        (".askjamie-main.brandguard-case-costco .site-header", "11.37rem"),
-        (".askjamie-main.brandguard-case-lego .askjamie-hero-copy h1", "3lh"),
-        (".askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-subtitle", "8lh"),
-        (".askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-tagline", "5lh"),
-        (".askjamie-main.brandguard-case-mathews-archery .askjamie-hero-copy .hero-subtitle", "7lh"),
-        (".askjamie-main.brandguard-case-scheels .askjamie-hero-copy .hero-subtitle", "7lh"),
-        (".askjamie-main.coke-brandguard .manifesto-blockquote", "3lh"),
-    ]:
-        assert selector in theme
-        assert line_height in theme
 
 
 def test_capability_transition_geometry_drift_is_reported(tmp_path):
