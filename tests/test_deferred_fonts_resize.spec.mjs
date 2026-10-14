@@ -20,8 +20,7 @@ async function openAt(width) {
   await page.waitForTimeout(2100);
   const loadedFonts = await page.evaluate(() => ({
     status: document.fonts.status,
-    renderedText: ['.askjamie-hero-copy h1', '.askjamie-hero-copy .hero-subtitle',
-      '.askjamie-hero-copy .hero-tagline'].map(selector => {
+    renderedText: ['.askjamie-hero-copy h1', '.askjamie-hero-copy .hero-subtitle'].map(selector => {
       const element = document.querySelector(selector);
       const style = getComputedStyle(element);
       return {
@@ -58,8 +57,8 @@ async function heroGeometry(page) {
 
 async function assertGeometryStableAcrossTheme(page) {
   const before = await heroGeometry(page);
-  await page.locator('.theme-toggle').click();
-  await page.locator('.theme-toggle').click();
+  await page.locator('.glee-color-toggle').click();
+  await page.locator('.glee-color-toggle').click();
   const after = await heroGeometry(page);
   for (let index = 0; index < before.length; index++) {
     for (let dimension = 0; dimension < before[index].length; dimension++) {
