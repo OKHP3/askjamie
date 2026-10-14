@@ -597,8 +597,7 @@ body.askjamie-main a {
 
 }
 
-/* At 390px, small tracking adjustments keep the fallback and deferred fonts
-   on the same line counts without leaving reserved blank space in the copy. */
+/* Keep the hub's font reservation present before and after deferred theme activation. */
 @media (min-width: 381px) and (max-width: 400px) {
   .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2) {
     letter-spacing: -0.005em;
@@ -609,6 +608,7 @@ body.askjamie-main a {
   }
 
   .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
     letter-spacing: -0.04em;
   }
 

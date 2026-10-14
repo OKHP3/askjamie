@@ -208,8 +208,8 @@ CONTRACTS = (
         "BrandGuard mobile subtitle fallback wrapping",
         ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle",
         (".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle",),
-        ("letter-spacing",),
-        ("letter-spacing",),
+        ("letter-spacing", "min-height"),
+        ("letter-spacing", "min-height"),
     ),
     Contract(
         "BrandGuard mobile tagline fallback wrapping",
