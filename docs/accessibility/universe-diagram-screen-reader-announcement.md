@@ -1,9 +1,9 @@
 # Universe diagram failure announcement check
 
 **Status:** Deferred. Human screen-reader acceptance check remains required.
-**Updated:** 2026-10-13
+**Updated:** 2026-10-14
 
-## Verified automated behavior
+## Historical Replit automated evidence
 
 - Replit task #230 rerun: 2026-10-13 19:22:43 to 19:22:56 UTC.
 - Browser pair used in that isolated task checkout: Playwright 1.60.0 with Chromium
@@ -34,6 +34,22 @@ CI checks use the current lockfile and matching Chromium. Those results must
 be read for the exact PR head before claiming candidate compatibility. Browser
 semantics and keyboard checks still do not establish actual spoken output.
 
+## Current Mac consolidation evidence
+
+The candidate now includes checked main
+`292bc34f1d8971d6841d40635c9e7de655cce777`, preserving the original task history
+through ordinary merges. The only content conflict was the module fingerprint;
+the cache-bust generator resolved it from the combined initializer. Mermaid
+12.2.0 configuration, Mac shortcut/BFS fixes and the verified release-input
+wording remain present.
+
+Local checks on the combined code use Playwright 1.64.0 and Chromium
+156.0.8078.4. JavaScript smoke (including forced module/render failure, focus
+retention and the three map links), all six Universe diagrams at two widths
+and both themes, and all 270 responsive rows pass. Structure, fingerprints,
+CSP and generated freshness pass. Exact-head CI and the pinned preview revision
+are recorded in PR #90. These checks still do not establish actual speech.
+
 ## Required human check. Not performed
 
 No actual screen-reader speech test has been performed or supplied. The reader,
@@ -42,9 +58,11 @@ browser, and spoken result are **not tested**; polite speech announcement is
 
 ## Short human procedure
 
-1. On a Windows machine with NVDA and Google Chrome, start the existing `Start
-   application` workflow and open `/universe/`. Record the NVDA, Chrome, and
-   Windows versions.
+1. Use the exact current PR #90 candidate or its pinned Mac preview, rather
+   than published main or an older task server. Record the source revision.
+   On Mac, use VoiceOver with the chosen browser and record both versions plus
+   macOS. On Windows, use NVDA and Chrome and record their versions plus
+   Windows. A preview does not imply a tested spoken result.
 2. In DevTools → Network request blocking, block `*mermaid.esm.min.mjs*`, then
    reload the page to force the Mermaid module load failure.
 3. Listen for the exact unavailable-diagram message below. Confirm focus is not
