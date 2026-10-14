@@ -25,6 +25,9 @@ async function capture(page, name) {
 try {
   const { context, page } = await pageFor({ viewport: { width: 1280, height: 900 } });
   await page.goto(base);
+  const isMac = await page.evaluate(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform));
+  const searchShortcut = isMac ? 'Meta+k' : 'Control+k';
+  const searchLabel = isMac ? 'Open search (⌘K)' : 'Open search (Ctrl+K)';
   const dialog = page.locator('[data-transition-dialog]');
   await dialog.waitFor({ state: 'visible' });
   assert.equal(await page.locator('[data-transition-dismiss]').evaluate(el => document.activeElement === el), true);
@@ -32,7 +35,7 @@ try {
   assert.equal(await page.getByRole('link', { name: 'What is changing', exact: true }).last().evaluate(el => document.activeElement === el), true);
   await page.keyboard.press('Shift+Tab');
   assert.equal(await page.locator('[data-transition-dismiss]').evaluate(el => document.activeElement === el), true);
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press(searchShortcut);
   assert.notEqual(await page.locator('.okh-search-overlay').getAttribute('data-open'), 'true');
   await capture(page, 'homepage-dialog-desktop');
   await page.keyboard.press('Escape');
@@ -45,7 +48,7 @@ try {
   await page.locator('[data-transition-open]').click();
   await dialog.waitFor({ state: 'visible' });
   await page.locator('[data-transition-dismiss]').click();
-  await page.getByRole('button', { name: 'Open search (Ctrl+K)', exact: true }).click();
+  await page.getByRole('button', { name: searchLabel, exact: true }).click();
   await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('retirement');
   await page.locator('.okh-search-result[href="/whats-next/"]').waitFor();
   await page.getByRole('button', { name: 'Close search', exact: true }).click();
