@@ -142,6 +142,15 @@ above are a starting point, not permanent hard-coded requirements.
 
 ## Upgrade validation and recovery
 
+The October 14, 2026 compatibility matrix tests stable Python 3.15 alongside
+3.11 and 3.14. This is a candidate check, not a primary-runtime migration.
+Primary workflow selectors and the Replit module remain 3.11. A read-only
+Replit Free Mode inspection reported Python 3.11.14 and a provider module
+catalog whose highest Python entry was 3.13, with no 3.15 module or installed
+interpreter. Remote Nixpkgs coverage remains unknown. Track provider availability
+and migration acceptance in issue #95. Preserve the intentional audit alert
+until supported selector/module agreement and compatibility are established.
+
 `npm run check:stack` now routes to the offline technology contract check.
 It checks Node and Python configuration agreement with Replit as well as
 the package/lockfile pair and Python CI input. This checks configuration,
