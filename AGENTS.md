@@ -165,6 +165,13 @@ Universe checks cover generated map geometry, color-scheme changes, blocked
 Mermaid, and no-JavaScript navigation. These checks do not establish human
 screen-reader spoken output or Firefox/WebKit compatibility.
 
+The October 14, 2026 BrandGuard font-stability integration adds 350px and
+370px edge viewports for 324 route/viewport rows. Real-font checks cover all
+14 sitemap-listed BrandGuard routes at 360px and 390px, plus the hub and
+representative short and long case studies at 350px and 370px. The four
+measurements, loaded-face evidence and 1px tolerance remain unchanged. This
+coverage does not establish other widths, engines or human spoken output.
+
 ### Agent skills
 
 The `.agents/skills/` directory holds Agent Skills for AI assistants. Not all
