@@ -96,6 +96,14 @@ All online requests are bounded. GitHub metadata uses the workflow's
 read-only token; it is not sent to registries. The auditor never installs
 code, rewrites a version, opens an issue, or changes GitHub settings.
 
+If an npm publisher assigns a prerelease version to its `latest` tag, the
+auditor retains that tag and queries the complete package metadata for the
+highest exact stable version. The report makes both observations explicit.
+That stable version may belong to an older release line and is not a
+compatible upgrade recommendation. A failed fallback lookup or absence of
+any stable release remains an evidence gap. Locked prerelease versions
+remain unresolved in the stable-only comparison.
+
 ## Initial upgrade queue
 
 1. **Restore local reproducibility.** Use the configured Node version in an
