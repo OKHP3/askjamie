@@ -83,8 +83,11 @@ def test_brandguard_breadcrumb_typography_and_vertical_rhythm_match():
 
 
 def test_brandguard_tablet_critical_shell_matches_theme_layout_contracts():
+    import re
+
+    critical_source = (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
     critical = drift.parse_rules(
-        (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")
+        critical_source
     )
     theme = drift.parse_rules(
         (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
@@ -129,6 +132,18 @@ def test_brandguard_tablet_critical_shell_matches_theme_layout_contracts():
     for property_name, expected in toggle_properties.items():
         assert drift._last_value(critical, toggle_selector, property_name) == expected
         assert drift._last_value(theme, ".glee-color-toggle", property_name) == expected
+
+    desktop_nav = re.search(
+        r"@media \(min-width: 769px\)\s*\{(.*?)(?=\n@media|\Z)",
+        critical_source,
+        re.DOTALL,
+    )
+    assert desktop_nav
+    assert re.search(
+        r"\.askjamie-main \.primary-nav ul\s*\{[^}]*flex-wrap:\s*wrap;",
+        desktop_nav.group(1),
+        re.DOTALL,
+    )
 
 
 def test_brandguard_390px_font_tracking_keeps_fallback_line_counts():
@@ -352,9 +367,13 @@ def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_w
     assert "'mobile-390'" in source
     assert "'mobile-430'" in source
     assert "'tablet-768'" in source
+    assert "'tablet-769-edge'" in source
     assert "'tablet-899'" in source
+    assert "'tablet-900-edge'" in source
     assert "{ name: 'tablet-768',   width: 768,  height: 1024 }" in source
+    assert "{ name: 'tablet-769-edge', width: 769, height: 1024 }" in source
     assert "{ name: 'tablet-899',   width: 899,  height: 1024 }" in source
+    assert "{ name: 'tablet-900-edge', width: 900, height: 1024 }" in source
     assert "BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)" in source
     assert "{ name: 'mobile-320',   width: 320,  height: 740  }" in source
     font_viewports = re.search(
@@ -370,6 +389,8 @@ def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_w
     assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name)" in source
     assert "link[data-deferred-styles]" in source
     assert "BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1" in source
+    assert "brandGuardThemeGate.then(() => route.continue())" in source
+    assert "stylesheet attached before capture" in source
     assert "'.askjamie-main .askjamie-breadcrumb'" in source
     assert "'.askjamie-main .askjamie-hero-copy h1'" in source
     assert "'.askjamie-main .askjamie-hero-copy .hero-subtitle'" in source

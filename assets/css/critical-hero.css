@@ -480,6 +480,7 @@ body.askjamie-main a {
 
   .askjamie-main .primary-nav ul {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     gap: 1.25rem;
     padding: 0;
