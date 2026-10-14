@@ -89,11 +89,11 @@ const RESULTS_DIR    = resolve(ROOT, 'assets/audit/responsive-qa');
 const RESULTS_FILE   = resolve(RESULTS_DIR, 'results.json');
 const SCREENSHOTS_DIR = resolve(RESULTS_DIR, 'screenshots');
 const BRANDGUARD_GEOMETRY_PATH = '/lens-system/okhp3-brandguard/';
-const BRANDGUARD_FONT_GEOMETRY_PATHS = new Set([
-  BRANDGUARD_GEOMETRY_PATH,
-  '/lens-system/okhp3-brandguard/lvmh/',
-  '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
-]);
+// Use the sitemap as the route inventory so each published BrandGuard
+// case-study receives the same before/after branded-font measurements.
+const BRANDGUARD_FONT_GEOMETRY_PATHS = new Set(
+  PUBLIC_PATHS.filter(path => path.startsWith(BRANDGUARD_GEOMETRY_PATH))
+);
 const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
   'mobile-320',
   'mobile-360',
