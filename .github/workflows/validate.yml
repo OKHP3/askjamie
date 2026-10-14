@@ -122,6 +122,7 @@ jobs:
           node tests/test_js_smoke.spec.mjs
           node tests/test_gpt_transition.spec.mjs
           node tests/test_foundry_reflow.spec.mjs
+          node tests/test_deferred_fonts_resize.spec.mjs
           node tests/test_universe_map.spec.mjs
           node scripts/experience-qa.cjs
 

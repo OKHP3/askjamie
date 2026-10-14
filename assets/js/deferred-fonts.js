@@ -7,12 +7,15 @@ const deferredStyles = document.querySelectorAll("link[data-deferred-styles]");
 // Preserve the critical-font geometry of BrandGuard tablet pages before the
 // theme and web-font styles activate. This reserves each page's own rendered
 // line count instead of imposing fixed heights across different case studies.
+const brandGuardReservationWidth = window.innerWidth;
 const needsBrandGuardFontReservation =
   (window.innerWidth === 320 || (window.innerWidth >= 768 && window.innerWidth <= 899)) &&
   document.body?.classList.contains("askjamie-main") &&
   document.querySelector(".askjamie-breadcrumb");
 
 const reserveBrandGuardTabletGeometry = () => {
+  // A delayed stylesheet callback must not stamp measurements for an old width.
+  if (window.innerWidth !== brandGuardReservationWidth) return;
   const selectors = [
     ".site-header .container",
     ".site-specials",
@@ -56,13 +59,10 @@ if (needsBrandGuardFontReservation) {
   }
 }
 
-// These inline fallback reservations are only useful at the widths where they
-// were measured. Remove them when a resized page leaves those ranges so a
-// narrow initial viewport cannot leave oversized blocks on desktop.
+// Each reservation belongs to its measured width, including widths inside the
+// tablet range. Height-only viewport changes do not invalidate that measurement.
 window.addEventListener("resize", () => {
-  const remainsInReservationRange =
-    window.innerWidth === 320 || (window.innerWidth >= 768 && window.innerWidth <= 899);
-  if (remainsInReservationRange) return;
+  if (window.innerWidth === brandGuardReservationWidth) return;
 
   document.querySelectorAll('[data-font-geometry-reserved="true"]').forEach((element) => {
     element.style.removeProperty("min-height");

@@ -180,6 +180,13 @@ activating fonts at 320px and tablet widths. Theme and font activation evidence
 remain separate, with the existing 1px tolerance. Human spoken output remains
 incomplete.
 
+Fallback height reservations are released when the viewport width changes,
+including changes within the tablet range. Height-only changes retain them.
+The browser resize regression covers the BrandGuard hub and the shortest and
+longest case studies from initial 320px, 899px and 1440px widths, with separate
+light, dark and automatic scheme measurements. This does not establish native
+browser zoom or human spoken output.
+
 Universe browser checks sample rendered label contrast across theme changes,
 horizontal panning at 320px in light mode, and every generated fallback link's
 local destination with Mermaid blocked. Real-font geometry remains a separate
