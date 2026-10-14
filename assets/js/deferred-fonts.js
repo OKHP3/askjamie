@@ -7,15 +7,15 @@ const deferredStyles = document.querySelectorAll("link[data-deferred-styles]");
 // Preserve the critical-font geometry of BrandGuard tablet pages before the
 // theme and web-font styles activate. This reserves each page's own rendered
 // line count instead of imposing fixed heights across different case studies.
-const isBrandGuardTablet =
-  window.innerWidth >= 768 &&
-  window.innerWidth <= 899 &&
+const needsBrandGuardFontReservation =
+  (window.innerWidth === 320 || (window.innerWidth >= 768 && window.innerWidth <= 899)) &&
   document.body?.classList.contains("askjamie-main") &&
   document.querySelector(".askjamie-breadcrumb");
 
 const reserveBrandGuardTabletGeometry = () => {
   const selectors = [
     ".site-header .container",
+    ".site-specials",
     ".capability-transition > *",
     ".askjamie-breadcrumb",
     ".askjamie-hero-copy > *",
@@ -31,7 +31,7 @@ const reserveBrandGuardTabletGeometry = () => {
   });
 };
 
-if (isBrandGuardTablet) {
+if (needsBrandGuardFontReservation) {
   const deferredThemeLink = document.querySelector("link[data-deferred-styles]");
   if (deferredThemeLink) {
     reserveBrandGuardTabletGeometry();
