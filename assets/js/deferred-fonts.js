@@ -56,6 +56,20 @@ if (needsBrandGuardFontReservation) {
   }
 }
 
+// These inline fallback reservations are only useful at the widths where they
+// were measured. Remove them when a resized page leaves those ranges so a
+// narrow initial viewport cannot leave oversized blocks on desktop.
+window.addEventListener("resize", () => {
+  const remainsInReservationRange =
+    window.innerWidth === 320 || (window.innerWidth >= 768 && window.innerWidth <= 899);
+  if (remainsInReservationRange) return;
+
+  document.querySelectorAll('[data-font-geometry-reserved="true"]').forEach((element) => {
+    element.style.removeProperty("min-height");
+    delete element.dataset.fontGeometryReserved;
+  });
+}, { passive: true });
+
 if (deferredFonts.length || deferredStyles.length) {
   const enableDeferredStyles = () => {
     deferredFonts.forEach((link) => {
