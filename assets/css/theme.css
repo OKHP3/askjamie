@@ -7716,6 +7716,7 @@ html body.askjamie-main {
   }
 
   .askjamie-main.coke-brandguard .site-header,
+  .askjamie-main.brandguard-case-dollar-general .site-header,
   .askjamie-main.brandguard-case-costco .site-header {
     min-height: 11.37rem;
   }
@@ -7754,6 +7755,15 @@ html body.askjamie-main {
 
   .askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-tagline {
     min-height: 5lh;
+  }
+
+  .askjamie-main.brandguard-case-brooks-running .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.brandguard-case-ping .askjamie-hero-copy .hero-tagline {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-case-mathews-archery .askjamie-hero-copy .hero-tagline {
+    min-height: 3lh;
   }
 
   .askjamie-main.coke-brandguard .manifesto-blockquote {
