@@ -166,32 +166,36 @@ try {
       }
 
       const switchIndex = Math.min(1, (await groups.count()) - 1);
-      const switchGroup = groups.nth(switchIndex);
+      const switchPage = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
+      await switchPage.addInitScript(value => localStorage.setItem("askjamie-color-scheme", value), theme);
+      await switchPage.goto(`${base}/universe/`);
+      const switchGroups = switchPage.locator(".universe-map-group");
+      const switchGroup = switchGroups.nth(switchIndex);
       await switchGroup.locator("summary").click();
       await switchGroup.locator("svg .node").first().waitFor({ timeout: 20000 });
-      const layoutBeforeSwitch = await captureGroupLayout(page, switchIndex);
-      const groupCount = await groups.count();
+      const layoutBeforeSwitch = await captureGroupLayout(switchPage, switchIndex);
+      const groupCount = await switchGroups.count();
       const originalSvg = await switchGroup.locator("svg").evaluate(svg => {
         window.__universeQaOriginalSvg = svg;
         return true;
       });
       const beforeReadability = await assertSvgLabelContrast(switchGroup, theme);
-      const toggle = page.locator(".askjamie-main .glee-color-toggle");
+      const toggle = switchPage.locator(".askjamie-main .glee-color-toggle");
       assert.equal(await toggle.getAttribute("data-state"), theme);
       const nextTheme = theme === "dark" ? "light" : "dark";
       const clicksToNextTheme = theme === "dark" ? 2 : 1;
       for (let click = 0; click < clicksToNextTheme; click += 1) {
         await toggle.click();
       }
-      await page.waitForFunction(expected =>
+      await switchPage.waitForFunction(expected =>
         document.documentElement.getAttribute("data-color-scheme") === expected, nextTheme);
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
+      await switchPage.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
         requestAnimationFrame(resolve)
       )));
-      const layoutAfterSwitch = await captureGroupLayout(page, switchIndex);
+      const layoutAfterSwitch = await captureGroupLayout(switchPage, switchIndex);
       assertGroupLayoutStable(layoutBeforeSwitch, layoutAfterSwitch, switchIndex, groupCount, nextTheme);
       const afterReadability = await assertSvgLabelContrast(switchGroup, nextTheme);
-      assert.equal(await page.evaluate(() =>
+      assert.equal(await switchPage.evaluate(() =>
         window.__universeQaOriginalSvg === document.querySelector(
           ".universe-map-generated .universe-map-group:nth-of-type(2) svg"
         )
@@ -201,12 +205,12 @@ try {
       for (let click = 0; click < clicksToReturn; click += 1) {
         await toggle.click();
       }
-      await page.waitForFunction(expected =>
+      await switchPage.waitForFunction(expected =>
         document.documentElement.getAttribute("data-color-scheme") === expected, theme);
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
+      await switchPage.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
         requestAnimationFrame(resolve)
       )));
-      const layoutAfterReturn = await captureGroupLayout(page, switchIndex);
+      const layoutAfterReturn = await captureGroupLayout(switchPage, switchIndex);
       assertGroupLayoutStable(layoutBeforeSwitch, layoutAfterReturn, switchIndex, groupCount, theme);
       const returnedReadability = await assertSvgLabelContrast(switchGroup, theme);
       assert.equal(beforeReadability.nodeLabels.length, returnedReadability.nodeLabels.length);
@@ -214,13 +218,14 @@ try {
       assert.ok(originalSvg, "Rendered SVG must exist before theme switches");
 
       await switchGroup.locator("summary").focus();
-      await page.keyboard.press("Enter");
-      assert.equal((await captureGroupLayout(page, switchIndex)).open, false, "Enter must close the selected group after theme changes");
-      await page.keyboard.press("Enter");
-      const keyboardReopened = await captureGroupLayout(page, switchIndex);
+      await switchPage.keyboard.press("Enter");
+      assert.equal((await captureGroupLayout(switchPage, switchIndex)).open, false, "Enter must close the selected group after theme changes");
+      await switchPage.keyboard.press("Enter");
+      const keyboardReopened = await captureGroupLayout(switchPage, switchIndex);
       assert.equal(keyboardReopened.open, true, "Enter must reopen the selected group after theme changes");
       assert.equal(keyboardReopened.otherGroupsCollapsed, true, "Keyboard interaction must not open another group");
       assert.equal(keyboardReopened.svgReady, true, "Keyboard interaction must preserve the rendered SVG");
+      await switchPage.close();
 
       const urls = await page.locator("a[data-universe-node]").evaluateAll(links => [...new Set(links.map(link => link.href.replace(location.origin, "https://askjamie.bot")))].sort());
       assert.deepEqual(urls, report.nodes.filter(node => node.indexed).map(node => node.url).sort());
