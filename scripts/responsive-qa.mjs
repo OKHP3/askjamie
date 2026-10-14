@@ -3,7 +3,7 @@
  * AskJamie™ responsive QA script.
  *
  * MODE A — Playwright:
- *   Visits each public page at 12 viewport widths and checks:
+ *   Visits each public page at 14 viewport widths and checks:
  *   - No horizontal overflow (scrollWidth > innerWidth)
  *   - No JS console errors
  *   - All images loaded (no broken img src)
@@ -19,7 +19,7 @@
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
  *   Checks that are viewport-agnostic (viewport meta, h1, alt, etc.) are
- *   run once per page and applied to all 12 viewport rows, clearly flagged
+ *   run once per page and applied to all 14 viewport rows, clearly flagged
  *   as `static-lint` so results are not confused with live browser checks.
  *
  * Usage:
@@ -58,7 +58,9 @@ const VIEWPORTS = [
   { name: 'mobile-390',   width: 390,  height: 844  },
   { name: 'mobile-430',   width: 430,  height: 932  },
   { name: 'tablet-768',   width: 768,  height: 1024 },
+  { name: 'tablet-769-edge', width: 769, height: 1024 },
   { name: 'tablet-899',   width: 899,  height: 1024 },
+  { name: 'tablet-900-edge', width: 900, height: 1024 },
   { name: 'desktop-1024', width: 1024, height: 768  },
   { name: 'desktop-1280', width: 1280, height: 800  },
   { name: 'desktop-1440', width: 1440, height: 900  },
@@ -107,7 +109,9 @@ const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
   'mobile-390',
   'mobile-430',
   'tablet-768',
+  'tablet-769-edge',
   'tablet-899',
+  'tablet-900-edge',
 ]);
 const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set([
   'mobile-360',
@@ -1058,7 +1062,7 @@ async function checkUniversePageMapGroupsGeometry(page, waitForTwoFrames) {
   return { errors, initiallyCollapsed, groupCount, groups: groupEvidence };
 }
 
-async function checkBrandGuardHeroGeometry(page) {
+async function checkBrandGuardHeroGeometry(page, releaseThemeStyles = () => {}) {
   const errors = [];
   const capture = () => page.evaluate((selectors) => {
     const geometry = {};
@@ -1078,6 +1082,7 @@ async function checkBrandGuardHeroGeometry(page) {
     const themeLink = document.querySelector('link[data-deferred-styles]');
     return {
       themeMedia: themeLink?.media ?? null,
+      themeSheetAttached: Boolean(themeLink?.sheet),
       themeHref: themeLink?.href ?? null,
       geometry,
     };
@@ -1094,10 +1099,11 @@ async function checkBrandGuardHeroGeometry(page) {
       `measured before=${JSON.stringify(before.geometry)}; after=not-measured`
     );
   }
-  if (before.themeMedia !== 'not all') {
+  if (before.themeMedia !== 'not all' && before.themeSheetAttached) {
+    releaseThemeStyles();
     errors.push(
       `BRANDGUARD HERO GEOMETRY BASELINE UNAVAILABLE: link[data-deferred-styles] ` +
-      `media=${JSON.stringify(before.themeMedia)} before capture; ` +
+      `media=${JSON.stringify(before.themeMedia)}, stylesheet attached before capture; ` +
       `measured before=${JSON.stringify(before.geometry)}; after=not-measured`
     );
     return {
@@ -1111,6 +1117,10 @@ async function checkBrandGuardHeroGeometry(page) {
       },
     };
   }
+
+  // A desktop load can activate the stylesheet before the first sample. The
+  // request gate leaves it unapplied until this critical-only baseline exists.
+  releaseThemeStyles();
 
   try {
     await page.waitForFunction(() => {
@@ -2333,6 +2343,9 @@ async function runWithPlaywright() {
   async function runViewport(worker, path, url) {
     const { vp, ctx } = worker;
     const page = await ctx.newPage();
+    const checkBrandGuardTheme =
+      path === BRANDGUARD_GEOMETRY_PATH &&
+      BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name);
     const checkBrandGuardFonts =
       (BRANDGUARD_FONT_GEOMETRY_PATHS.has(path) &&
         BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name)) ||
@@ -2350,6 +2363,18 @@ async function runWithPlaywright() {
       brandGuardFontGate = new Promise(resolve => { release = resolve; });
       let released = false;
       releaseBrandGuardFontRequests = () => {
+        if (released) return;
+        released = true;
+        release();
+      };
+    }
+    let releaseBrandGuardThemeStyles = () => {};
+    let brandGuardThemeGate = Promise.resolve();
+    if (checkBrandGuardTheme) {
+      let release;
+      brandGuardThemeGate = new Promise(resolve => { release = resolve; });
+      let released = false;
+      releaseBrandGuardThemeStyles = () => {
         if (released) return;
         released = true;
         release();
@@ -2448,6 +2473,11 @@ async function runWithPlaywright() {
 
     await page.route('**/*', route => {
       const requestUrl = new URL(route.request().url());
+      if (checkBrandGuardTheme &&
+          requestUrl.pathname === '/assets/css/theme.css' &&
+          route.request().resourceType() === 'stylesheet') {
+        return brandGuardThemeGate.then(() => route.continue());
+      }
       if (checkBrandGuardFonts && BRANDGUARD_FONT_HOSTS.has(requestUrl.hostname)) {
         const requestType = route.request().resourceType();
         if (requestUrl.hostname === 'fonts.googleapis.com' &&
@@ -2544,8 +2574,8 @@ async function runWithPlaywright() {
       // phone and tablet BrandGuard viewports before scrolling lazy images, so
       // both geometry samples cover theme activation rather than later page work.
       const heroThemeGeometry =
-        path === BRANDGUARD_GEOMETRY_PATH && BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name)
-          ? await checkBrandGuardHeroGeometry(page)
+        checkBrandGuardTheme
+          ? await checkBrandGuardHeroGeometry(page, releaseBrandGuardThemeStyles)
           : null;
       const heroFontGeometry = checkBrandGuardFonts
         ? await checkBrandGuardWebFontGeometry(
@@ -2867,9 +2897,9 @@ async function staticAnalysis() {
     generated: new Date().toISOString(),
     mode: 'static-lint',
     note: [
-      'Static-lint mode: 10 structural checks per page, applied uniformly to all 12 viewport rows.',
+      'Static-lint mode: 10 structural checks per page, applied uniformly to all 14 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
-      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
+      'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, tablet-769-edge, tablet-899, and tablet-900-edge.',
       'BrandGuard hero geometry after web fonts load is checked on every sitemap-listed BrandGuard route at mobile-360 and mobile-390, plus the hub and representative short and long case-study pages at mobile-350-edge and mobile-370-edge.',
       'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
       'Universe hero geometry and page-map shell geometry during sequential Mermaid rendering are checked in dark mode in Playwright mode at mobile-320, mobile-390, tablet-768, and desktop-1280; each ready page-map group is also measured through light and dark color-scheme switches.',
