@@ -8382,3 +8382,27 @@ html[data-theme="light"] .askjamie-main .site-footer h4 { color: var(--color-fg)
 .askjamie-main .capability-transition-story { max-width: 72rem; }
 .askjamie-main .capability-transition-story > p { max-width: 70ch; }
 .askjamie-main .capability-transition-story > h2 { margin-top: 2rem; }
+
+/* Reserve the line counts measured in the Mac tablet and 320px font review. */
+@media (max-width: 320px) {
+  .askjamie-main.brandguard-case-dollar-general .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.brandguard-case-ping .askjamie-hero-copy .hero-tagline {
+    min-height: 8lh;
+  }
+
+  .askjamie-main.brandguard-case-mathews-archery .askjamie-hero-copy .hero-tagline {
+    min-height: 4lh;
+  }
+}
+
+@media (min-width: 356px) and (max-width: 375px) {
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-subtitle {
+    min-height: 2lh;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 899px) {
+  .askjamie-main.brandguard-case-scheels .askjamie-hero-copy .hero-tagline {
+    min-height: 2lh;
+  }
+}
