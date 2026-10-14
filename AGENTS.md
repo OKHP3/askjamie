@@ -16,7 +16,7 @@ boundaries. Never invent credentials or secrets.
 - Git repository: `OKHP3/AskJamie`, with `main` tracking `origin/main`.
 - Site origin: `https://askjamie.bot`.
 - Deployment model: source HTML remains at the repository root. GitHub Actions
-  refreshes the search index and universe maps, validates the source, prepares
+  verifies the committed search index and universe maps, validates the source, prepares
   an allowlisted release artifact, and deploys that exact artifact to GitHub
   Pages. There is no application compilation or server-side runtime.
 - No nested independent Git repository was found during the July 13, 2026
