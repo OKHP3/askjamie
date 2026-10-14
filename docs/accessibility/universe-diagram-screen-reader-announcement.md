@@ -1,6 +1,7 @@
 # Universe diagram failure announcement check
 
-**Status:** Deferred. Human screen-reader acceptance check remains required.
+**Status:** Owner waived the human merge hold on 2026-10-14. Human
+screen-reader testing remains incomplete and spoken output unverified.
 **Updated:** 2026-10-14
 
 ## Historical Replit automated evidence
@@ -54,12 +55,17 @@ are recorded in PR #90. These checks still do not establish actual speech.
 
 No actual screen-reader speech test has been performed or supplied. The reader,
 browser, and spoken result are **not tested**; polite speech announcement is
-**unverified**. This is not a pass or a waiver of the acceptance requirement.
+**unverified**. Automated evidence is not a human test pass.
+
+Jamie explicitly authorized merging PR #90 on 2026-10-14 with this instruction:
+“Explicitly waive the merge hold; keep human testing recorded as incomplete.”
+This waives the merge prerequisite only. It does not establish spoken output
+or complete Replit task #230. The human procedure below remains follow-up work.
 
 ## Short human procedure
 
-1. Use the exact current PR #90 candidate or its pinned Mac preview, rather
-   than published main or an older task server. Record the source revision.
+1. Use the exact PR #90 candidate, its pinned Mac preview, or the merged
+   release after verifying its source revision. Avoid an older task server.
    On Mac, use VoiceOver with the chosen browser and record both versions plus
    macOS. On Windows, use NVDA and Chrome and record their versions plus
    Windows. A preview does not imply a tested spoken result.
