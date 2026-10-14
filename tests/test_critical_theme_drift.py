@@ -399,12 +399,16 @@ def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_w
     assert set(re.findall(r"'([^']+)'", font_viewports.group(1))) == {
         "mobile-360",
         "mobile-390",
+        "tablet-768",
+        "tablet-899",
     }
     assert "BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name)" in source
     assert "link[data-deferred-styles]" in source
     assert "BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1" in source
     assert "brandGuardThemeGate.then(() => route.continue())" in source
     assert "stylesheet attached before capture" in source
+    assert "BRANDGUARD WEB FONT BASELINE UNAVAILABLE" in source
+    assert "deferred theme stylesheet did not settle " in source
     assert "'.askjamie-main .askjamie-breadcrumb'" in source
     assert "'.askjamie-main .askjamie-hero-copy h1'" in source
     assert "'.askjamie-main .askjamie-hero-copy .hero-subtitle'" in source
@@ -413,6 +417,33 @@ def test_responsive_qa_measures_brandguard_theme_geometry_at_mobile_and_tablet_w
     assert "before=${JSON.stringify(beforeRect)}" in source
     assert "after=${JSON.stringify(afterRect)}" in source
     assert "hero_theme_geometry" in source
+
+
+def test_deferred_font_script_reserves_brandguard_tablet_geometry_before_activation():
+    source = (ROOT / "assets/js/deferred-fonts.js").read_text(encoding="utf-8")
+
+    assert "window.innerWidth >= 768" in source
+    assert "window.innerWidth <= 899" in source
+    assert 'classList.contains("askjamie-main")' in source
+    assert 'document.querySelector(".askjamie-breadcrumb")' in source
+    assert '".site-header .container"' in source
+    assert '".capability-transition > *"' in source
+    assert '".askjamie-hero-copy > *"' in source
+    assert 'element.style.minHeight = `${Math.ceil(height * 100) / 100}px`' in source
+    assert 'element.dataset.fontGeometryReserved = "true"' in source
+    assert 'themeStylesheet.addEventListener("load", reserveAfterThemeStyles' in source
+    assert 'document.querySelector("link[data-brandguard-tablet-fonts]")' in source
+    assert 'tabletFontStylesheet.media = "all"' in source
+    qa_source = (ROOT / "scripts/responsive-qa.mjs").read_text(encoding="utf-8")
+    assert "tablet geometry was not reserved " in qa_source
+    assert source.index("fontGeometryReserved") < source.index("const enableAfterLoad")
+    case_pages = sorted((ROOT / "lens-system/okhp3-brandguard").glob("*/index.html"))
+    assert len(case_pages) == 13
+    assert all(
+        'media="(max-width: 767px), (min-width: 900px)" data-brandguard-tablet-fonts'
+        in page.read_text(encoding="utf-8")
+        for page in case_pages
+    )
 
 
 def test_responsive_qa_checks_brandguard_content_at_320px_from_sitemap_routes():

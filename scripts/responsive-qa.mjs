@@ -116,6 +116,8 @@ const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
 const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set([
   'mobile-360',
   'mobile-390',
+  'tablet-768',
+  'tablet-899',
 ]);
 const BRANDGUARD_FONT_EDGE_GEOMETRY_VIEWPORTS = new Set([
   'mobile-350-edge',
@@ -1207,6 +1209,73 @@ async function checkBrandGuardHeroGeometry(page, releaseThemeStyles = () => {}) 
 
 async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontResponses) {
   const errors = [];
+  const tabletReservationRequired = await page.evaluate(() =>
+    window.innerWidth >= 768 &&
+    window.innerWidth <= 899 &&
+    document.body?.classList.contains('askjamie-main') &&
+    Boolean(document.querySelector('.askjamie-breadcrumb'))
+  );
+  if (tabletReservationRequired) {
+    try {
+      await page.waitForFunction(
+        () => Boolean(document.querySelector('[data-font-geometry-reserved="true"]')),
+        undefined,
+        { timeout: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS }
+      );
+    } catch (error) {
+      releaseFontRequests();
+      errors.push(
+        `BRANDGUARD WEB FONT BASELINE UNAVAILABLE: tablet geometry was not reserved ` +
+        `before font measurement (${error.message.split('\n')[0]}); font geometry was not compared`
+      );
+      return {
+        errors,
+        evidence: {
+          threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+          timeout_ms: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+          before: null,
+          after: null,
+          font_loading: null,
+          font_resources: fontResponses,
+          shifts: [],
+        },
+      };
+    }
+  }
+  const deferredThemeLink = await page.evaluate(() => {
+    const link = document.querySelector('link[data-deferred-styles]');
+    return link ? { href: link.href, media: link.media } : null;
+  });
+  if (deferredThemeLink) {
+    try {
+      await page.waitForFunction(() => {
+        const link = document.querySelector('link[data-deferred-styles]');
+        return link?.media === 'all' && Boolean(link.sheet);
+      }, undefined, { timeout: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      )));
+    } catch (error) {
+      releaseFontRequests();
+      errors.push(
+        `BRANDGUARD WEB FONT BASELINE UNAVAILABLE: deferred theme stylesheet did not settle ` +
+        `before font measurement (${error.message.split('\n')[0]}); font geometry was not compared`
+      );
+      return {
+        errors,
+        evidence: {
+          threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
+          timeout_ms: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+          deferred_theme: deferredThemeLink,
+          before: null,
+          after: null,
+          font_loading: null,
+          font_resources: fontResponses,
+          shifts: [],
+        },
+      };
+    }
+  }
   const fontStylesheetMode = await page.evaluate(() =>
     document.querySelector('link[data-deferred-fonts]') ? 'deferred' : 'active'
   );
@@ -1403,6 +1472,9 @@ async function checkBrandGuardWebFontGeometry(page, releaseFontRequests, fontRes
       threshold_px: BRANDGUARD_GEOMETRY_TOLERANCE_PX,
       timeout_ms: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
       font_stylesheet_mode: fontStylesheetMode,
+      deferred_theme: deferredThemeLink
+        ? { ...deferredThemeLink, media_after_settle: 'all' }
+        : null,
       before,
       after,
       font_loading: fontLoading,
@@ -2900,7 +2972,7 @@ async function staticAnalysis() {
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 14 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, tablet-769-edge, tablet-899, and tablet-900-edge.',
-      'BrandGuard hero geometry after web fonts load is checked on every sitemap-listed BrandGuard route at mobile-360 and mobile-390, plus the hub and representative short and long case-study pages at mobile-350-edge and mobile-370-edge.',
+      'BrandGuard hero geometry after web fonts load is checked on every sitemap-listed BrandGuard route at mobile-360, mobile-390, tablet-768, and tablet-899, plus the hub and representative short and long case-study pages at mobile-350-edge and mobile-370-edge.',
       'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
       'Universe hero geometry and page-map shell geometry during sequential Mermaid rendering are checked in dark mode in Playwright mode at mobile-320, mobile-390, tablet-768, and desktop-1280; each ready page-map group is also measured through light and dark color-scheme switches.',
       'Every generated Universe page-map group is checked for page overflow, diagram scrolling, usable summaries, and working ordinary links at mobile-320 in Playwright mode.',

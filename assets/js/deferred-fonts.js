@@ -4,6 +4,58 @@
 const deferredFonts = document.querySelectorAll("link[data-deferred-fonts]");
 const deferredStyles = document.querySelectorAll("link[data-deferred-styles]");
 
+// Preserve the critical-font geometry of BrandGuard tablet pages before the
+// theme and web-font styles activate. This reserves each page's own rendered
+// line count instead of imposing fixed heights across different case studies.
+const isBrandGuardTablet =
+  window.innerWidth >= 768 &&
+  window.innerWidth <= 899 &&
+  document.body?.classList.contains("askjamie-main") &&
+  document.querySelector(".askjamie-breadcrumb");
+
+const reserveBrandGuardTabletGeometry = () => {
+  const selectors = [
+    ".site-header .container",
+    ".capability-transition > *",
+    ".askjamie-breadcrumb",
+    ".askjamie-hero-copy > *",
+  ];
+  selectors.forEach((selector) => {
+    document.querySelectorAll(selector).forEach((element) => {
+      const height = element.getBoundingClientRect().height;
+      if (height > 0) {
+        element.style.minHeight = `${Math.ceil(height * 100) / 100}px`;
+        element.dataset.fontGeometryReserved = "true";
+      }
+    });
+  });
+};
+
+if (isBrandGuardTablet) {
+  const deferredThemeLink = document.querySelector("link[data-deferred-styles]");
+  if (deferredThemeLink) {
+    reserveBrandGuardTabletGeometry();
+  } else {
+    const tabletFontStylesheet = document.querySelector("link[data-brandguard-tablet-fonts]");
+    const themeStylesheet = [...document.querySelectorAll('link[rel~="stylesheet"]')]
+      .find((link) => new URL(link.href).pathname === "/assets/css/theme.css");
+    const reserveAndActivateTabletFonts = () => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        reserveBrandGuardTabletGeometry();
+        if (tabletFontStylesheet) tabletFontStylesheet.media = "all";
+      }));
+    };
+    const reserveAfterThemeStyles = () => {
+      reserveAndActivateTabletFonts();
+    };
+    if (!themeStylesheet || themeStylesheet.sheet?.cssRules.length) {
+      reserveAfterThemeStyles();
+    } else {
+      themeStylesheet.addEventListener("load", reserveAfterThemeStyles, { once: true });
+    }
+  }
+}
+
 if (deferredFonts.length || deferredStyles.length) {
   const enableDeferredStyles = () => {
     deferredFonts.forEach((link) => {
