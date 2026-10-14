@@ -252,6 +252,34 @@ def test_brandguard_case_study_390px_font_tracking_is_scoped_to_case_studies():
     ) in theme
 
 
+def test_responsive_qa_includes_new_brandguard_routes_at_390_without_expanding_360():
+    import json
+    import subprocess
+
+    script = r"""
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync('scripts/responsive-qa.mjs', 'utf8');
+const config = source.slice(source.indexOf('const BRANDGUARD_GEOMETRY_PATH ='),
+  source.indexOf('const BRANDGUARD_NARROW_CONTENT_VIEWPORT ='));
+const predicate = source.match(/const checkBrandGuardFonts = [\s\S]*?;/)[0];
+const routes = ['/lens-system/okhp3-brandguard/',
+  '/lens-system/okhp3-brandguard/lvmh/',
+  '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
+  '/lens-system/okhp3-brandguard/new-case/', '/about/'];
+console.log(JSON.stringify(Object.fromEntries(['mobile-390', 'mobile-360', 'tablet-768'].map(name =>
+  [name, routes.map(path => vm.runInNewContext(config + '\n' + predicate + '\ncheckBrandGuardFonts',
+    {PUBLIC_PATHS: routes, path, vp: {name}}))]))));
+"""
+    result = subprocess.run(['node', '-e', script], cwd=ROOT, text=True,
+                            capture_output=True, check=True)
+    assert json.loads(result.stdout) == {
+        'mobile-390': [True, True, True, True, False],
+        'mobile-360': [True, True, True, False, False],
+        'tablet-768': [False, False, False, False, False],
+    }
+
+
 def test_capability_transition_geometry_drift_is_reported(tmp_path):
     (tmp_path / "assets/css").mkdir(parents=True)
     critical = (ROOT / "assets/css/critical-hero.css").read_text(encoding="utf-8")

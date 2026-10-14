@@ -94,6 +94,9 @@ const BRANDGUARD_FONT_GEOMETRY_PATHS = new Set([
   '/lens-system/okhp3-brandguard/lvmh/',
   '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
 ]);
+const BRANDGUARD_390_FONT_GEOMETRY_PATHS = new Set(
+  PUBLIC_PATHS.filter(path => path.startsWith(BRANDGUARD_GEOMETRY_PATH))
+);
 const BRANDGUARD_THEME_GEOMETRY_VIEWPORTS = new Set([
   'mobile-320',
   'mobile-360',
@@ -2322,9 +2325,10 @@ async function runWithPlaywright() {
   async function runViewport(worker, path, url) {
     const { vp, ctx } = worker;
     const page = await ctx.newPage();
-    const checkBrandGuardFonts =
-      BRANDGUARD_FONT_GEOMETRY_PATHS.has(path) &&
-      BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name);
+    const checkBrandGuardFonts = vp.name === 'mobile-390'
+      ? BRANDGUARD_390_FONT_GEOMETRY_PATHS.has(path)
+      : BRANDGUARD_FONT_GEOMETRY_PATHS.has(path) &&
+        BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name);
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
@@ -2857,7 +2861,7 @@ async function staticAnalysis() {
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 10 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, and tablet-899.',
-      'BrandGuard hero geometry after web fonts load is checked only in Playwright mode at mobile-360 and mobile-390 on the hub and representative short and long case-study pages.',
+      'BrandGuard hero geometry after web fonts load is checked only in Playwright mode on every sitemap-listed BrandGuard route at mobile-390, and on the hub and representative short and long case-study pages at mobile-360.',
       'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
       'Universe hero geometry and page-map shell geometry during sequential Mermaid rendering are checked in dark mode in Playwright mode at mobile-320, mobile-390, tablet-768, and desktop-1280; each ready page-map group is also measured through light and dark color-scheme switches.',
       'Every generated Universe page-map group is checked for page overflow, diagram scrolling, usable summaries, and working ordinary links at mobile-320 in Playwright mode.',
