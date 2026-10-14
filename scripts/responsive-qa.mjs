@@ -412,7 +412,9 @@ async function checkUniversePageMapFontGeometry(page, releaseFontRequests, fontR
       const samples = [...new Map(elements.map(element => {
         const style = getComputedStyle(element);
         return [`${style.font}\n${element.textContent.trim()}`, {
-          font: style.font, text: element.textContent.trim(),
+          font: style.font,
+          family: style.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, ''),
+          text: element.textContent.trim(),
         }];
       })).values()];
       window.__universeFontPromises = samples.map(sample =>
@@ -448,7 +450,9 @@ async function checkUniversePageMapFontGeometry(page, releaseFontRequests, fontR
     ));
     after = await capture();
     if (!loadedFaces.length || loadedFaces.length !== fonts.samples.length ||
-        loadedFaces.some(faces => !faces.length || faces.some(face => face.status !== 'loaded'))) {
+        loadedFaces.some((faces, index) => !faces.length || faces.some(face =>
+          face.status !== 'loaded' ||
+          face.family.replace(/^["']|["']$/g, '') !== fonts.samples[index].family))) {
       errors.push(`UNIVERSE FONT FACES NOT LOADED: ${JSON.stringify(loadedFaces)}`);
     }
     if (!before.open || !before.svg_ready || !after.open || !after.svg_ready) {
