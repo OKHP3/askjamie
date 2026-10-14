@@ -52,8 +52,10 @@ try {
     "Universe Mermaid diagram did not render an SVG"
   );
   check(
-    !(await page.locator('.askjamie-hero--universe [data-mermaid-failure-status]').isVisible()),
-    "Universe failure status should remain hidden after a successful Mermaid render"
+    await page.locator('.askjamie-hero--universe [data-mermaid-failure-status]').textContent() === "" &&
+      (await page.locator('.askjamie-hero--universe [data-mermaid-failure-status]').getAttribute("class"))
+        .split(/\s+/).includes("sr-only"),
+    "Universe failure status should remain empty and visually hidden after a successful Mermaid render"
   );
 
   const noJsContext = await browser.newContext({ javaScriptEnabled: false });
@@ -63,9 +65,17 @@ try {
     await noJsPage.locator(".mermaid-noscript").isVisible(),
     "Universe static fallback is not visible without JavaScript"
   );
+  const noJsStatus = noJsPage.locator(
+    '.askjamie-hero--universe [data-mermaid-failure-status]'
+  );
   check(
-    !(await noJsPage.locator('.askjamie-hero--universe [data-mermaid-failure-status]').isVisible()),
-    "Universe failure status should remain hidden without JavaScript"
+    await noJsStatus.textContent() === "" &&
+      await noJsStatus.getAttribute("role") === "status" &&
+      await noJsStatus.getAttribute("aria-live") === "polite" &&
+      !(await noJsStatus.evaluate((node) => node.hasAttribute("hidden"))) &&
+      (await noJsStatus.getAttribute("class")).split(/\s+/).includes("sr-only") &&
+      await noJsStatus.evaluate((node) => getComputedStyle(node).display !== "none"),
+    "Universe failure status should be an initially empty, exposed polite live region"
   );
   check(
     (await noJsPage.locator('.mermaid-noscript a[href="/contact/"]').count()) === 1,
@@ -80,7 +90,7 @@ try {
       return route.fulfill({
         status: 200,
         contentType: "text/javascript",
-        body: 'export default { initialize() {}, run() { throw new Error("simulated render failure"); } };',
+        body: 'export default { initialize() {}, run() { return new Promise((resolve, reject) => { window.__triggerMermaidFailure = () => reject(new Error("simulated render failure")); }); } };',
       });
     }
     if (/fonts\.(gstatic|googleapis)\.com|google-analytics\.com|googletagmanager\.com/.test(requestUrl.hostname)) {
@@ -92,12 +102,56 @@ try {
   const renderFailureStatus = renderFailurePage.locator(
     '.askjamie-hero--universe [data-mermaid-failure-status]'
   );
-  await renderFailureStatus.waitFor({ state: "visible", timeout: 15000 });
+  const universeNavLinks = renderFailurePage.locator(
+    ".askjamie-hero--universe .link-list a"
+  );
+  await renderFailurePage.waitForFunction(
+    () => typeof window.__triggerMermaidFailure === "function"
+  );
+  await universeNavLinks.nth(0).focus();
+  check(
+    await universeNavLinks.nth(0).evaluate((node) => document.activeElement === node),
+    "Universe navigation link could not receive keyboard focus before render failure"
+  );
+  await renderFailurePage.evaluate(() => window.__triggerMermaidFailure());
+  await renderFailurePage.waitForFunction(() => {
+    const status = document.querySelector(
+      '.askjamie-hero--universe [data-mermaid-failure-status]'
+    );
+    return status?.textContent.includes("could not be displayed") &&
+      !status.classList.contains("sr-only");
+  }, { timeout: 15000 });
   check(
     (await renderFailureStatus.textContent()).includes("could not be displayed") &&
       await renderFailureStatus.getAttribute("role") === "status" &&
-      await renderFailureStatus.getAttribute("aria-live") === "polite",
+      await renderFailureStatus.getAttribute("aria-live") === "polite" &&
+      !(await renderFailureStatus.getAttribute("class")).split(/\s+/).includes("sr-only"),
     "Universe render failure did not show an accessible unavailable status"
+  );
+  check(
+    await universeNavLinks.count() === 3 &&
+      await universeNavLinks.evaluateAll((links) => links.every((link) => {
+        const style = getComputedStyle(link);
+        return link instanceof HTMLAnchorElement &&
+          link.href &&
+          style.display !== "none" &&
+          style.visibility !== "hidden";
+      })),
+    "Universe navigation links should remain present and visible after render failure"
+  );
+  check(
+    await universeNavLinks.nth(0).evaluate((node) => document.activeElement === node),
+    "Universe render failure moved focus away from the focused navigation link"
+  );
+  await renderFailurePage.keyboard.press("Tab");
+  check(
+    await universeNavLinks.nth(1).evaluate((node) => document.activeElement === node),
+    "Universe navigation links are not reachable in keyboard order after render failure"
+  );
+  await renderFailurePage.keyboard.press("Tab");
+  check(
+    await universeNavLinks.nth(2).evaluate((node) => document.activeElement === node),
+    "Universe navigation links are not reachable in keyboard order after render failure"
   );
   check(
     await renderFailurePage.locator(

@@ -296,9 +296,9 @@ function showUniverseRenderFailure(node) {
     .closest(".askjamie-mermaid-shell")
     ?.querySelector("[data-mermaid-failure-status]");
   if (!status) return;
-  status.hidden = false;
   status.textContent =
     "The diagram could not be displayed. Use the links below to browse these pages.";
+  status.classList.remove("sr-only");
 }
 
 function renderOne(node) {

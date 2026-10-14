@@ -1798,6 +1798,10 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
       caption_visible: visible(caption),
       failure_status_visible: visible(status),
       failure_status_text: status?.textContent.trim() ?? '',
+      failure_status_exposed: Boolean(status && !status.hasAttribute('hidden') &&
+        getComputedStyle(status).display !== 'none' &&
+        getComputedStyle(status).visibility !== 'hidden'),
+      failure_status_sr_only: status?.classList.contains('sr-only') ?? false,
       failure_status_role: status?.getAttribute('role') ?? null,
       failure_status_live: status?.getAttribute('aria-live') ?? null,
       links: links.map(link => ({
@@ -2235,9 +2239,12 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
         !noJsState.noscript_text.includes('The page links below work without JavaScript.')) {
       errors.push(`UNIVERSE NO-JAVASCRIPT FALLBACK MISSING: ${JSON.stringify(noJsState)}`);
     }
-    if (noJsState.failure_status_visible) {
+    if (noJsState.failure_status_text !== '' ||
+        !noJsState.failure_status_exposed || !noJsState.failure_status_sr_only ||
+        noJsState.failure_status_role !== 'status' ||
+        noJsState.failure_status_live !== 'polite') {
       errors.push(
-        `UNIVERSE NO-JAVASCRIPT FAILURE STATUS SHOULD REMAIN HIDDEN: ${JSON.stringify(noJsState)}`
+        `UNIVERSE NO-JAVASCRIPT FAILURE STATUS SHOULD BE EMPTY, EXPOSED AND VISUALLY HIDDEN: ${JSON.stringify(noJsState)}`
       );
     }
     if (!noJsState.caption_visible || noJsState.links.length < 3 ||

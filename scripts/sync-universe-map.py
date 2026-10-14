@@ -44,7 +44,7 @@ def generate(root=ROOT):
                        '<div class="mermaid-scroll-wrap" aria-hidden="true" tabindex="-1">',
                        f'<div class="mermaid" inert data-diagram-label="{title}">{html.escape(source)}</div>',
                        '</div>',
-                       '<p class="mermaid-render-status" data-mermaid-failure-status role="status" aria-live="polite" hidden></p>',
+                       '<p class="mermaid-render-status sr-only" data-mermaid-failure-status role="status" aria-live="polite"></p>',
                        REFERRAL, f'<figcaption>Pages beneath {title}. The links below provide the same navigation.</figcaption>', '</figure>', '<ul class="link-list">'])
         for key in diagram["nodes"]:
             node = nodes[key]
