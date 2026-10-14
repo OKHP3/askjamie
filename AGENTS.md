@@ -180,6 +180,13 @@ activating fonts at 320px and tablet widths. Theme and font activation evidence
 remain separate, with the existing 1px tolerance. Human spoken output remains
 incomplete.
 
+Universe browser checks sample rendered label contrast across theme changes,
+horizontal panning at 320px in light mode, and every generated fallback link's
+local destination with Mermaid blocked. Real-font geometry remains a separate
+held diagnostic after confirmed reflow at 390px and 1280px. Native 200% browser
+zoom is also incomplete. Headless shortcuts, viewport resizing and CSS scaling
+do not establish native zoom or human spoken output.
+
 ### Agent skills
 
 The `.agents/skills/` directory holds Agent Skills for AI assistants. Not all

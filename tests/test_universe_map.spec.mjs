@@ -58,6 +58,63 @@ const assertGroupLayoutStable = (before, after, index, count, expectedTheme) => 
   }
 };
 
+const contrastObservations = [];
+const assertSvgLabelContrast = async (group, theme) => {
+  const evidence = await group.evaluate(root => {
+    const rgb = value => {
+      const values = value.match(/[\d.]+/g)?.map(Number) ?? [];
+      return values.length >= 3 ? values.slice(0, 3) : null;
+    };
+    const luminance = value => {
+      const channels = rgb(value);
+      if (!channels) return null;
+      const [r, g, b] = channels.map(channel => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045
+          ? normalized / 12.92
+          : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const ratio = (foreground, background) => {
+      const a = luminance(foreground), b = luminance(background);
+      return a === null || b === null ? null : (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+    const nodeLabels = [...root.querySelectorAll("svg .node")].map(node => {
+      const label = node.querySelector(".nodeLabel p, .nodeLabel");
+      const surface = node.querySelector("rect");
+      const foreground = label && getComputedStyle(label).color;
+      const background = surface && getComputedStyle(surface).fill;
+      return { text: label?.textContent.trim() ?? "", foreground, background, ratio: ratio(foreground, background) };
+    });
+    const edgeLabels = [...root.querySelectorAll("svg .edgeLabel text, svg .edgeLabel p, svg .edgeLabel span")]
+      .filter(label => label.textContent.trim())
+      .map(label => {
+        const foreground = label.tagName.toLowerCase() === "text"
+          ? getComputedStyle(label).fill
+          : getComputedStyle(label).color;
+        const surface = label.closest(".edgeLabel")?.querySelector("rect");
+        const background = surface
+          ? getComputedStyle(surface).fill
+          : getComputedStyle(label.closest(".edgeLabel")).backgroundColor;
+        return { text: label.textContent.trim(), foreground, background, ratio: ratio(foreground, background) };
+      });
+    return { nodeLabels, edgeLabels };
+  });
+  assert.ok(evidence.nodeLabels.length, `${theme}: rendered SVG has no node labels`);
+  for (const sample of [...evidence.nodeLabels, ...evidence.edgeLabels]) {
+    assert.ok(sample.ratio !== null && sample.ratio >= 4.5,
+      `${theme}: low-contrast SVG label ${JSON.stringify(sample)}`);
+  }
+  contrastObservations.push({
+    theme,
+    nodeLabels: evidence.nodeLabels.length,
+    edgeLabels: evidence.edgeLabels.length,
+    minimumRatio: Math.min(...[...evidence.nodeLabels, ...evidence.edgeLabels].map(sample => sample.ratio)),
+  });
+  return evidence;
+};
+
 try {
   const report = await (await fetch(`${base}/assets/data/universe-map.json`)).json();
   for (const width of [390, 1280]) {
@@ -77,6 +134,7 @@ try {
         await group.locator("svg .node").first().waitFor({ timeout: 20000 });
         await page.waitForFunction(element => element.querySelectorAll("svg a[href]").length === element.querySelectorAll("a[data-universe-node]").length, await group.elementHandle());
         assert.equal(await group.locator("svg .node").count(), report.diagrams[i].nodes.length);
+        await assertSvgLabelContrast(group, theme);
         const labels = await group.locator(".nodeLabel").allTextContents();
         const expectedLabels = report.diagrams[i].nodes.map(id => {
           const node = report.nodes.find(item => item.id === id);
@@ -108,46 +166,66 @@ try {
       }
 
       const switchIndex = Math.min(1, (await groups.count()) - 1);
-      const switchGroup = groups.nth(switchIndex);
+      const switchPage = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
+      await switchPage.addInitScript(value => localStorage.setItem("askjamie-color-scheme", value), theme);
+      await switchPage.goto(`${base}/universe/`);
+      const switchGroups = switchPage.locator(".universe-map-group");
+      const switchGroup = switchGroups.nth(switchIndex);
       await switchGroup.locator("summary").click();
       await switchGroup.locator("svg .node").first().waitFor({ timeout: 20000 });
-      const layoutBeforeSwitch = await captureGroupLayout(page, switchIndex);
-      const groupCount = await groups.count();
-      const toggle = page.locator(".askjamie-main .glee-color-toggle");
+      const layoutBeforeSwitch = await captureGroupLayout(switchPage, switchIndex);
+      const groupCount = await switchGroups.count();
+      const originalSvg = await switchGroup.locator("svg").evaluate(svg => {
+        window.__universeQaOriginalSvg = svg;
+        return true;
+      });
+      const beforeReadability = await assertSvgLabelContrast(switchGroup, theme);
+      const toggle = switchPage.locator(".askjamie-main .glee-color-toggle");
       assert.equal(await toggle.getAttribute("data-state"), theme);
       const nextTheme = theme === "dark" ? "light" : "dark";
       const clicksToNextTheme = theme === "dark" ? 2 : 1;
       for (let click = 0; click < clicksToNextTheme; click += 1) {
         await toggle.click();
       }
-      await page.waitForFunction(expected =>
+      await switchPage.waitForFunction(expected =>
         document.documentElement.getAttribute("data-color-scheme") === expected, nextTheme);
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
+      await switchPage.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
         requestAnimationFrame(resolve)
       )));
-      const layoutAfterSwitch = await captureGroupLayout(page, switchIndex);
+      const layoutAfterSwitch = await captureGroupLayout(switchPage, switchIndex);
       assertGroupLayoutStable(layoutBeforeSwitch, layoutAfterSwitch, switchIndex, groupCount, nextTheme);
+      const afterReadability = await assertSvgLabelContrast(switchGroup, nextTheme);
+      assert.equal(await switchPage.evaluate(() =>
+        window.__universeQaOriginalSvg === document.querySelector(
+          ".universe-map-generated .universe-map-group:nth-of-type(2) svg"
+        )
+      ), true, "Theme changes must not rerender the SVG");
 
       const clicksToReturn = nextTheme === "dark" ? 2 : 1;
       for (let click = 0; click < clicksToReturn; click += 1) {
         await toggle.click();
       }
-      await page.waitForFunction(expected =>
+      await switchPage.waitForFunction(expected =>
         document.documentElement.getAttribute("data-color-scheme") === expected, theme);
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
+      await switchPage.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
         requestAnimationFrame(resolve)
       )));
-      const layoutAfterReturn = await captureGroupLayout(page, switchIndex);
+      const layoutAfterReturn = await captureGroupLayout(switchPage, switchIndex);
       assertGroupLayoutStable(layoutBeforeSwitch, layoutAfterReturn, switchIndex, groupCount, theme);
+      const returnedReadability = await assertSvgLabelContrast(switchGroup, theme);
+      assert.equal(beforeReadability.nodeLabels.length, returnedReadability.nodeLabels.length);
+      assert.equal(afterReadability.nodeLabels.length, returnedReadability.nodeLabels.length);
+      assert.ok(originalSvg, "Rendered SVG must exist before theme switches");
 
       await switchGroup.locator("summary").focus();
-      await page.keyboard.press("Enter");
-      assert.equal((await captureGroupLayout(page, switchIndex)).open, false, "Enter must close the selected group after theme changes");
-      await page.keyboard.press("Enter");
-      const keyboardReopened = await captureGroupLayout(page, switchIndex);
+      await switchPage.keyboard.press("Enter");
+      assert.equal((await captureGroupLayout(switchPage, switchIndex)).open, false, "Enter must close the selected group after theme changes");
+      await switchPage.keyboard.press("Enter");
+      const keyboardReopened = await captureGroupLayout(switchPage, switchIndex);
       assert.equal(keyboardReopened.open, true, "Enter must reopen the selected group after theme changes");
       assert.equal(keyboardReopened.otherGroupsCollapsed, true, "Keyboard interaction must not open another group");
       assert.equal(keyboardReopened.svgReady, true, "Keyboard interaction must preserve the rendered SVG");
+      await switchPage.close();
 
       const urls = await page.locator("a[data-universe-node]").evaluateAll(links => [...new Set(links.map(link => link.href.replace(location.origin, "https://askjamie.bot")))].sort());
       assert.deepEqual(urls, report.nodes.filter(node => node.indexed).map(node => node.url).sort());
@@ -163,12 +241,61 @@ try {
   assert.equal(await noJs.locator(".universe-map-group[open] .mermaid").first().evaluate(e => getComputedStyle(e).visibility), "hidden", "Raw diagram syntax must stay hidden without JavaScript");
   await noJs.locator(".universe-map-group[open] .mermaid").first().evaluate(e => e.setAttribute("data-processed", "true"));
   assert.equal(await noJs.locator(".universe-map-group[open] .mermaid").first().evaluate(e => getComputedStyle(e).visibility), "hidden", "Mermaid's early processed flag must not expose source before SVG insertion");
+  const noMermaid = await browser.newPage();
+  await noMermaid.route("**/assets/vendor/mermaid/mermaid.esm.min.mjs", route => route.abort());
+  await noMermaid.goto(`${base}/universe/`);
+  const fallbackGroups = noMermaid.locator(".universe-map-group");
+  for (let i = 0; i < report.diagrams.length; i++) {
+    const group = fallbackGroups.nth(i);
+    await group.locator("summary").click();
+    const links = group.locator("a[data-universe-node]");
+    assert.equal(await links.count(), report.diagrams[i].nodes.length, `Fallback links missing in group ${i + 1}`);
+    for (let j = 0; j < report.diagrams[i].nodes.length; j++) {
+      const expectedNode = report.nodes.find(node => node.id === report.diagrams[i].nodes[j]);
+      assert.ok(expectedNode, `Manifest node missing for group ${i + 1}, link ${j + 1}`);
+      const href = await links.nth(j).getAttribute("href");
+      const destination = new URL(href, noMermaid.url());
+      const expectedPath = new URL(expectedNode.url).pathname;
+      assert.equal(destination.origin, new URL(base).origin, `Group ${i + 1} link ${j + 1} is not local`);
+      assert.equal(destination.pathname, expectedPath, `Group ${i + 1} link ${j + 1} has the wrong path`);
+      const response = await noMermaid.context().request.get(destination.href);
+      assert.ok(response.ok() && new URL(response.url()).pathname === expectedPath,
+        `Group ${i + 1} link ${j + 1}: HTTP ${response.status()} ${response.url()}`);
+    }
+  }
+  const narrow = await browser.newPage({ viewport: { width: 320, height: 740 }, colorScheme: "dark" });
+  await narrow.addInitScript(() => localStorage.setItem("askjamie-color-scheme", "dark"));
+  await narrow.goto(`${base}/universe/`);
+  const narrowGroups = narrow.locator(".universe-map-group");
+  const narrowGroup = narrowGroups.first();
+  await narrowGroup.locator("summary").click();
+  await narrowGroup.locator("svg .node").first().waitFor({ timeout: 20000 });
+  await narrowGroup.locator("svg").evaluate(svg => { window.__universeQaNarrowSvg = svg; });
+  const narrowToggle = narrow.locator(".askjamie-main .glee-color-toggle");
+  await narrowToggle.click();
+  await narrowToggle.click();
+  await narrow.waitForFunction(() => document.documentElement.getAttribute("data-color-scheme") === "light");
+  assert.equal(await narrowGroup.evaluate(group => group.open), true);
+  assert.equal(await narrowGroups.evaluateAll(groups => groups.filter(group => group.open).length), 1);
+  assert.equal(await narrow.evaluate(() =>
+    window.__universeQaNarrowSvg === document.querySelector(".universe-map-group svg")
+  ), true, "Light-mode switch must preserve the rendered SVG");
+  const narrowWrap = narrowGroup.locator(".mermaid-scroll-wrap");
+  assert.ok(await narrowWrap.evaluate(element => element.scrollWidth > element.clientWidth));
+  await narrowWrap.hover();
+  await narrow.mouse.wheel(220, 0);
+  await narrow.waitForFunction(element => element.scrollLeft > 0, await narrowWrap.elementHandle(), { timeout: 3000 });
+  const usableLink = narrowGroup.locator("a[data-universe-node]").first();
+  assert.ok(await usableLink.isVisible());
+  await usableLink.focus();
+  assert.ok(await usableLink.evaluate(element => element === document.activeElement));
+  await assertSvgLabelContrast(narrowGroup, "light at 320px");
   const keyboard = await browser.newPage();
   await keyboard.goto(`${base}/universe/`);
   await keyboard.locator(".universe-map-group summary").first().focus();
   await keyboard.keyboard.press("Enter");
   assert.equal(await keyboard.locator(".universe-map-group[open]").count(), 1);
-  console.log(`Universe browser checks passed: ${report.nodes.length} indexed pages, ${report.diagrams.length} diagrams, two widths, both themes, in-place theme switching, keyboard and no-JavaScript links.`);
+  console.log(`Universe browser checks passed: ${report.nodes.length} indexed pages, ${report.diagrams.length} diagrams, both themes; contrast observations=${JSON.stringify(contrastObservations)}; in-place theme switching, 320px light-mode panning, all fallback links, keyboard and no-JavaScript links.`);
 } finally {
   await browser.close();
 }
