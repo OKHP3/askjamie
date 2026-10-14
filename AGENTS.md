@@ -172,6 +172,14 @@ representative short and long case studies at 350px and 370px. The four
 measurements, loaded-face evidence and 1px tolerance remain unchanged. This
 coverage does not establish other widths, engines or human spoken output.
 
+The tablet and 320px font-stability integration expands the inventory to 14
+viewports and 378 route/viewport rows, including 769px and 900px theme edges.
+Font checks cover all 14 BrandGuard routes at 320px, 360px, 390px, 768px and
+899px. The production font loader reserves fallback block heights before
+activating fonts at 320px and tablet widths. Theme and font activation evidence
+remain separate, with the existing 1px tolerance. Human spoken output remains
+incomplete.
+
 ### Agent skills
 
 The `.agents/skills/` directory holds Agent Skills for AI assistants. Not all

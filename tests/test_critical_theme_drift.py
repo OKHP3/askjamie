@@ -293,7 +293,7 @@ console.log(JSON.stringify(Object.fromEntries(['mobile-390', 'mobile-360', 'mobi
         'mobile-360': [True, True, True, True, False],
         'mobile-350-edge': [True, True, True, False, False],
         'mobile-370-edge': [True, True, True, False, False],
-        'tablet-768': [False, False, False, False, False],
+        'tablet-768': [True, True, True, True, False],
     }
 
 
