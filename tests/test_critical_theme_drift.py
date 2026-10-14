@@ -252,7 +252,7 @@ def test_brandguard_case_study_390px_font_tracking_is_scoped_to_case_studies():
     ) in theme
 
 
-def test_responsive_qa_includes_new_brandguard_routes_at_390_without_expanding_360():
+def test_responsive_qa_covers_new_brandguard_routes_at_360_and_390_and_samples_edges():
     import json
     import subprocess
 
@@ -262,12 +262,12 @@ const vm = require('node:vm');
 const source = fs.readFileSync('scripts/responsive-qa.mjs', 'utf8');
 const config = source.slice(source.indexOf('const BRANDGUARD_GEOMETRY_PATH ='),
   source.indexOf('const BRANDGUARD_NARROW_CONTENT_VIEWPORT ='));
-const predicate = source.match(/const checkBrandGuardFonts = [\s\S]*?;/)[0];
+const predicate = source.match(/const checkBrandGuardFonts =\s*[\s\S]*?;/)[0];
 const routes = ['/lens-system/okhp3-brandguard/',
   '/lens-system/okhp3-brandguard/lvmh/',
   '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
   '/lens-system/okhp3-brandguard/new-case/', '/about/'];
-console.log(JSON.stringify(Object.fromEntries(['mobile-390', 'mobile-360', 'tablet-768'].map(name =>
+console.log(JSON.stringify(Object.fromEntries(['mobile-390', 'mobile-360', 'mobile-350-edge', 'mobile-370-edge', 'tablet-768'].map(name =>
   [name, routes.map(path => vm.runInNewContext(config + '\n' + predicate + '\ncheckBrandGuardFonts',
     {PUBLIC_PATHS: routes, path, vp: {name}}))]))));
 """
@@ -275,9 +275,43 @@ console.log(JSON.stringify(Object.fromEntries(['mobile-390', 'mobile-360', 'tabl
                             capture_output=True, check=True)
     assert json.loads(result.stdout) == {
         'mobile-390': [True, True, True, True, False],
-        'mobile-360': [True, True, True, False, False],
+        'mobile-360': [True, True, True, True, False],
+        'mobile-350-edge': [True, True, True, False, False],
+        'mobile-370-edge': [True, True, True, False, False],
         'tablet-768': [False, False, False, False, False],
     }
+
+
+def test_brandguard_mobile_360_reserves_only_measured_font_reflow_routes():
+    theme = (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+    route_classes = {
+        "brandguard-case-lego": "lego",
+        "brandguard-starbucks": "starbucks",
+        "coke-brandguard": "coca-cola",
+        "brandguard-case-brooks-running": "brooks-running",
+        "brandguard-case-costco": "costco",
+        "brandguard-case-discount-tire": "discount-tire",
+        "brandguard-case-hershey": "hershey",
+        "brandguard-case-mathews-archery": "mathews-archery",
+        "brandguard-case-scheels": "scheels",
+    }
+
+    for body_class, route in route_classes.items():
+        page = (
+            ROOT
+            / "lens-system/okhp3-brandguard"
+            / route
+            / "index.html"
+        ).read_text(encoding="utf-8")
+        assert f'<body class="askjamie-main {body_class}"' in page
+        assert f".askjamie-main.{body_class}" in theme
+
+    assert "min-height: 3lh;" in theme
+    assert "min-height: 2lh;" in theme
+    assert "min-height: 6lh;" in theme
+    assert "min-height: 7lh;" in theme
+    assert "min-height: 8lh;" in theme
+    assert ".askjamie-main.coke-brandguard .manifesto-blockquote" in theme
 
 
 def test_capability_transition_geometry_drift_is_reported(tmp_path):
@@ -358,6 +392,47 @@ def test_responsive_qa_checks_brandguard_content_at_320px_from_sitemap_routes():
     assert "brandguard_320_content" in source
 
 
+def test_responsive_qa_checks_brandguard_font_geometry_at_350_and_370_edges():
+    import re
+
+    source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
+    assert "{ name: 'mobile-350-edge', width: 350, height: 780 }" in source
+    assert "{ name: 'mobile-370-edge', width: 370, height: 780 }" in source
+    assert "BRANDGUARD_FONT_EDGE_GEOMETRY_PATHS = new Set([" in source
+    assert "'/lens-system/okhp3-brandguard/'" in source
+    assert "'/lens-system/okhp3-brandguard/lvmh/'" in source
+    assert "'/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/'" in source
+    edge_viewports = re.search(
+        r"const BRANDGUARD_FONT_EDGE_GEOMETRY_VIEWPORTS = new Set\(\[(.*?)\]\);",
+        source,
+        re.DOTALL,
+    )
+    assert edge_viewports
+    assert set(re.findall(r"'([^']+)'", edge_viewports.group(1))) == {
+        "mobile-350-edge",
+        "mobile-370-edge",
+    }
+    assert "BRANDGUARD_FONT_EDGE_GEOMETRY_PATHS.has(path)" in source
+    assert "BRANDGUARD_FONT_EDGE_GEOMETRY_VIEWPORTS.has(vp.name)" in source
+    assert "BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1" in source
+
+
+def test_brandguard_font_reservations_are_scoped_to_measured_edge_widths():
+    theme = (ROOT / "assets/css/theme.css").read_text(encoding="utf-8")
+
+    assert "@media (min-width: 350px) and (max-width: 355px)" in theme
+    assert "@media (min-width: 365px) and (max-width: 370px)" in theme
+    assert (
+        ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1,\n"
+        "  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {\n"
+        "    min-height: 4lh;"
+    ) in theme
+    assert ".askjamie-main.brandguard-lvmh-page .askjamie-hero-copy h1" in theme
+    assert ".askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1" in theme
+    assert ".askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2)" in theme
+    assert ".askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2)" in theme
+
+
 def test_responsive_qa_measures_brandguard_geometry_after_branded_fonts_load():
     source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
 
@@ -375,9 +450,10 @@ def test_responsive_qa_measures_brandguard_geometry_after_branded_fonts_load():
     assert "hero_font_geometry" in source
 
 
-def test_responsive_qa_samples_short_and_long_brandguard_case_studies():
+def test_responsive_qa_covers_every_sitemap_brandguard_route_for_font_geometry():
     import html
     import re
+    import xml.etree.ElementTree as ET
 
     source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
     sample_routes = {
@@ -386,9 +462,18 @@ def test_responsive_qa_samples_short_and_long_brandguard_case_studies():
         "/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/":
             ROOT / "lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/index.html",
     }
-    assert "BRANDGUARD_FONT_GEOMETRY_PATHS = new Set([" in source
+    assert "BRANDGUARD_FONT_GEOMETRY_PATHS = new Set(" in source
+    assert "PUBLIC_PATHS.filter(path => path.startsWith(BRANDGUARD_GEOMETRY_PATH))" in source
     assert "BRANDGUARD_FONT_GEOMETRY_PATHS.has(path)" in source
-    assert all(f"'{route}'" in source for route in sample_routes)
+    sitemap = ET.parse(ROOT / "sitemap.xml")
+    sitemap_paths = {
+        url.text.removeprefix("https://askjamie.bot")
+        for url in sitemap.findall(".//{*}loc")
+        if url.text and "/lens-system/okhp3-brandguard/" in url.text
+    }
+    assert sitemap_paths
+    assert "path.startsWith(BRANDGUARD_GEOMETRY_PATH)" in source
+    assert all(route in sitemap_paths for route in sample_routes)
     assert "'.askjamie-main .askjamie-hero-copy h1'" in source
 
     headline_lengths = {}

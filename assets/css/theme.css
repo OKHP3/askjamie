@@ -7689,6 +7689,49 @@ html body.askjamie-main {
   .askjamie-main.brandguard-bfs-page .askjamie-hero-copy .hero-tagline {
     min-height: 5lh;
   }
+
+  /* Reserve only line counts that the 360px browser measurements showed
+     changing between system fallbacks and the loaded BrandGuard fonts. */
+  .askjamie-main.brandguard-case-lego .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-case-hershey .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-case-discount-tire .askjamie-hero-copy h1 {
+    min-height: 3lh;
+  }
+
+  .askjamie-main.brandguard-starbucks .askjamie-hero-copy h1,
+  .askjamie-main.coke-brandguard .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-case-scheels .askjamie-hero-copy h1 {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.brandguard-case-lego .askjamie-hero-copy .hero-subtitle,
+  .askjamie-main.brandguard-starbucks .askjamie-hero-copy .hero-subtitle,
+  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-subtitle {
+    min-height: 8lh;
+  }
+
+  .askjamie-main.brandguard-case-mathews-archery .askjamie-hero-copy .hero-subtitle,
+  .askjamie-main.brandguard-case-scheels .askjamie-hero-copy .hero-subtitle {
+    min-height: 7lh;
+  }
+
+  .askjamie-main.brandguard-case-brooks-running .askjamie-hero-copy .hero-tagline {
+    min-height: 8lh;
+  }
+
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-tagline {
+    min-height: 7lh;
+  }
+
+  /* The Coca-Cola quotation loses one fallback line when Kalam loads. */
+  .askjamie-main.coke-brandguard .manifesto-blockquote {
+    min-height: 3lh;
+  }
 }
 
 /* Reserve the tallest fallback line counts at 390px so deferred font loading
@@ -7768,6 +7811,35 @@ html body.askjamie-main {
 
   .askjamie-main.coke-brandguard .manifesto-blockquote {
     min-height: 3lh;
+  }
+}
+
+/* Reserve only the line counts measured at the 350px edge. */
+@media (min-width: 350px) and (max-width: 355px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy h1 {
+    min-height: 2lh;
+  }
+}
+
+/* The 370px width lets deferred fonts shorten the long-case transition copy;
+   keep that upstream text and the BFS headline from moving the measured hero. */
+@media (min-width: 365px) and (max-width: 370px) {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 3lh;
+  }
+
+  .askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2) {
+    min-height: 7lh;
   }
 }
 
