@@ -41,7 +41,7 @@ lens-system/          # Lens System hub — four purpose-built GPTs
 assets/
   css/theme.css        # Single stylesheet — GLOBAL → OKH → GLEE → ASKJAMIE tiers
   js/app.js            # Single JS file — analytics, search modal, nav, GA4 events
-  js/mermaid-init.js   # Mermaid v11 ESM init (universe page only)
+  js/mermaid-init.js   # Mermaid 12.2.0 ESM init (universe page only)
   data/search-index.json  # Pre-built search index (26 content pages)
   img/                 # Brand assets, avatars, case study images
   docs/                # Generated docs (audit reports, QA results, specs)

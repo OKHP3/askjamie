@@ -1404,9 +1404,34 @@ process.stdout.write(JSON.stringify(summary));
         {"field": "tbtMs", "source": "audits.total-blocking-time.numericValue"},
         {
             "field": "lcpElement",
-            "source": "audits.largest-contentful-paint-element.details.items[0].items[0].node.selector",
+            "source": "audits.largest-contentful-paint-element.details.items[0].items[0].node.selector or audits.lcp-breakdown-insight.details.items[type=node].selector",
         },
     ]
+
+
+def test_lighthouse_modern_insight_retains_lcp_node_without_accepting_unrelated_items():
+    runner = """
+import { summarizePage } from "./scripts/lighthouse-routes.mjs";
+const summarize = (details, legacy) => summarizePage({ path: "/", report: { audits: {
+  "lcp-breakdown-insight": { details },
+  "largest-contentful-paint-element": legacy,
+} } });
+const valid = { type: "node", selector: "p.askjamie-hero-tagline" };
+const modern = summarize({ items: [{ type: "table", selector: "wrong" }, valid] });
+const legacy = summarize({ items: [valid] }, { details: { items: [{ items: [{ node: { selector: "img.hero" } }] }] } });
+const missing = summarize({ items: [{ type: "table", selector: "wrong" }, { type: "node", selector: 42 }] });
+const malformed = summarize({ items: {} });
+process.stdout.write(JSON.stringify({ modern, legacy, missing, malformed }));
+"""
+    result = subprocess.run(["node", "--input-type=module", "-e", runner],
+                            cwd=ROOT, capture_output=True, text=True, check=True)
+    rows = json.loads(result.stdout)
+    assert rows["modern"]["lcpElement"] == "p.askjamie-hero-tagline"
+    assert not any(m["field"] == "lcpElement" for m in rows["modern"]["unavailableMetrics"])
+    assert rows["legacy"]["lcpElement"] == "img.hero"
+    for name in ("missing", "malformed"):
+        assert rows[name]["lcpElement"] is None
+        assert any(m["field"] == "lcpElement" for m in rows[name]["unavailableMetrics"])
 
 
 def test_lighthouse_cli_unavailable_metric_notice_names_route_and_fields_without_browser():
@@ -1473,7 +1498,7 @@ process.stdout.write(formatUnavailableMetricsNotice(
         "  /lens-system/okhp3-brandguard/: performance, tbtMs, lcpElement\n"
         "    performance: categories.performance.score\n"
         "    tbtMs: audits.total-blocking-time.numericValue\n"
-        "    lcpElement: audits.largest-contentful-paint-element.details.items[0].items[0].node.selector"
+        "    lcpElement: audits.largest-contentful-paint-element.details.items[0].items[0].node.selector or audits.lcp-breakdown-insight.details.items[type=node].selector"
     )
 
 
