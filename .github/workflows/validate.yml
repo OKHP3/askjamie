@@ -143,7 +143,9 @@ jobs:
 
   deploy:
     name: Deploy validated site to GitHub Pages
-    timeout-minutes: 6
+    # Allow the action's 10-minute deployment window, the bounded 3-minute
+    # served-file probe, and setup/reporting to finish within one job.
+    timeout-minutes: 15
     needs: [validate, python-compatibility]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
