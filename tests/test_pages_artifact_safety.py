@@ -218,7 +218,7 @@ class PagesArtifactSafetyTests(unittest.TestCase):
         self.assertNotIn("prepare-pages-artifact.py", deploy)
         self.assertNotIn("upload-pages-artifact", after_deploy)
         self.assertNotIn("--output", deploy)
-        self.assertIn("timeout-minutes: 6", deploy)
+        self.assertIn("timeout-minutes: 15", deploy)
         for name in ("Summarize served sample", "Retain served sample evidence"):
             step = deploy.split("- name: " + name, 1)[1].split("- name:", 1)[0]
             self.assertIn("if: always()", step)
