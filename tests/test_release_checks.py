@@ -841,6 +841,9 @@ def test_responsive_qa_writes_partial_report_when_context_setup_stops(tmp_path, 
         env={**os.environ, "NODE_PATH": node_modules},
     )
 
+    if "Required browser QA could not start: Chromium could not be launched" in result.stderr:
+        pytest.skip("Chromium could not launch; context setup was not reached")
+
     assert result.returncode == (143 if setup_stop == "signal" else 1), (
         result.stdout + result.stderr
     )
