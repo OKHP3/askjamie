@@ -502,10 +502,23 @@ def test_responsive_qa_can_require_release_hero_routes(tmp_path):
     assert "/universe/" in result.stderr
 
 
-def test_responsive_qa_static_output_omits_browser_versions():
+def test_responsive_qa_static_output_omits_browser_versions(tmp_path):
+    # Keep the current project's saved report out of this reporting fixture.
+    original_report = ROOT / "assets/audit/responsive-qa/results.json"
+    original_bytes = original_report.read_bytes() if original_report.exists() else None
+    fixture_root = tmp_path / "runner"
+    (fixture_root / "scripts").mkdir(parents=True)
+    (fixture_root / "about").mkdir()
+    shutil.copy2(ROOT / "scripts/responsive-qa.mjs", fixture_root / "scripts/responsive-qa.mjs")
+    shutil.copy2(ROOT / "about/index.html", fixture_root / "about/index.html")
+    (fixture_root / "sitemap.xml").write_text(
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        '<url><loc>https://askjamie.bot/about/</loc></url></urlset>',
+        encoding="utf-8",
+    )
     result = subprocess.run(
         ["node", "scripts/responsive-qa.mjs", "--static"],
-        cwd=ROOT,
+        cwd=fixture_root,
         text=True,
         capture_output=True,
     )
@@ -515,7 +528,7 @@ def test_responsive_qa_static_output_omits_browser_versions():
     assert "Browser runtime:" not in result.stdout
 
     report = json.loads(
-        (ROOT / "assets/audit/responsive-qa/results.json").read_text(encoding="utf-8")
+        (fixture_root / "assets/audit/responsive-qa/results.json").read_text(encoding="utf-8")
     )
     browser_version = re.compile(
         r"\b(?:Playwright \d+\.\d+\.\d+|Chromium \d+(?:\.\d+){2,})\b"
@@ -525,6 +538,341 @@ def test_responsive_qa_static_output_omits_browser_versions():
     assert report["mode"] == "static-lint"
     assert "playwright_version" not in report
     assert "chromium_version" not in report
+    assert (original_report.read_bytes() if original_report.exists() else None) == original_bytes
+
+
+def test_responsive_qa_reports_delayed_domcontentloaded_warning_without_failing_route(tmp_path):
+    node_bin = os.environ.get("ASKJAMIE_NODE") or shutil.which("node")
+    node_modules = os.environ.get("NODE_PATH")
+    repo_modules = ROOT / "node_modules"
+    if not node_modules and (repo_modules / "playwright").exists():
+        node_modules = str(repo_modules)
+    bundled_modules = Path(
+        "/Users/okh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules"
+    )
+    if not node_modules and (bundled_modules / "playwright").exists():
+        node_modules = str(bundled_modules)
+    if not node_bin or not node_modules or not (Path(node_modules) / "playwright").exists():
+        pytest.skip("Playwright runtime is unavailable")
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, _format, *_args):
+            return
+
+        def do_GET(self):
+            if self.path == "/slow-domcontentloaded.js":
+                time.sleep(6.2)
+                payload = b"window.fixtureLoaded = true;"
+                self.send_response(200)
+                self.send_header("Content-Type", "application/javascript")
+            else:
+                payload = (
+                    b'<!doctype html><html><head><meta name="viewport" '
+                    b'content="width=device-width"></head><body><h1>Delayed fixture</h1>'
+                    b'<script src="/slow-domcontentloaded.js"></script></body></html>'
+                )
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    fixture_root = tmp_path / "runner"
+    (fixture_root / "scripts").mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts/responsive-qa.mjs", fixture_root / "scripts/responsive-qa.mjs")
+    (fixture_root / "sitemap.xml").write_text(
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        '<url><loc>https://askjamie.bot/delayed-domcontentloaded/</loc></url></urlset>',
+        encoding="utf-8",
+    )
+    try:
+        result = subprocess.run(
+            [
+                node_bin,
+                "scripts/responsive-qa.mjs",
+                f"--base=http://127.0.0.1:{server.server_address[1]}",
+            ],
+            cwd=fixture_root,
+            text=True,
+            capture_output=True,
+            timeout=90,
+            env={**os.environ, "NODE_PATH": node_modules},
+        )
+        report = json.loads(
+            (fixture_root / "assets/audit/responsive-qa/results.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)
+
+    warning_text = "DOMContentLoaded not observed within 5s after local document commit"
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "WARN  /delayed-domcontentloaded/" in result.stdout
+    assert warning_text in result.stdout
+    route_rows = [
+        row for row in report["results"] if "/delayed-domcontentloaded/" in row["url"]
+    ]
+    assert len(route_rows) == 16
+    assert all(row["pass"] for row in route_rows)
+    assert all(any(warning_text in warning for warning in row["warnings"]) for row in route_rows)
+
+
+def test_responsive_qa_reports_git_provenance_in_browser_and_static_modes(tmp_path):
+    node_bin = os.environ.get("ASKJAMIE_NODE") or shutil.which("node")
+    node_modules = os.environ.get("NODE_PATH")
+    repo_modules = ROOT / "node_modules"
+    if not node_modules and (repo_modules / "playwright").exists():
+        node_modules = str(repo_modules)
+    bundled_modules = Path(
+        "/Users/okh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules"
+    )
+    if not node_modules and (bundled_modules / "playwright").exists():
+        node_modules = str(bundled_modules)
+    if not node_bin or not node_modules or not (Path(node_modules) / "playwright").exists():
+        pytest.skip("Playwright runtime is unavailable")
+    git_bin = shutil.which("git")
+    if not git_bin:
+        pytest.skip("Git executable is unavailable")
+
+    html_path = "about/index.html"
+    html = (
+        '<!doctype html><html><head><meta name="viewport" '
+        'content="width=device-width"></head><body><a class="skip-link" href="#main">Skip</a>'
+        '<nav class="primary-nav"><a href="/about/">About</a></nav>'
+        '<main id="main"><h1>About</h1></main><footer><a href="/search/">Search</a></footer>'
+        '<script src="/assets/js/app.js"></script></body></html>'
+    )
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, _format, *_args):
+            return
+
+        def do_GET(self):
+            if self.path.endswith("/assets/js/app.js"):
+                payload = b"// fixture"
+                content_type = "application/javascript"
+            else:
+                payload = (fixture_root / html_path).read_bytes()
+                content_type = "text/html"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    fixture_root = tmp_path / "runner"
+    (fixture_root / "scripts").mkdir(parents=True)
+    (fixture_root / "about").mkdir()
+    shutil.copy2(ROOT / "scripts/responsive-qa.mjs", fixture_root / "scripts/responsive-qa.mjs")
+    (fixture_root / html_path).write_text(html, encoding="utf-8")
+    (fixture_root / "sitemap.xml").write_text(
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        '<url><loc>https://askjamie.bot/about/</loc></url></urlset>',
+        encoding="utf-8",
+    )
+    (fixture_root / ".gitignore").write_text(
+        "/assets/audit/responsive-qa/\n", encoding="utf-8"
+    )
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    def run_report(static):
+        command = [
+            node_bin,
+            "scripts/responsive-qa.mjs",
+            f"--base=http://127.0.0.1:{server.server_address[1]}",
+        ]
+        if static:
+            command.append("--static")
+        result = subprocess.run(
+            command,
+            cwd=fixture_root,
+            text=True,
+            capture_output=True,
+            timeout=90,
+            env={**os.environ, "NODE_PATH": node_modules},
+        )
+        report = json.loads(
+            (fixture_root / "assets/audit/responsive-qa/results.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return report
+
+    try:
+        browser_unavailable = run_report(static=False)
+        static_unavailable = run_report(static=True)
+        for report in (browser_unavailable, static_unavailable):
+            assert report["source_revision"] is None
+            assert report["source_tree_status"] == "unavailable"
+            assert report["source_revision_error"]
+
+        subprocess.run([git_bin, "init", "-q"], cwd=fixture_root, check=True)
+        subprocess.run(
+            [git_bin, "config", "user.name", "Responsive QA Test"],
+            cwd=fixture_root,
+            check=True,
+        )
+        subprocess.run(
+            [git_bin, "config", "user.email", "responsive-qa-test@example.invalid"],
+            cwd=fixture_root,
+            check=True,
+        )
+        subprocess.run([git_bin, "add", "."], cwd=fixture_root, check=True)
+        subprocess.run(
+            [git_bin, "commit", "-q", "-m", "fixture baseline"],
+            cwd=fixture_root,
+            check=True,
+        )
+        revision = subprocess.check_output(
+            [git_bin, "rev-parse", "HEAD"], cwd=fixture_root, text=True
+        ).strip()
+
+        for static in (False, True):
+            report = run_report(static)
+            assert report["source_revision"] == revision
+            assert report["source_tree_status"] == "clean"
+            assert "source_revision_error" not in report
+
+        (fixture_root / html_path).write_text(html + "\n<!-- modified -->\n", encoding="utf-8")
+        for static in (False, True):
+            report = run_report(static)
+            assert report["source_revision"] == revision
+            assert report["source_tree_status"] == "modified"
+            assert "source_revision_error" not in report
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("stop_phase", ["route", "cleanup", "exception"])
+def test_responsive_qa_retains_clearly_partial_report_after_early_stop(tmp_path, stop_phase):
+    node_bin = os.environ.get("ASKJAMIE_NODE") or shutil.which("node")
+    node_modules = os.environ.get("NODE_PATH")
+    repo_modules = ROOT / "node_modules"
+    if not node_modules and (repo_modules / "playwright").exists():
+        node_modules = str(repo_modules)
+    if not node_bin or not node_modules or not (Path(node_modules) / "playwright").exists():
+        pytest.skip("Playwright runtime is unavailable")
+
+    slow_route_started = threading.Event()
+    release_slow_route = threading.Event()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, _format, *_args):
+            return
+
+        def do_GET(self):
+            if self.path.startswith("/slow/"):
+                slow_route_started.set()
+                release_slow_route.wait(timeout=60)
+            payload = (
+                b'<!doctype html><html><head><meta name="viewport" '
+                b'content="width=device-width"></head><body><h1>Fixture</h1></body></html>'
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    fixture_root = tmp_path / "runner"
+    (fixture_root / "scripts").mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts/responsive-qa.mjs", fixture_root / "scripts/responsive-qa.mjs")
+    if stop_phase == "cleanup":
+        runner = fixture_root / "scripts/responsive-qa.mjs"
+        source = runner.read_text(encoding="utf-8")
+        # Both the normal cleanup and signal handler await the same close.
+        # The normal continuation must not replace an early-stop receipt.
+        marker = "  const allResults = [];"
+        assert source.count(marker) == 1
+        source = source.replace(marker, """
+  const realClose = browser.close.bind(browser);
+  let closing;
+  browser.close = () => {
+    if (!closing) {
+      closing = new Promise(resolve => setTimeout(resolve, 100)).then(realClose);
+      process.kill(process.pid, 'SIGTERM');
+    }
+    return closing;
+  };
+""" + marker)
+        runner.write_text(source, encoding="utf-8")
+    elif stop_phase == "exception":
+        runner = fixture_root / "scripts/responsive-qa.mjs"
+        source = runner.read_text(encoding="utf-8")
+        marker = "    for (const { ctx } of workers) await ctx.close();"
+        assert source.count(marker) == 1
+        runner.write_text(source.replace(
+            marker, '    throw new Error("fixture cleanup failed");\n' + marker
+        ), encoding="utf-8")
+    (fixture_root / "sitemap.xml").write_text(
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        '<url><loc>https://askjamie.bot/fast/</loc></url>'
+        + ('<url><loc>https://askjamie.bot/slow/</loc></url>' if stop_phase == "route" else '')
+        + '</urlset>',
+        encoding="utf-8",
+    )
+    report_path = fixture_root / "assets/audit/responsive-qa/results.json"
+    process = subprocess.Popen(
+        [
+            node_bin,
+            "scripts/responsive-qa.mjs",
+            f"--base=http://127.0.0.1:{server.server_address[1]}",
+        ],
+        cwd=fixture_root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "NODE_PATH": node_modules},
+    )
+    try:
+        if stop_phase == "route":
+            assert slow_route_started.wait(timeout=90), "responsive QA never reached the slow route"
+            process.terminate()
+        _stdout, stderr = process.communicate(timeout=10 if stop_phase == "route" else 90)
+        assert process.returncode == (1 if stop_phase == "exception" else 143)
+        assert report_path.is_file(), "no report was retained after the early stop"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["status"] == "early_stop"
+        expected_reason = "fixture cleanup failed" if stop_phase == "exception" else "Received SIGTERM"
+        assert report["failure_reason"] == expected_reason
+        if stop_phase == "exception":
+            assert expected_reason in stderr
+        assert report["playwright_version"]
+        assert report["chromium_version"]
+        assert report["pages_checked"] == 1
+        assert report["pages_expected"] == (2 if stop_phase == "route" else 1)
+        rows = report["results"]
+        assert report["total_checks"] == len(rows) == 16
+        assert report["passing_checks"] == sum(1 for row in rows if row["pass"])
+        assert report["failing_checks"] == sum(1 for row in rows if not row["pass"])
+    finally:
+        release_slow_route.set()
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=10)
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)
 
 
 def test_responsive_qa_keeps_csp_suppression_narrow_and_reports_resource_failures():
@@ -2483,11 +2831,20 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
 
     assert result.returncode == 1
     assert warning_only_result.returncode == 0, warning_only_result.stdout
+    for saved_report in (report, warning_only_report):
+        saved_rows = saved_report["results"]
+        passing_rows = sum(1 for row in saved_rows if row["pass"])
+        failing_rows = sum(1 for row in saved_rows if not row["pass"])
+        assert saved_report["total_checks"] == len(saved_rows)
+        assert saved_report["passing_checks"] == passing_rows
+        assert saved_report["failing_checks"] == failing_rows
+        assert saved_report["total_checks"] == passing_rows + failing_rows
     assert warning_only_report["failing_checks"] == 0
     assert warning_only_report["results"]
     assert all(row["pass"] and not row["errors"] for row in warning_only_report["results"])
     assert any(row["warnings"] for row in warning_only_report["results"])
     assert report["mode"] == "playwright"
+    assert report["status"] == "complete"
     runtime = re.search(
         r"^Browser runtime: Playwright (\d+\.\d+\.\d+); Chromium (\d+(?:\.\d+){2,})$",
         result.stdout,
