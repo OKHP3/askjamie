@@ -199,6 +199,13 @@ evidence and 1px geometry threshold apply. These boundary checks do not
 establish other widths, browser engines or human-spoken output. Browser evidence
 is supplied by CI.
 
+BrandGuard tablet font activation waits for DOMContentLoaded initialization to
+finish before measuring fallback reservations. This includes the transition
+notice control revealed by the shared page script. A delayed-initialization
+PING fixture at 899px checks the notice and four hero elements against the
+existing 1px threshold, with matching loaded-font faces. This focused regression
+does not establish human spoken output or every initialization timing.
+
 Fallback height reservations are released when the viewport width changes,
 including changes within the tablet range. Height-only changes retain them.
 The browser resize regression covers the BrandGuard hub and the shortest and
