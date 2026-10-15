@@ -2442,11 +2442,7 @@ async function runWithPlaywright() {
   // route. External resources are blocked so browser QA measures local assets.
   const EXTERNAL_BLOCK = /fonts\.(gstatic|googleapis)\.com|google-analytics\.com|googletagmanager\.com|cdn\.jsdelivr\.net/;
 
-  const workers = await Promise.all(VIEWPORTS.map(async vp => {
-    const ctx  = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
-    return { vp, ctx };
-  }));
-
+  const workers = [];
   const allResults = [];
   let completedPages = 0;
   let earlyStopReason = null;
@@ -2868,6 +2864,11 @@ async function runWithPlaywright() {
   }
 
   try {
+    workers.push(...await Promise.all(VIEWPORTS.map(async vp => {
+      const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+      return { vp, ctx };
+    })));
+
     for (const path of PUBLIC_PATHS) {
       const url = BASE_URL + path;
 

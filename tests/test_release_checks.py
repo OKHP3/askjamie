@@ -758,6 +758,115 @@ def test_responsive_qa_reports_git_provenance_in_browser_and_static_modes(tmp_pa
         server_thread.join(timeout=2)
 
 
+@pytest.mark.parametrize("setup_stop", ["context_rejection", "signal"])
+def test_responsive_qa_writes_partial_report_when_context_setup_stops(tmp_path, setup_stop):
+    node_bin = os.environ.get("ASKJAMIE_NODE") or shutil.which("node")
+    node_modules = os.environ.get("NODE_PATH")
+    repo_modules = ROOT / "node_modules"
+    if not node_modules and (repo_modules / "playwright").exists():
+        node_modules = str(repo_modules)
+    if not node_bin or not node_modules or not (Path(node_modules) / "playwright").exists():
+        pytest.skip("Playwright runtime is unavailable")
+
+    fixture_root = tmp_path / "runner"
+    runner = fixture_root / "scripts/responsive-qa.mjs"
+    runner.parent.mkdir(parents=True)
+    source = (ROOT / "scripts/responsive-qa.mjs").read_text(encoding="utf-8")
+    marker = "    workers.push(...await Promise.all(VIEWPORTS.map(async vp => {"
+    assert source.count(marker) == 1
+    setup_mode = json.dumps(setup_stop)
+    setup_hook = f"""
+  const originalNewContext = browser.newContext.bind(browser);
+  let setupCalls = 0;
+  browser.newContext = options => {{
+    const call = setupCalls++;
+    if ({setup_mode} === 'context_rejection' && call === 0) {{
+      return Promise.reject(new Error('fixture context setup rejected'));
+    }}
+    const pending = originalNewContext(options);
+    if ({setup_mode} === 'signal') {{
+      if (call === 0) process.kill(process.pid, 'SIGTERM');
+      return pending.then(ctx => new Promise(resolve => setTimeout(() => resolve(ctx), 500)));
+    }}
+    return pending;
+  }};
+"""
+    runner.write_text(source.replace(marker, setup_hook + marker), encoding="utf-8")
+    (fixture_root / "sitemap.xml").write_text(
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        '<url><loc>https://askjamie.bot/setup/</loc></url></urlset>',
+        encoding="utf-8",
+    )
+    (fixture_root / ".gitignore").write_text(
+        "/assets/audit/responsive-qa/\n", encoding="utf-8"
+    )
+    git_bin = shutil.which("git")
+    assert git_bin, "Git is required to verify report provenance"
+    subprocess.run([git_bin, "init", "-q"], cwd=fixture_root, check=True)
+    subprocess.run(
+        [git_bin, "config", "user.name", "Responsive QA Test"],
+        cwd=fixture_root,
+        check=True,
+    )
+    subprocess.run(
+        [git_bin, "config", "user.email", "responsive-qa-test@example.invalid"],
+        cwd=fixture_root,
+        check=True,
+    )
+    subprocess.run(
+        [git_bin, "add", ".gitignore", "scripts/responsive-qa.mjs", "sitemap.xml"],
+                   cwd=fixture_root, check=True)
+    subprocess.run([git_bin, "commit", "-q", "-m", "setup fixture"],
+                   cwd=fixture_root, check=True)
+    revision = subprocess.check_output(
+        [git_bin, "rev-parse", "HEAD"], cwd=fixture_root, text=True
+    ).strip()
+
+    report_path = fixture_root / "assets/audit/responsive-qa/results.json"
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text(
+        json.dumps({"status": "complete", "results": [{"stale": True}]}),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [
+            node_bin,
+            "scripts/responsive-qa.mjs",
+            "--base=http://127.0.0.1:9",
+        ],
+        cwd=fixture_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        env={**os.environ, "NODE_PATH": node_modules},
+    )
+
+    if "Required browser QA could not start: Chromium could not be launched" in result.stderr:
+        pytest.skip("Chromium could not launch; context setup was not reached")
+
+    assert result.returncode == (143 if setup_stop == "signal" else 1), (
+        result.stdout + result.stderr
+    )
+    assert report_path.is_file(), "context setup stop did not replace the stale report"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    expected_reason = (
+        "fixture context setup rejected"
+        if setup_stop == "context_rejection"
+        else "Received SIGTERM"
+    )
+    assert report["status"] == "early_stop"
+    assert report["failure_reason"] == expected_reason
+    assert report["source_revision"] == revision
+    assert report["source_tree_status"] == "clean"
+    assert report["playwright_version"]
+    assert report["chromium_version"]
+    assert report["pages_checked"] == 0
+    assert report["total_checks"] == 0
+    assert report["passing_checks"] == 0
+    assert report["failing_checks"] == 0
+    assert report["results"] == []
+
+
 @pytest.mark.parametrize("stop_phase", ["route", "cleanup", "exception"])
 def test_responsive_qa_retains_clearly_partial_report_after_early_stop(tmp_path, stop_phase):
     node_bin = os.environ.get("ASKJAMIE_NODE") or shutil.which("node")
