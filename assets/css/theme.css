@@ -7848,8 +7848,13 @@ html body.askjamie-main {
   }
 
   .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1,
-  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-case-lego .askjamie-hero-copy h1 {
     min-height: 4lh;
+  }
+
+  .askjamie-main.brandguard-starbucks .askjamie-hero-copy .hero-tagline {
+    min-height: 8lh;
   }
 
   .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
@@ -7861,15 +7866,26 @@ html body.askjamie-main {
   }
 }
 
-/* The 370px width lets deferred fonts shorten the long-case transition copy;
-   keep that upstream text and the BFS headline from moving the measured hero. */
+/* Keep the measured seven-line fallback transition copy and BFS headline
+   from shortening when branded fonts load at the 370px edge. */
 @media (min-width: 365px) and (max-width: 370px) {
   .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
     min-height: 3lh;
   }
 
   .askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2),
-  .askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2) {
+  .askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-lego .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-starbucks .capability-transition > p:nth-of-type(2),
+  .askjamie-main.coke-brandguard .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-brooks-running .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-costco .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-discount-tire .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-dollar-general .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-hershey .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-mathews-archery .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-ping .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-case-scheels .capability-transition > p:nth-of-type(2) {
     min-height: 7lh;
   }
 }

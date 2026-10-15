@@ -127,6 +127,15 @@ jobs:
           node tests/test_universe_font_geometry.spec.mjs
           node scripts/experience-qa.cjs
 
+      - name: Retain responsive browser evidence
+        if: ${{ always() && hashFiles('assets/audit/responsive-qa/results.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: responsive-qa-evidence-${{ github.sha }}
+          path: assets/audit/responsive-qa/results.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Run site auditor
         # Checks search-index consistency (template contamination, missing pages),
         # sitemap reconciliation, image hygiene, and governance checks.
