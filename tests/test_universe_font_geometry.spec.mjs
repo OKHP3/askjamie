@@ -70,8 +70,14 @@ async function waitForReservations(page, width) {
     const reservations = [...document.querySelectorAll(
       '[data-universe-font-reservation="true"]'
     )];
+    // A details toggle can schedule its visible-item reservations after the
+    // existing page reservations are ready. Wait before taking the snapshot.
+    const openItems = [...document.querySelectorAll(".universe-map-group[open] li")];
     return linksReady && reservations.length > 0 &&
       reservations.every(element =>
+        Number(element.dataset.universeFontReservationWidth) === expectedWidth) &&
+      openItems.every(element =>
+        element.dataset.universeFontReservation === "true" &&
         Number(element.dataset.universeFontReservationWidth) === expectedWidth);
   }, width, { timeout: 15000 });
 }
