@@ -190,6 +190,15 @@ The expanded checks exposed LEGO heading and Starbucks tagline shifts at
 350px, plus transition-copy shifts on eleven additional cases at 370px.
 Scoped line-height reservations preserve their measured fallback space.
 
+The October 15, 2026 responsive-QA inventory uses 16 viewports for 432
+route/viewport rows.
+It additionally measures the BrandGuard hub, shortest LVMH case study and
+longest BFS case study at 355px and 365px before and after their expected web
+fonts load. The same four breadcrumb and hero elements, matching loaded-face
+evidence and 1px geometry threshold apply. These boundary checks do not
+establish other widths, browser engines or human-spoken output. Browser evidence
+is supplied by CI.
+
 Fallback height reservations are released when the viewport width changes,
 including changes within the tablet range. Height-only changes retain them.
 The browser resize regression covers the BrandGuard hub and the shortest and

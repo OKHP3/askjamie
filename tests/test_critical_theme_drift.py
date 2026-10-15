@@ -277,13 +277,14 @@ const vm = require('node:vm');
 const source = fs.readFileSync('scripts/responsive-qa.mjs', 'utf8');
 const config = source.slice(source.indexOf('const BRANDGUARD_GEOMETRY_PATH ='),
   source.indexOf('const BRANDGUARD_NARROW_CONTENT_VIEWPORT ='));
-const predicate = source.match(/const checkBrandGuardFonts =\s*[\s\S]*?;/)[0];
+const predicates = source.slice(source.indexOf('    const checkBrandGuardAllRouteFonts ='),
+  source.indexOf('    const checkUniverseDiagram ='));
 const routes = ['/lens-system/okhp3-brandguard/',
   '/lens-system/okhp3-brandguard/lvmh/',
   '/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/',
   '/lens-system/okhp3-brandguard/new-case/', '/about/'];
 console.log(JSON.stringify(Object.fromEntries(['mobile-390', 'mobile-360', 'mobile-350-edge', 'mobile-370-edge', 'tablet-768'].map(name =>
-  [name, routes.map(path => vm.runInNewContext(config + '\n' + predicate + '\ncheckBrandGuardFonts',
+  [name, routes.map(path => vm.runInNewContext(config + '\n' + predicates + '\ncheckBrandGuardFonts',
     {PUBLIC_PATHS: routes, path, vp: {name}}))]))));
 """
     result = subprocess.run(['node', '-e', script], cwd=ROOT, text=True,
@@ -521,27 +522,64 @@ const vm = require('node:vm');
 const source = fs.readFileSync('scripts/responsive-qa.mjs', 'utf8');
 const config = source.slice(source.indexOf('const BRANDGUARD_GEOMETRY_PATH ='),
   source.indexOf('const BRANDGUARD_NARROW_CONTENT_VIEWPORT ='));
-const predicate = source.match(/const checkBrandGuardFonts =\\s*[\\s\\S]*?;/)[0];
+const predicates = source.slice(source.indexOf('    const checkBrandGuardAllRouteFonts ='),
+  source.indexOf('    const checkUniverseDiagram ='));
 const routes = {json.dumps(routes)};
 const publicPaths = routes.slice(0, -1);
-const viewports = ['mobile-320', 'mobile-350-edge', 'mobile-370-edge', 'mobile-360',
-  'mobile-390', 'tablet-768', 'tablet-899', 'mobile-430', 'desktop-1280'];
+const viewports = ['mobile-320', 'mobile-350-edge', 'mobile-355-boundary',
+  'mobile-360', 'mobile-365-boundary', 'mobile-370-edge', 'mobile-390',
+  'tablet-768', 'tablet-899', 'mobile-430', 'desktop-1280'];
 const matrix = Object.fromEntries(viewports.map(name => [name, routes.map(path =>
-  vm.runInNewContext(config + '\\n' + predicate + '\\ncheckBrandGuardFonts',
+  vm.runInNewContext(config + '\\n' + predicates +
+        '\\n({{ allRoutes: checkBrandGuardAllRouteFonts, boundary: checkBrandGuardBoundaryFonts, measured: checkBrandGuardFonts }})',
     {{ PUBLIC_PATHS: publicPaths, path, vp: {{ name }} }}))]));
-console.log(JSON.stringify(matrix));
+const unlistedRepresentative = vm.runInNewContext(config + '\\n' + predicates + '\\ncheckBrandGuardFonts',
+  {{ PUBLIC_PATHS: publicPaths.filter(path => path !== '/lens-system/okhp3-brandguard/lvmh/'),
+     path: '/lens-system/okhp3-brandguard/lvmh/', vp: {{ name: 'mobile-355-boundary' }} }});
+console.log(JSON.stringify({{matrix, unlistedRepresentative}}));
 """
     result = subprocess.run(
         ["node", "-e", node_test], cwd=ROOT, text=True, capture_output=True, check=True
     )
-    matrix = json.loads(result.stdout)
+    evaluated = json.loads(result.stdout)
+    matrix = evaluated["matrix"]
+    assert evaluated["unlistedRepresentative"] is False
     expected = [True] * len(sitemap_paths) + [True, False, False]
+    representative_routes = {
+        "/lens-system/okhp3-brandguard/",
+        "/lens-system/okhp3-brandguard/lvmh/",
+        "/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/",
+    }
+    expected_boundary = [
+        route in representative_routes for route in routes
+    ]
+    for rows in matrix.values():
+        assert all(row["measured"] == (row["allRoutes"] or row["boundary"]) for row in rows)
     for viewport in ("mobile-350-edge", "mobile-370-edge"):
-        assert matrix[viewport] == expected
+        assert [row["allRoutes"] for row in matrix[viewport]] == expected
+        assert [row["boundary"] for row in matrix[viewport]] == [False] * len(routes)
+    for viewport in ("mobile-355-boundary", "mobile-365-boundary"):
+        assert [row["allRoutes"] for row in matrix[viewport]] == [False] * len(routes)
+        assert [row["boundary"] for row in matrix[viewport]] == expected_boundary
     for viewport in ("mobile-320", "mobile-360", "mobile-390", "tablet-768", "tablet-899"):
-        assert matrix[viewport] == expected
+        assert [row["allRoutes"] for row in matrix[viewport]] == expected
+        assert [row["boundary"] for row in matrix[viewport]] == [False] * len(routes)
     for viewport in ("mobile-430", "desktop-1280"):
-        assert matrix[viewport] == [False] * len(routes)
+        assert [row["allRoutes"] for row in matrix[viewport]] == [False] * len(routes)
+        assert [row["boundary"] for row in matrix[viewport]] == [False] * len(routes)
+
+    assert "{ name: 'mobile-355-boundary', width: 355, height: 780 }" in source
+    assert "{ name: 'mobile-365-boundary', width: 365, height: 780 }" in source
+    boundary_viewports = re.search(
+        r"const BRANDGUARD_FONT_BOUNDARY_GEOMETRY_VIEWPORTS = new Set\(\[(.*?)\]\);",
+        source,
+        re.DOTALL,
+    )
+    assert boundary_viewports
+    assert set(re.findall(r"'([^']+)'", boundary_viewports.group(1))) == {
+        "mobile-355-boundary",
+        "mobile-365-boundary",
+    }
 
 
 def test_brandguard_font_reservations_are_scoped_to_measured_edge_widths():
