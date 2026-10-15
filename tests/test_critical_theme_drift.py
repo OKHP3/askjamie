@@ -267,7 +267,7 @@ def test_brandguard_case_study_390px_font_tracking_is_scoped_to_case_studies():
     ) in theme
 
 
-def test_responsive_qa_covers_new_brandguard_routes_at_360_and_390_and_samples_edges():
+def test_responsive_qa_covers_new_brandguard_routes_at_primary_and_edge_widths():
     import json
     import subprocess
 
@@ -291,8 +291,8 @@ console.log(JSON.stringify(Object.fromEntries(['mobile-390', 'mobile-360', 'mobi
     assert json.loads(result.stdout) == {
         'mobile-390': [True, True, True, True, False],
         'mobile-360': [True, True, True, True, False],
-        'mobile-350-edge': [True, True, True, False, False],
-        'mobile-370-edge': [True, True, True, False, False],
+        'mobile-350-edge': [True, True, True, True, False],
+        'mobile-370-edge': [True, True, True, True, False],
         'tablet-768': [True, True, True, True, False],
     }
 
@@ -467,7 +467,10 @@ def test_responsive_qa_checks_brandguard_content_at_320px_from_sitemap_routes():
 
 
 def test_responsive_qa_checks_brandguard_font_geometry_at_350_and_370_edges():
+    import json
     import re
+    import subprocess
+    import xml.etree.ElementTree as ET
 
     source = (ROOT / "scripts" / "responsive-qa.mjs").read_text(encoding="utf-8")
     assert "{ name: 'mobile-350-edge', width: 350, height: 780 }" in source
@@ -486,9 +489,59 @@ def test_responsive_qa_checks_brandguard_font_geometry_at_350_and_370_edges():
         "mobile-350-edge",
         "mobile-370-edge",
     }
-    assert "BRANDGUARD_FONT_EDGE_GEOMETRY_PATHS.has(path)" in source
+    representative_routes = re.search(
+        r"const BRANDGUARD_FONT_EDGE_GEOMETRY_PATHS = new Set\(\[(.*?)\]\);",
+        source,
+        re.DOTALL,
+    )
+    assert representative_routes
+    assert set(re.findall(r"'([^']+)'", representative_routes.group(1))) == {
+        "/lens-system/okhp3-brandguard/lvmh/",
+        "/lens-system/okhp3-brandguard/bfs-framing-intelligent-futures/",
+    }
+    assert "  BRANDGUARD_GEOMETRY_PATH," in representative_routes.group(1)
+    assert "BRANDGUARD_FONT_GEOMETRY_PATHS.has(path)" in source
     assert "BRANDGUARD_FONT_EDGE_GEOMETRY_VIEWPORTS.has(vp.name)" in source
     assert "BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1" in source
+
+    sitemap_paths = sorted({
+        url.text.removeprefix("https://askjamie.bot")
+        for url in ET.parse(ROOT / "sitemap.xml").findall(".//{*}loc")
+        if url.text and "/lens-system/okhp3-brandguard/" in url.text
+    })
+    assert sitemap_paths
+    routes = sitemap_paths + [
+        "/lens-system/okhp3-brandguard/future-sitemap-case/",
+        "/about/",
+        "/lens-system/okhp3-brandguard/unlisted-case/",
+    ]
+    node_test = f"""
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync('scripts/responsive-qa.mjs', 'utf8');
+const config = source.slice(source.indexOf('const BRANDGUARD_GEOMETRY_PATH ='),
+  source.indexOf('const BRANDGUARD_NARROW_CONTENT_VIEWPORT ='));
+const predicate = source.match(/const checkBrandGuardFonts =\\s*[\\s\\S]*?;/)[0];
+const routes = {json.dumps(routes)};
+const publicPaths = routes.slice(0, -1);
+const viewports = ['mobile-320', 'mobile-350-edge', 'mobile-370-edge', 'mobile-360',
+  'mobile-390', 'tablet-768', 'tablet-899', 'mobile-430', 'desktop-1280'];
+const matrix = Object.fromEntries(viewports.map(name => [name, routes.map(path =>
+  vm.runInNewContext(config + '\\n' + predicate + '\\ncheckBrandGuardFonts',
+    {{ PUBLIC_PATHS: publicPaths, path, vp: {{ name }} }}))]));
+console.log(JSON.stringify(matrix));
+"""
+    result = subprocess.run(
+        ["node", "-e", node_test], cwd=ROOT, text=True, capture_output=True, check=True
+    )
+    matrix = json.loads(result.stdout)
+    expected = [True] * len(sitemap_paths) + [True, False, False]
+    for viewport in ("mobile-350-edge", "mobile-370-edge"):
+        assert matrix[viewport] == expected
+    for viewport in ("mobile-320", "mobile-360", "mobile-390", "tablet-768", "tablet-899"):
+        assert matrix[viewport] == expected
+    for viewport in ("mobile-430", "desktop-1280"):
+        assert matrix[viewport] == [False] * len(routes)
 
 
 def test_brandguard_font_reservations_are_scoped_to_measured_edge_widths():

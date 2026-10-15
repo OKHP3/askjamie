@@ -180,6 +180,13 @@ activating fonts at 320px and tablet widths. Theme and font activation evidence
 remain separate, with the existing 1px tolerance. Human spoken output remains
 incomplete.
 
+The October 15, 2026 QA coverage extension configures real-font checks for
+every sitemap-listed BrandGuard route at 350px and 370px, in addition to the
+existing 320px, 360px, 390px, 768px and 899px checks. The route/viewport
+inventory remains 378 rows. The four measured elements, loaded-face evidence
+and 1px tolerance are unchanged. The three-route representative inventory is
+retained for separate 355px and 365px boundary work under task #272.
+
 Fallback height reservations are released when the viewport width changes,
 including changes within the tablet range. Height-only changes retain them.
 The browser resize regression covers the BrandGuard hub and the shortest and
