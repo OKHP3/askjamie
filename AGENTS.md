@@ -180,12 +180,15 @@ activating fonts at 320px and tablet widths. Theme and font activation evidence
 remain separate, with the existing 1px tolerance. Human spoken output remains
 incomplete.
 
-The October 15, 2026 QA coverage extension configures real-font checks for
+The October 15, 2026 font-stability extension configures real-font checks for
 every sitemap-listed BrandGuard route at 350px and 370px, in addition to the
 existing 320px, 360px, 390px, 768px and 899px checks. The route/viewport
 inventory remains 378 rows. The four measured elements, loaded-face evidence
 and 1px tolerance are unchanged. The three-route representative inventory is
 retained for separate 355px and 365px boundary work under task #272.
+The expanded checks exposed LEGO heading and Starbucks tagline shifts at
+350px, plus transition-copy shifts on eleven additional cases at 370px.
+Scoped line-height reservations preserve their measured fallback space.
 
 Fallback height reservations are released when the viewport width changes,
 including changes within the tablet range. Height-only changes retain them.
@@ -382,7 +385,11 @@ before running it in a worktree with uncommitted content changes.
 `.github/workflows/validate.yml` runs on pushes and pull requests targeting
 `main`. It checks source structure, asset fingerprints, links, Python
 regressions, search-index freshness, browser responsive behavior, JavaScript
-smoke behavior, and the canonical audit. On a successful push to `main`, it
+smoke behavior, and the canonical audit. The responsive browser report is
+retained for one day as `responsive-qa-evidence-<source-revision>` whenever
+the report exists, including after a later browser check fails. Its recorded
+mode, browser versions and route measurements remain separate from static QA
+and human acceptance. On a successful push to `main`, the workflow
 prepares `.scratch/pages-release/` and passes that exact commit-named artifact
 to a deploy job that depends on validation. The isolated deploy runner downloads
 that artifact into `dist-pages/`. `CNAME` declares `askjamie.bot`.

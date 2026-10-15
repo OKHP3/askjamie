@@ -551,7 +551,8 @@ def test_brandguard_font_reservations_are_scoped_to_measured_edge_widths():
     assert "@media (min-width: 365px) and (max-width: 370px)" in theme
     assert (
         ".askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1,\n"
-        "  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {\n"
+        "  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1,\n"
+        "  .askjamie-main.brandguard-case-lego .askjamie-hero-copy h1 {\n"
         "    min-height: 4lh;"
     ) in theme
     assert ".askjamie-main.brandguard-lvmh-page .askjamie-hero-copy h1" in theme
