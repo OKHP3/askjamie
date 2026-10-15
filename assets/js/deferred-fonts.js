@@ -36,6 +36,10 @@ const reserveBrandGuardTabletGeometry = () => {
 };
 
 if (needsBrandGuardFontReservation) {
+  let appDomReady = document.readyState === "complete";
+  document.addEventListener("DOMContentLoaded", () => {
+    appDomReady = true;
+  }, { once: true });
   const deferredThemeLink = document.querySelector("link[data-deferred-styles]");
   if (deferredThemeLink) {
     reserveBrandGuardTabletGeometry();
@@ -44,10 +48,26 @@ if (needsBrandGuardFontReservation) {
     const themeStylesheet = [...document.querySelectorAll('link[rel~="stylesheet"]')]
       .find((link) => new URL(link.href).pathname === "/assets/css/theme.css");
     const reserveAndActivateTabletFonts = () => {
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        reserveBrandGuardTabletGeometry();
-        if (tabletFontStylesheet) tabletFontStylesheet.media = "all";
-      }));
+      const reserveAfterAppInitialization = () => {
+        // The transition notice reveals its access button from app.js at
+        // DOMContentLoaded. Do not measure an incomplete notice or activate
+        // fonts until that synchronous initializer has finished.
+        window.setTimeout(() => {
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            reserveBrandGuardTabletGeometry();
+            if (tabletFontStylesheet) tabletFontStylesheet.media = "all";
+          }));
+        }, 0);
+      };
+      if (!appDomReady) {
+        document.addEventListener(
+          "DOMContentLoaded",
+          reserveAfterAppInitialization,
+          { once: true }
+        );
+      } else {
+        reserveAfterAppInitialization();
+      }
     };
     const reserveAfterThemeStyles = () => {
       reserveAndActivateTabletFonts();
