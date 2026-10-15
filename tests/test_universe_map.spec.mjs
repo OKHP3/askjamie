@@ -266,6 +266,11 @@ try {
   const narrow = await browser.newPage({ viewport: { width: 320, height: 740 }, colorScheme: "dark" });
   await narrow.addInitScript(() => localStorage.setItem("askjamie-color-scheme", "dark"));
   await narrow.goto(`${base}/universe/`);
+  // Panning is a full-theme behavior. Do not race the mobile activation delay.
+  await narrow.waitForFunction(() =>
+    [...document.querySelectorAll("link[data-deferred-styles]")].every(link =>
+      link.media === "all" && Boolean(link.sheet?.cssRules.length)),
+  null, { timeout: 15000 });
   const narrowGroups = narrow.locator(".universe-map-group");
   const narrowGroup = narrowGroups.first();
   await narrowGroup.locator("summary").click();

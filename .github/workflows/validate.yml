@@ -124,6 +124,7 @@ jobs:
           node tests/test_foundry_reflow.spec.mjs
           node tests/test_deferred_fonts_resize.spec.mjs
           node tests/test_universe_map.spec.mjs
+          node tests/test_universe_font_geometry.spec.mjs
           node scripts/experience-qa.cjs
 
       - name: Run site auditor
