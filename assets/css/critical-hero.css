@@ -629,3 +629,8 @@ body.askjamie-main a {
     letter-spacing: -0.04em;
   }
 }
+
+/* Keep the Universe return action stable across system and branded fonts. */
+.askjamie-main .askjamie-hero--universe .askjamie-hero-copy .btn-quiet {
+  min-inline-size: min(14rem, 100%);
+}

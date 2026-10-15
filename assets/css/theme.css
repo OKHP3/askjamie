@@ -8406,3 +8406,15 @@ html[data-theme="light"] .askjamie-main .site-footer h4 { color: var(--color-fg)
     min-height: 2lh;
   }
 }
+
+/* Keep the Universe return action stable across system and branded fonts. */
+.askjamie-main .askjamie-hero--universe .askjamie-hero-copy .btn-quiet {
+  min-inline-size: min(14rem, 100%);
+}
+
+/* The legal-page description needs seven lines with loaded fonts at 390px. */
+@media (min-width: 381px) and (max-width: 400px) {
+  .askjamie-main .universe-map-group li:has(> a[href="/legal/"]) {
+    min-block-size: 7lh;
+  }
+}

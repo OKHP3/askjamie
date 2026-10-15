@@ -189,10 +189,17 @@ browser zoom or human spoken output.
 
 Universe browser checks sample rendered label contrast across theme changes,
 horizontal panning at 320px in light mode, and every generated fallback link's
-local destination with Mermaid blocked. Real-font geometry remains a separate
-held diagnostic after confirmed reflow at 390px and 1280px. Native 200% browser
-zoom is also incomplete. Headless shortcuts, viewport resizing and CSS scaling
-do not establish native zoom or human spoken output.
+local destination with Mermaid blocked. The Universe font loader activates the
+full theme before measuring fallback text, reserves visible text blocks, and
+then activates web fonts. Reservations survive height-only changes, are
+invalidated by width changes, and extend to groups opened during font loading.
+A required browser fixture compares x, y, width and height at 390px and 1280px
+with a 1px tolerance and loaded-face evidence. The return action has a shared
+minimum width; the legal-page map description reserves its measured seven lines
+around 390px. The earlier font diagnostic remains preserved separately.
+These focused checks do not establish every width or font-loading timing.
+Native 200% browser zoom is incomplete. Headless shortcuts, viewport resizing
+and CSS scaling do not establish native zoom or human spoken output.
 
 ### Agent skills
 
