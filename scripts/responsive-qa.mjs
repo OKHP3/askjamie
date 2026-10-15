@@ -39,10 +39,40 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import { execFileSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 const ROOT       = resolve(__dirname, '..');
+
+function readSourceProvenance() {
+  try {
+    const source_revision = execFileSync(
+      'git',
+      ['rev-parse', '--verify', 'HEAD'],
+      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }
+    ).trim();
+    const status = execFileSync(
+      'git',
+      ['status', '--porcelain', '--untracked-files=all'],
+      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }
+    ).trim();
+    return {
+      source_revision,
+      source_tree_status: status ? 'modified' : 'clean',
+    };
+  } catch (error) {
+    return {
+      source_revision: null,
+      source_tree_status: 'unavailable',
+      source_revision_error: error?.code === 'ENOENT'
+        ? 'git executable unavailable'
+        : 'Git revision or working-tree status unavailable',
+    };
+  }
+}
+
+const SOURCE_PROVENANCE = readSourceProvenance();
 
 const BASE_URL   = process.argv.find(a => a.startsWith('--base='))?.split('=')[1]
                  ?? 'http://localhost:5000';
@@ -2418,6 +2448,38 @@ async function runWithPlaywright() {
   }));
 
   const allResults = [];
+  let completedPages = 0;
+  let earlyStopReason = null;
+  const buildBrowserReport = (status = 'in_progress', failure_reason = null) => ({
+    generated: new Date().toISOString(),
+    mode: 'playwright',
+    status,
+    failure_reason,
+    ...SOURCE_PROVENANCE,
+    playwright_version: playwrightVersion,
+    chromium_version: chromiumVersion,
+    base_url: BASE_URL,
+    pages_checked: completedPages,
+    pages_expected: PUBLIC_PATHS.length,
+    viewports_checked: VIEWPORTS.length,
+    total_checks: allResults.length,
+    passing_checks: allResults.filter(r => r.pass).length,
+    failing_checks: allResults.filter(r => !r.pass).length,
+    results: allResults,
+  });
+  const stopForSignal = signal => {
+    if (earlyStopReason) return;
+    earlyStopReason = `Received ${signal}`;
+    writeFileSync(
+      RESULTS_FILE,
+      JSON.stringify(buildBrowserReport('early_stop', earlyStopReason), null, 2)
+    );
+    void browser.close().catch(() => {}).finally(() => {
+      process.exit(signal === 'SIGINT' ? 130 : 143);
+    });
+  };
+  process.once('SIGINT', () => stopForSignal('SIGINT'));
+  process.once('SIGTERM', () => stopForSignal('SIGTERM'));
 
   async function runViewport(worker, path, url) {
     const { vp, ctx } = worker;
@@ -2805,59 +2867,65 @@ async function runWithPlaywright() {
     }
   }
 
-  for (const path of PUBLIC_PATHS) {
-    const url = BASE_URL + path;
+  try {
+    for (const path of PUBLIC_PATHS) {
+      const url = BASE_URL + path;
 
-    const vpResults = [];
-    for (let start = 0; start < workers.length; start += VIEWPORT_CONCURRENCY) {
-      const batch = await Promise.all(workers
-        .slice(start, start + VIEWPORT_CONCURRENCY)
-        .map(worker => runViewport(worker, path, url)));
-      vpResults.push(...batch);
-    }
-
-    const fails = vpResults.filter(r => !r.pass);
-    if (fails.length > 0) {
-      fails.forEach(r => {
-        console.log(`  FAIL  ${r.viewport.padEnd(14)} ${path}`);
-        r.errors.forEach(e => console.log(`         → ${e}`));
-      });
-    }
-    const warningViewports = new Map();
-    for (const row of vpResults) {
-      for (const warning of row.warnings ?? []) {
-        const viewports = warningViewports.get(warning) ?? [];
-        if (!viewports.includes(row.viewport)) viewports.push(row.viewport);
-        warningViewports.set(warning, viewports);
+      const vpResults = [];
+      for (let start = 0; start < workers.length; start += VIEWPORT_CONCURRENCY) {
+        const batch = await Promise.all(workers
+          .slice(start, start + VIEWPORT_CONCURRENCY)
+          .map(worker => runViewport(worker, path, url)));
+        if (earlyStopReason) return { ok: true, stopped: true };
+        vpResults.push(...batch);
       }
-    }
-    for (const [warning, viewports] of warningViewports) {
-      console.log(`  WARN  ${path} (${viewports.join(', ')})`);
-      console.log(`         → ${warning}`);
-    }
-    process.stdout.write(`  done  ${path}\n`);
+      allResults.push(...vpResults);
 
-    for (const row of vpResults) {
-      allResults.push(row);
+      const fails = vpResults.filter(r => !r.pass);
+      if (fails.length > 0) {
+        fails.forEach(r => {
+          console.log(`  FAIL  ${r.viewport.padEnd(14)} ${path}`);
+          r.errors.forEach(e => console.log(`         → ${e}`));
+        });
+      }
+      const warningViewports = new Map();
+      for (const row of vpResults) {
+        for (const warning of row.warnings ?? []) {
+          const viewports = warningViewports.get(warning) ?? [];
+          if (!viewports.includes(row.viewport)) viewports.push(row.viewport);
+          warningViewports.set(warning, viewports);
+        }
+      }
+      for (const [warning, viewports] of warningViewports) {
+        console.log(`  WARN  ${path} (${viewports.join(', ')})`);
+        console.log(`         → ${warning}`);
+      }
+      process.stdout.write(`  done  ${path}\n`);
+
+      completedPages += 1;
+      writeFileSync(
+        RESULTS_FILE,
+        JSON.stringify(buildBrowserReport('in_progress'), null, 2)
+      );
     }
+    for (const { ctx } of workers) await ctx.close();
+    await browser.close();
+  } catch (error) {
+    if (earlyStopReason) return { ok: true, stopped: true };
+    earlyStopReason = error?.message || String(error);
+    writeFileSync(
+      RESULTS_FILE,
+      JSON.stringify(buildBrowserReport('early_stop', earlyStopReason), null, 2)
+    );
+    await browser.close().catch(() => {});
+    throw error;
   }
 
-  for (const { ctx } of workers) await ctx.close();
-  await browser.close();
+  // A signal can arrive while cleanup is pending, after the last route.
+  // Keep its early-stop receipt even when every viewport row is present.
+  if (earlyStopReason) return { ok: true, stopped: true };
 
-  const report = {
-    generated: new Date().toISOString(),
-    mode: 'playwright',
-    playwright_version: playwrightVersion,
-    chromium_version: chromiumVersion,
-    base_url: BASE_URL,
-    pages_checked: PUBLIC_PATHS.length,
-    viewports_checked: VIEWPORTS.length,
-    total_checks: allResults.length,
-    passing_checks: allResults.filter(r => r.pass).length,
-    failing_checks: allResults.filter(r => !r.pass).length,
-    results: allResults,
-  };
+  const report = buildBrowserReport('complete');
   writeFileSync(RESULTS_FILE, JSON.stringify(report, null, 2));
 
   const totalFails = allResults.filter(r => !r.pass).length;
@@ -2980,6 +3048,7 @@ async function staticAnalysis() {
   const report = {
     generated: new Date().toISOString(),
     mode: 'static-lint',
+    ...SOURCE_PROVENANCE,
     note: [
       'Static-lint mode: 10 structural checks per page, applied uniformly to all 16 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
@@ -3034,6 +3103,7 @@ async function staticAnalysis() {
     console.error('Run with --static only if you explicitly want the structural lint mode.');
     process.exit(1);
   }
+  if (pwResult?.stopped) return;
   if (!pwResult) {
     await staticAnalysis();
   }

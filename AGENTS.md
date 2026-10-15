@@ -398,7 +398,18 @@ smoke behavior, and the canonical audit. The responsive browser report is
 retained for one day as `responsive-qa-evidence-<source-revision>` whenever
 the report exists, including after a later browser check fails. Its recorded
 mode, browser versions and route measurements remain separate from static QA
-and human acceptance. On a successful push to `main`, the workflow
+and human acceptance.
+
+Both responsive-QA report modes record the Git revision and working-tree
+status observed at startup, or explicitly mark Git metadata unavailable.
+Browser reports checkpoint completed routes with runtime versions and counts.
+Their status distinguishes `in_progress`, `early_stop` and `complete`; handled
+interruptions and runtime errors retain a failure reason. An uncatchable stop
+can leave the last `in_progress` checkpoint and does not establish completion.
+These fields identify the local source observation, not the revision served by
+an independently hosted URL or human acceptance.
+
+On a successful push to `main`, the workflow
 prepares `.scratch/pages-release/` and passes that exact commit-named artifact
 to a deploy job that depends on validation. The isolated deploy runner downloads
 that artifact into `dist-pages/`. `CNAME` declares `askjamie.bot`.
