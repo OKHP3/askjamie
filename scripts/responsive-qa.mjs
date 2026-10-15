@@ -3,7 +3,7 @@
  * AskJamie™ responsive QA script.
  *
  * MODE A — Playwright:
- *   Visits each public page at 14 viewport widths and checks:
+ *   Visits each public page at 16 viewport widths and checks:
  *   - No horizontal overflow (scrollWidth > innerWidth)
  *   - No JS console errors
  *   - All images loaded (no broken img src)
@@ -19,7 +19,7 @@
  * MODE B — Static lint (`--static` only):
  *   Runs 10 structural checks per page per viewport (same pass/fail schema).
  *   Checks that are viewport-agnostic (viewport meta, h1, alt, etc.) are
- *   run once per page and applied to all 14 viewport rows, clearly flagged
+ *   run once per page and applied to all 16 viewport rows, clearly flagged
  *   as `static-lint` so results are not confused with live browser checks.
  *
  * Usage:
@@ -53,7 +53,9 @@ const REQUIRE_RELEASE_HERO_ROUTES =
 const VIEWPORTS = [
   { name: 'mobile-320',   width: 320,  height: 740  },
   { name: 'mobile-350-edge', width: 350, height: 780 },
+  { name: 'mobile-355-boundary', width: 355, height: 780 },
   { name: 'mobile-360',   width: 360,  height: 780  },
+  { name: 'mobile-365-boundary', width: 365, height: 780 },
   { name: 'mobile-370-edge', width: 370, height: 780 },
   { name: 'mobile-390',   width: 390,  height: 844  },
   { name: 'mobile-430',   width: 430,  height: 932  },
@@ -124,6 +126,10 @@ const BRANDGUARD_FONT_GEOMETRY_VIEWPORTS = new Set([
 const BRANDGUARD_FONT_EDGE_GEOMETRY_VIEWPORTS = new Set([
   'mobile-350-edge',
   'mobile-370-edge',
+]);
+const BRANDGUARD_FONT_BOUNDARY_GEOMETRY_VIEWPORTS = new Set([
+  'mobile-355-boundary',
+  'mobile-365-boundary',
 ]);
 const BRANDGUARD_NARROW_CONTENT_VIEWPORT = 'mobile-320';
 const BRANDGUARD_GEOMETRY_TOLERANCE_PX = 1;
@@ -2419,10 +2425,16 @@ async function runWithPlaywright() {
     const checkBrandGuardTheme =
       path === BRANDGUARD_GEOMETRY_PATH &&
       BRANDGUARD_THEME_GEOMETRY_VIEWPORTS.has(vp.name);
-    const checkBrandGuardFonts =
+    const checkBrandGuardAllRouteFonts =
       BRANDGUARD_FONT_GEOMETRY_PATHS.has(path) &&
       (BRANDGUARD_FONT_GEOMETRY_VIEWPORTS.has(vp.name) ||
         BRANDGUARD_FONT_EDGE_GEOMETRY_VIEWPORTS.has(vp.name));
+    const checkBrandGuardBoundaryFonts =
+      BRANDGUARD_FONT_GEOMETRY_PATHS.has(path) &&
+      BRANDGUARD_FONT_EDGE_GEOMETRY_PATHS.has(path) &&
+      BRANDGUARD_FONT_BOUNDARY_GEOMETRY_VIEWPORTS.has(vp.name);
+    const checkBrandGuardFonts =
+      checkBrandGuardAllRouteFonts || checkBrandGuardBoundaryFonts;
     const checkUniverseDiagram =
       path === UNIVERSE_DIAGRAM_GEOMETRY_PATH &&
       UNIVERSE_DIAGRAM_GEOMETRY_VIEWPORTS.has(vp.name);
@@ -2969,10 +2981,11 @@ async function staticAnalysis() {
     generated: new Date().toISOString(),
     mode: 'static-lint',
     note: [
-      'Static-lint mode: 10 structural checks per page, applied uniformly to all 14 viewport rows.',
+      'Static-lint mode: 10 structural checks per page, applied uniformly to all 16 viewport rows.',
       'Viewport-specific checks (overflow, console errors, broken images) require Playwright.',
       'BrandGuard hero geometry across deferred theme activation is checked only in Playwright mode at mobile-320, mobile-360, mobile-390, mobile-430, tablet-768, tablet-769-edge, tablet-899, and tablet-900-edge.',
       'BrandGuard hero geometry after web fonts load is checked on every sitemap-listed BrandGuard route at mobile-320, mobile-350-edge, mobile-360, mobile-370-edge, mobile-390, tablet-768, and tablet-899.',
+      'Additional web-font boundary measurements cover only the sitemap-listed BrandGuard hub, LVMH, and BFS representatives at mobile-355-boundary and mobile-365-boundary.',
       'BrandGuard breadcrumb and hero readability is checked only in Playwright mode at mobile-320 on every sitemap-listed BrandGuard route.',
       'Universe hero geometry and page-map shell geometry during sequential Mermaid rendering are checked in dark mode in Playwright mode at mobile-320, mobile-390, tablet-768, and desktop-1280; each ready page-map group is also measured through light and dark color-scheme switches.',
       'Every generated Universe page-map group is checked for page overflow, diagram scrolling, usable summaries, and working ordinary links at mobile-320 in Playwright mode.',
