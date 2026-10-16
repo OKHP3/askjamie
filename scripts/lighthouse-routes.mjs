@@ -1076,6 +1076,10 @@ function main() {
     );
     console.warn(summary.runConditionsReview.action);
   }
+  if (summary.targetReview.status === "required") {
+    console.warn(`LIGHTHOUSE TARGET REVIEW REQUIRED: ${summary.targetReview.changedComponents.join(", ")}.`);
+    console.warn(summary.targetReview.action);
+  }
   if (summary.referenceApproval?.ownerApproved === false) {
     console.warn(`DESKTOP REFERENCE NOT OWNER-APPROVED: ${summary.referenceApproval.action}`);
   }

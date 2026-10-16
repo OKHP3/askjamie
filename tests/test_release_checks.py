@@ -1340,7 +1340,18 @@ process.stdout.write(JSON.stringify({
     assert "must record desktop run conditions" in emitted["mobileConditionsRejected"]
 
 
-def test_lighthouse_cli_desktop_run_uses_the_desktop_reference(tmp_path):
+@pytest.mark.parametrize(
+    "base_url,reference_origin,expected_target_review",
+    [
+        ("http://127.0.0.1:5000", "http://127.0.0.1:5000", "not-required"),
+        ("http://127.0.0.1:6000", "http://127.0.0.1:5000", "required"),
+        ("https://fixture.invalid", "http://127.0.0.1:5000", "required"),
+        ("http://127.0.0.1:5000", None, "required"),
+    ],
+)
+def test_lighthouse_cli_desktop_run_uses_the_desktop_reference(
+    tmp_path, base_url, reference_origin, expected_target_review
+):
     if os.name == "nt":
         pytest.skip("POSIX fake executables require shebang support unavailable on Windows")
     node_bin = shutil.which("node")
@@ -1360,6 +1371,10 @@ def test_lighthouse_cli_desktop_run_uses_the_desktop_reference(tmp_path):
         ROOT / "assets/docs/performance-baseline-desktop-2026-09-07.json",
         root / "assets/docs/performance-baseline-desktop-2026-09-07.json",
     )
+    reference_path = root / "assets/docs/performance-baseline-desktop-2026-09-07.json"
+    reference = json.loads(reference_path.read_text(encoding="utf-8"))
+    reference["property"] = reference_origin
+    reference_path.write_text(json.dumps(reference), encoding="utf-8")
     (root / "assets/audit").mkdir(parents=True)
     lighthouse_dir = root / "node_modules/.bin"
     lighthouse_dir.mkdir(parents=True)
@@ -1416,6 +1431,7 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
             node_bin,
             "scripts/lighthouse-routes.mjs",
             "--preset=desktop",
+            f"--base-url={base_url}",
             "--date=2099-01-02",
             "--run-id=desktop-reference",
         ],
@@ -1432,9 +1448,15 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["baseline"] == "assets/docs/performance-baseline-desktop-2026-09-07.json"
     assert summary["measurementStackReview"]["status"] == "not-required"
-    assert summary["environment"] == "Local target, desktop preset"
-    assert summary["targetReview"]["status"] == "not-required"
-    assert summary["targetReview"]["current"]["kind"] == "local"
+    expected_kind = "hosted" if base_url.startswith("https:") else "local"
+    assert summary["environment"] == f"{expected_kind.title()} target, desktop preset"
+    assert summary["targetReview"]["status"] == expected_target_review
+    assert summary["targetReview"]["current"]["kind"] == expected_kind
+    if expected_target_review == "required":
+        assert result.stderr.count("LIGHTHOUSE TARGET REVIEW REQUIRED:") == 1
+        assert summary["targetReview"]["action"] in result.stderr
+    else:
+        assert "LIGHTHOUSE TARGET REVIEW REQUIRED:" not in result.stderr
     assert summary["runConditionsReview"]["status"] == "required"
     assert summary["runConditionsReview"]["changedComponents"] == ["chromeFlags"]
     assert summary["runConditionsReview"]["baseline"]["formFactor"] == "desktop"
