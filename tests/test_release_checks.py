@@ -1058,6 +1058,7 @@ def test_lighthouse_routes_preserves_normal_output_contract():
         "tool",
         "environment",
         "property",
+        "targetReview",
         "baseline",
         "controls",
         "pages",
@@ -1454,7 +1455,7 @@ def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without
         """
 import { readFileSync } from "node:fs";
 import { defaultSettings as lighthouseDefaultSettings } from "./node_modules/lighthouse/core/config/constants.js";
-import { CHROME_STARTUP_FLAGS, CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
+import { CHROME_STARTUP_FLAGS, CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, HISTORICAL_REFERENCE_TARGET_URL, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
 const fixtureConfigSettingKeys = Object.keys(report.configSettings).sort();
@@ -1508,6 +1509,18 @@ const emit = (
   }
   return summary;
 };
+const targetSummary = (baseUrl, baselineTargetUrl = HISTORICAL_REFERENCE_TARGET_URL) =>
+  createSummary({
+    date: "2099-01-02",
+    preset: "desktop",
+    controlled: false,
+    baseUrl,
+    measurementStack: baseline.measurementStack,
+    baselineMeasurementStack: baseline.measurementStack,
+    runConditionsReports: allBaselineRunConditions,
+    baselineRunConditions: matchingReferenceRunConditions,
+    baselineTargetUrl
+  });
 const changedRunConditions = {
   ...baselineRunConditions,
   collectionTiming: {
@@ -1559,6 +1572,11 @@ const missingChromeFlags = {
 };
 process.stdout.write(JSON.stringify({
   routes: LIGHTHOUSE_ROUTES,
+  targetCases: {
+    localAlias: targetSummary("http://localhost:5000"),
+    hostedAgainstLocal: targetSummary("https://askjamie.bot"),
+    hostedOriginChange: targetSummary("https://staging.askjamie.bot", "https://askjamie.bot")
+  },
   fixtureConfigSettingKeys,
   inventoriedConfigSettingKeys,
   lighthouseSchemaConfigSettingKeys,
@@ -1631,7 +1649,7 @@ process.stdout.write(JSON.stringify({
 
     normal = emitted["normal"]
     assert emitted["parsedChromiumVersion"] == "153.0.8010.12"
-    assert normal["schemaVersion"] == 6
+    assert normal["schemaVersion"] == 7
     assert normal["capturedAt"] == "2099-01-02"
     assert emitted["fixtureConfigSettingKeys"] == emitted["inventoriedConfigSettingKeys"]
     assert emitted["lighthouseSchemaConfigSettingKeys"] == emitted["inventoriedConfigSettingKeys"]
@@ -1656,7 +1674,17 @@ process.stdout.write(JSON.stringify({
         "changedComponents": [],
         "action": "No Lighthouse or Chromium version change from the historical reference measurement stack.",
     }
-    assert normal["environment"] == "Local or supplied static server, mobile preset"
+    assert normal["environment"] == "Hosted target, mobile preset"
+    assert normal["targetReview"]["status"] == "required"
+    assert normal["targetReview"]["changedComponents"] == ["targetKind"]
+    assert emitted["targetCases"]["localAlias"]["targetReview"]["status"] == "not-required"
+    assert emitted["targetCases"]["localAlias"]["targetReview"]["current"]["kind"] == "local"
+    assert emitted["targetCases"]["hostedAgainstLocal"]["targetReview"]["changedComponents"] == [
+        "targetKind",
+    ]
+    assert emitted["targetCases"]["hostedOriginChange"]["targetReview"]["changedComponents"] == [
+        "origin",
+    ]
     assert normal["runConditions"]["condition"] == "normal"
     assert normal["runConditions"]["reports"]["homepage.json"]["formFactor"] == "mobile"
     assert normal["runConditions"]["reports"]["homepage.json"]["chromeFlags"] == [
@@ -1818,7 +1846,7 @@ process.stdout.write(JSON.stringify({
         "chromiumVersion",
     ]
     assert "Owner review is required" in controlled["measurementStackReview"]["action"]
-    assert controlled["environment"] == "Local or supplied static server, controlled mobile preset"
+    assert controlled["environment"] == "Hosted target, controlled mobile preset"
     assert controlled["runConditions"]["condition"] == "controlled"
     assert controlled["runConditionsReview"]["status"] == "not-required"
     assert controlled["runConditionsReview"]["baseline"]["blockedUrlPatterns"] is None
@@ -1842,7 +1870,7 @@ process.stdout.write(JSON.stringify({
         "search": {"performance": 91, "lcpMs": 3000},
     }}
     for summary in (normal, controlled):
-        assert summary["schemaVersion"] == 6
+        assert summary["schemaVersion"] == 7
         assert summary["property"] == "https://fixture.invalid"
         assert summary["baseline"] == "assets/audit/lighthouse-baseline-2026-08-22.json"
         assert set(summary["pages"]) == set(expected_routes)
