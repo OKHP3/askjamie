@@ -177,6 +177,15 @@ export const HISTORICAL_REFERENCE_RUN_CONDITIONS = Object.freeze({
   unclassifiedConfigSettings: Object.freeze({}),
 });
 
+// These are the explicit Chrome startup flags supplied to Lighthouse. Keep the
+// invocation and archived run-condition record tied to the same immutable list.
+export const CHROME_STARTUP_FLAGS = Object.freeze([
+  "--headless",
+  "--no-sandbox",
+  "--disable-dev-shm-usage",
+]);
+const CHROME_FLAGS_ARGUMENT = `--chrome-flags=${CHROME_STARTUP_FLAGS.join(" ")}`;
+
 export const DESKTOP_REFERENCE_PATH = "assets/docs/performance-baseline-desktop-2026-09-07.json";
 export const MOBILE_REFERENCE_PATH = "assets/audit/lighthouse-baseline-2026-08-22.json";
 
@@ -246,7 +255,7 @@ export function getLighthouseReference(preset, baseline) {
   };
 }
 
-export function summarizeRunConditions(report) {
+export function summarizeRunConditions(report, chromeFlags = CHROME_STARTUP_FLAGS) {
   const settings = report.configSettings ?? {};
   const settingValue = (field) => (
     Object.hasOwn(settings, field) ? settings[field] : "unavailable"
@@ -260,6 +269,7 @@ export function summarizeRunConditions(report) {
   };
 
   return {
+    chromeFlags: Array.isArray(chromeFlags) ? [...chromeFlags] : "unavailable",
     formFactor: typeof settings.formFactor === "string" ? settings.formFactor : null,
     throttlingMethod: typeof settings.throttlingMethod === "string" ? settings.throttlingMethod : null,
     throttling: pickFields(settings.throttling, [
@@ -869,7 +879,7 @@ function main() {
       ...(controlled
         ? CONTROLLED_BLOCKED_URL_PATTERNS.map((pattern) => `--blocked-url-patterns=${pattern}`)
         : []),
-      "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
+      CHROME_FLAGS_ARGUMENT,
       "--quiet",
     ], { cwd: root, stdio: "inherit", env: { ...process.env, CHROME_PATH: chromePath } });
 
@@ -896,7 +906,7 @@ function main() {
     }
     lighthouseVersion = report.lighthouseVersion;
     chromiumUserAgent = browserMatch[0];
-    runConditionsReports[`${name}.json`] = summarizeRunConditions(report);
+    runConditionsReports[`${name}.json`] = summarizeRunConditions(report, CHROME_STARTUP_FLAGS);
     pages[name] = summarizePage({
       report,
       path,
@@ -921,7 +931,7 @@ function main() {
       ...(controlled
         ? CONTROLLED_BLOCKED_URL_PATTERNS.map((pattern) => `--blocked-url-patterns=${pattern}`)
         : []),
-      "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
+      CHROME_FLAGS_ARGUMENT,
       "--quiet",
     ], { cwd: root, stdio: "inherit", env: { ...process.env, CHROME_PATH: chromePath } });
 
@@ -946,7 +956,7 @@ function main() {
       throw new Error(`Chromium user agent changed during the route run (${chromiumUserAgent} to ${browserMatch[0]}).`);
     }
 
-    runConditionsReports[reportName] = summarizeRunConditions(report);
+    runConditionsReports[reportName] = summarizeRunConditions(report, CHROME_STARTUP_FLAGS);
     repeatedBrandGuardSamples.push({
       report: reportName,
       page: summarizePage({
