@@ -444,7 +444,7 @@ export function createLighthouseTargetReview(targetUrl, baselineTargetUrl) {
   if (current && baseline) {
     if (current.kind !== baseline.kind) {
       changedComponents.push("targetKind");
-    } else if (current.kind === "hosted" && current.origin !== baseline.origin) {
+    } else if (current.origin !== baseline.origin) {
       changedComponents.push("origin");
     }
   }

@@ -1520,10 +1520,14 @@ const emit = (
   }
   return summary;
 };
-const targetSummary = (baseUrl, baselineTargetUrl = HISTORICAL_REFERENCE_TARGET_URL) =>
+const targetSummary = (
+  baseUrl,
+  baselineTargetUrl = HISTORICAL_REFERENCE_TARGET_URL,
+  preset = "desktop"
+) =>
   createSummary({
     date: "2099-01-02",
-    preset: "desktop",
+    preset,
     controlled: false,
     baseUrl,
     measurementStack: baseline.measurementStack,
@@ -1589,6 +1593,23 @@ process.stdout.write(JSON.stringify({
   },
   targetCases: {
     localAlias: targetSummary("http://localhost:5000"),
+    localOriginChange: targetSummary("http://localhost:6000"),
+    localSameOrigin: targetSummary(
+      "http://localhost:5000/run",
+      "http://localhost:5000/reference"
+    ),
+    missingReference: targetSummary("http://localhost:5000", null),
+    invalidReference: targetSummary("http://localhost:5000", "ftp://localhost:5000"),
+    mobileMatchingReference: targetSummary(
+      "http://mobile.localhost:5000/run",
+      "http://mobile.localhost:5000/reference",
+      "mobile"
+    ),
+    desktopMatchingReference: targetSummary(
+      "http://desktop.localhost:6000/run",
+      "http://desktop.localhost:5000/reference",
+      "desktop"
+    ),
     hostedAgainstLocal: targetSummary("https://askjamie.bot"),
     hostedOriginChange: targetSummary("https://staging.askjamie.bot", "https://askjamie.bot")
   },
@@ -1696,8 +1717,26 @@ process.stdout.write(JSON.stringify({
     assert normal["environment"] == "Hosted target, mobile preset"
     assert normal["targetReview"]["status"] == "required"
     assert normal["targetReview"]["changedComponents"] == ["targetKind"]
-    assert emitted["targetCases"]["localAlias"]["targetReview"]["status"] == "not-required"
+    assert emitted["targetCases"]["localAlias"]["targetReview"]["changedComponents"] == [
+        "origin",
+    ]
     assert emitted["targetCases"]["localAlias"]["targetReview"]["current"]["kind"] == "local"
+    assert emitted["targetCases"]["localOriginChange"]["targetReview"]["changedComponents"] == [
+        "origin",
+    ]
+    assert emitted["targetCases"]["localSameOrigin"]["targetReview"]["status"] == "not-required"
+    assert emitted["targetCases"]["missingReference"]["targetReview"]["changedComponents"] == [
+        "reference target unavailable",
+    ]
+    assert emitted["targetCases"]["invalidReference"]["targetReview"]["changedComponents"] == [
+        "reference target unavailable",
+    ]
+    mobile_target_review = emitted["targetCases"]["mobileMatchingReference"]
+    assert mobile_target_review["preset"] == "mobile"
+    assert mobile_target_review["targetReview"]["status"] == "not-required"
+    desktop_target_review = emitted["targetCases"]["desktopMatchingReference"]
+    assert desktop_target_review["preset"] == "desktop"
+    assert desktop_target_review["targetReview"]["changedComponents"] == ["origin"]
     assert emitted["targetCases"]["hostedAgainstLocal"]["targetReview"]["changedComponents"] == [
         "targetKind",
     ]
