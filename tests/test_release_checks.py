@@ -1096,6 +1096,7 @@ def test_lighthouse_desktop_reference_is_independent_and_not_mislabelled_approve
         """
 import { readFileSync } from "node:fs";
 import {
+  CHROME_STARTUP_FLAGS,
   HISTORICAL_REFERENCE_MEASUREMENT_STACK,
   HISTORICAL_REFERENCE_RUN_CONDITIONS,
   createSummary,
@@ -1163,7 +1164,7 @@ const staleApprovals = Object.fromEntries(
 const desktopReports = Object.fromEntries(
   ["homepage", "brandguard", "universe", "search"].map(name => [
     `${name}.json`,
-    desktopBaseline.runConditions
+    { ...desktopBaseline.runConditions, chromeFlags: [...CHROME_STARTUP_FLAGS] }
   ])
 );
 const desktopSummary = createSummary({
@@ -1294,7 +1295,8 @@ process.stdout.write(JSON.stringify({
     assert emitted["mobileReference"]["runConditions"]["formFactor"] == "mobile"
     assert desktop_summary["baseline"] == emitted["desktopReference"]["path"]
     assert desktop_summary["measurementStackReview"]["status"] == "not-required"
-    assert desktop_summary["runConditionsReview"]["status"] == "not-required"
+    assert desktop_summary["runConditionsReview"]["status"] == "required"
+    assert desktop_summary["runConditionsReview"]["changedComponents"] == ["chromeFlags"]
     assert desktop_summary["runConditionsReview"]["baseline"]["formFactor"] == "desktop"
     assert desktop_summary["referenceApproval"] == {
         "status": "not-recorded",
@@ -1328,7 +1330,8 @@ process.stdout.write(JSON.stringify({
     assert "formFactor" in emitted["changedConditions"]["runConditionsReview"]["changedComponents"]
     assert emitted["mobileSummary"]["baseline"] == emitted["mobileReference"]["path"]
     assert emitted["mobileSummary"]["measurementStackReview"]["status"] == "not-required"
-    assert emitted["mobileSummary"]["runConditionsReview"]["status"] == "not-required"
+    assert emitted["mobileSummary"]["runConditionsReview"]["status"] == "required"
+    assert emitted["mobileSummary"]["runConditionsReview"]["changedComponents"] == ["chromeFlags"]
     assert "referenceApproval" not in emitted["mobileSummary"]
     assert "approvedAt, approvedBy, approvalRecord" in emitted["incompleteApprovalError"]
     assert emitted["recordedApproval"]["status"] == "owner-approved"
@@ -1365,6 +1368,9 @@ def test_lighthouse_cli_desktop_run_uses_the_desktop_reference(tmp_path):
 const fs = require("node:fs");
 const path = require("node:path");
 const args = process.argv.slice(2);
+if (!args.includes("--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage")) {
+  process.exit(31);
+}
 const reportPath = args.find((arg) => arg.startsWith("--output-path=")).slice("--output-path=".length);
 const report = JSON.parse(fs.readFileSync(
   path.join(process.cwd(), "tests/fixtures/lighthouse-summary-report.json"),
@@ -1425,7 +1431,8 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["baseline"] == "assets/docs/performance-baseline-desktop-2026-09-07.json"
     assert summary["measurementStackReview"]["status"] == "not-required"
-    assert summary["runConditionsReview"]["status"] == "not-required"
+    assert summary["runConditionsReview"]["status"] == "required"
+    assert summary["runConditionsReview"]["changedComponents"] == ["chromeFlags"]
     assert summary["runConditionsReview"]["baseline"]["formFactor"] == "desktop"
     assert summary["referenceApproval"]["status"] == "not-recorded"
     assert summary["pages"]["brandguard"]["deltaPerformance"] == -8
@@ -1447,7 +1454,7 @@ def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without
         """
 import { readFileSync } from "node:fs";
 import { defaultSettings as lighthouseDefaultSettings } from "./node_modules/lighthouse/core/config/constants.js";
-import { CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
+import { CHROME_STARTUP_FLAGS, CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
 const fixtureConfigSettingKeys = Object.keys(report.configSettings).sort();
@@ -1463,6 +1470,10 @@ const baseline = { pages: {
   search: { performance: 91, lcpMs: 3000 }
 }, measurementStack: HISTORICAL_REFERENCE_MEASUREMENT_STACK };
 const baselineRunConditions = summarizeRunConditions(report);
+const matchingReferenceRunConditions = {
+  ...HISTORICAL_REFERENCE_RUN_CONDITIONS,
+  chromeFlags: [...CHROME_STARTUP_FLAGS]
+};
 const allBaselineRunConditions = Object.fromEntries(
   Object.keys(LIGHTHOUSE_ROUTES).map((name) => [`${name}.json`, baselineRunConditions])
 );
@@ -1476,7 +1487,7 @@ const emit = (
   controlled,
   measurementStack,
   runConditionsReports = controlled ? controlledRunConditions : allBaselineRunConditions,
-  referenceRunConditions = HISTORICAL_REFERENCE_RUN_CONDITIONS
+  referenceRunConditions = matchingReferenceRunConditions
 ) => {
   const summary = createSummary({
     date: "2099-01-02",
@@ -1535,6 +1546,17 @@ const unknownSettingChange = {
   ...allBaselineRunConditions,
   "homepage.json": summarizeRunConditions(reportWithUnknownSetting)
 };
+const changedChromeFlags = {
+  ...allBaselineRunConditions,
+  "brandguard-sample-02.json": {
+    ...baselineRunConditions,
+    chromeFlags: ["--headless", "--no-sandbox", "--disable-gpu"]
+  }
+};
+const missingChromeFlags = {
+  ...allBaselineRunConditions,
+  "brandguard-sample-03.json": summarizeRunConditions(report, null)
+};
 process.stdout.write(JSON.stringify({
   routes: LIGHTHOUSE_ROUTES,
   fixtureConfigSettingKeys,
@@ -1563,6 +1585,14 @@ process.stdout.write(JSON.stringify({
       formFactor: "desktop"
     }
   }),
+  changedChromeFlags: emit(false, baseline.measurementStack, changedChromeFlags),
+  missingChromeFlags: emit(false, baseline.measurementStack, missingChromeFlags),
+  missingReferenceChromeFlags: emit(
+    false,
+    baseline.measurementStack,
+    allBaselineRunConditions,
+    HISTORICAL_REFERENCE_RUN_CONDITIONS
+  ),
   outputFormatChange: emit(false, baseline.measurementStack, outputFormatChange),
   unknownSettingChange: emit(false, baseline.measurementStack, unknownSettingChange),
   unknownSettingWithMatchingReference: emit(
@@ -1570,7 +1600,7 @@ process.stdout.write(JSON.stringify({
     baseline.measurementStack,
     unknownSettingChange,
     {
-      ...HISTORICAL_REFERENCE_RUN_CONDITIONS,
+      ...matchingReferenceRunConditions,
       unclassifiedConfigSettings: { futureNetworkSetting: "fast" }
     }
   ),
@@ -1629,6 +1659,11 @@ process.stdout.write(JSON.stringify({
     assert normal["environment"] == "Local or supplied static server, mobile preset"
     assert normal["runConditions"]["condition"] == "normal"
     assert normal["runConditions"]["reports"]["homepage.json"]["formFactor"] == "mobile"
+    assert normal["runConditions"]["reports"]["homepage.json"]["chromeFlags"] == [
+        "--headless",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+    ]
     assert normal["runConditions"]["reports"]["homepage.json"]["blockedUrlPatterns"] is None
     assert normal["runConditions"]["reports"]["homepage.json"]["throttling"] == {
         "rttMs": 150,
@@ -1745,6 +1780,16 @@ process.stdout.write(JSON.stringify({
     assert unknown_with_matching_reference["runConditionsReview"]["changedComponents"] == [
         "unclassifiedConfigSettings.futureNetworkSetting"
     ]
+    for key in ("changedChromeFlags", "missingChromeFlags", "missingReferenceChromeFlags"):
+        assert emitted[key]["runConditionsReview"]["status"] == "required"
+        assert emitted[key]["runConditionsReview"]["changedComponents"] == ["chromeFlags"]
+    assert emitted["changedChromeFlags"]["runConditionsReview"]["changedReports"] == [{
+        "report": "brandguard-sample-02.json",
+        "changedComponents": ["chromeFlags"],
+    }]
+    assert emitted["missingChromeFlags"]["runConditions"]["reports"][
+        "brandguard-sample-03.json"
+    ]["chromeFlags"] == "unavailable"
 
     missing_run_conditions = emitted["missingRunConditions"]
     assert missing_run_conditions["runConditionsReview"]["status"] == "required"
@@ -2275,6 +2320,9 @@ def test_lighthouse_route_runner_captures_repeat_brandguard_samples_by_condition
 const fs = require("node:fs");
 const path = require("node:path");
 const args = process.argv.slice(2);
+if (!args.includes("--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage")) {
+  process.exit(31);
+}
 const reportPath = args.find((arg) => arg.startsWith("--output-path=")).slice("--output-path=".length);
 const reportName = path.basename(reportPath);
 const sampleIndex = reportName === "brandguard.json"
@@ -2627,7 +2675,12 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
             "brandguard-sample-02.json",
             "brandguard-sample-03.json",
         }
-        assert summary["runConditionsReview"]["status"] == "not-required"
+        assert summary["runConditionsReview"]["status"] == "required"
+        assert summary["runConditionsReview"]["changedComponents"] == ["chromeFlags"]
+        assert {
+            tuple(conditions["chromeFlags"])
+            for conditions in summary["runConditions"]["reports"].values()
+        } == {("--headless", "--no-sandbox", "--disable-dev-shm-usage")}
         assert summary["runConditions"]["reports"]["brandguard-sample-03.json"]["collectionTiming"] == {
             "maxWaitForFcp": 30000,
             "maxWaitForLoad": 45000,

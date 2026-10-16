@@ -53,6 +53,12 @@ quiet thresholds. The effective locale is `en-US`. Storage reset is enabled
 Each dated summary records these settings from every raw report, including
 repeated BrandGuard samples; a missing setting is marked unavailable.
 
+The route runner also records the exact explicit Chrome startup flags supplied
+to Lighthouse for every route and repeated sample. The historical mobile and
+desktop references do not record these flags. They are not backfilled into
+either reference; comparison therefore requires owner review until a reference
+with recorded flags is established.
+
 Each mobile report's effective settings are compared with the approved
 historical mobile conditions. Controlled runs are checked against their
 explicit blocked-URL profile; normal runs are checked for no blocked-URL
