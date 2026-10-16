@@ -1487,10 +1487,7 @@ const controlledRunConditions = Object.fromEntries(
     { ...conditions, blockedUrlPatterns: CONTROLLED_BLOCKED_URL_PATTERNS }
   ])
 );
-const mobileReference = getLighthouseReference("mobile", JSON.parse(readFileSync(
-  "assets/audit/lighthouse-baseline-2026-08-22.json",
-  "utf8"
-)));
+const mobileReference = getLighthouseReference("mobile", baseline);
 const desktopReference = getLighthouseReference("desktop", JSON.parse(readFileSync(
   "assets/docs/performance-baseline-desktop-2026-09-07.json",
   "utf8"
@@ -1732,10 +1729,10 @@ process.stdout.write(JSON.stringify({
         "reference target unavailable",
     ]
     mobile_target_review = emitted["targetCases"]["mobileMatchingReference"]
-    assert mobile_target_review["preset"] == "mobile"
+    assert mobile_target_review["environment"] == "Local target, mobile preset"
     assert mobile_target_review["targetReview"]["status"] == "not-required"
     desktop_target_review = emitted["targetCases"]["desktopMatchingReference"]
-    assert desktop_target_review["preset"] == "desktop"
+    assert desktop_target_review["environment"] == "Local target, desktop preset"
     assert desktop_target_review["targetReview"]["changedComponents"] == ["origin"]
     assert emitted["targetCases"]["hostedAgainstLocal"]["targetReview"]["changedComponents"] == [
         "targetKind",

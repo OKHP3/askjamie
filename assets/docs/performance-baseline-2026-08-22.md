@@ -90,10 +90,11 @@ reports. That historical summary and all measurements remain unchanged; the
 runner uses the raw-report URL as the mobile reference target.
 
 New summaries classify the target as local or hosted and record its origin.
-Changing from local to hosted, or changing between hosted origins, sets
-`targetReview.status` to `required` before interpreting metric deltas. Local
-loopback aliases are treated as the same target class. This review is separate
-from measurement-stack and Lighthouse run-condition review.
+Changing the target kind or normalized origin, or lacking a usable reference
+origin, sets `targetReview.status` to `required` before interpreting metric
+deltas. Local loopback aliases remain in the local target class, but different
+origins still require review. This review is separate from measurement-stack
+and Lighthouse run-condition review.
 
 ## Desktop comparison reference
 
