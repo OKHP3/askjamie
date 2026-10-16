@@ -81,6 +81,21 @@ other tracked settings remain compared. A changed or unavailable tracked
 setting requires review. This is separate from `measurementStackReview`, so
 tool-version changes and condition changes remain independently visible.
 
+## Lighthouse target review
+
+The saved mobile raw reports and desktop reference identify
+`http://127.0.0.1:5000` as their requested target. The compact mobile summary's
+`property` field says `https://askjamie.bot`, which conflicts with those raw
+reports. That historical summary and all measurements remain unchanged; the
+runner uses the raw-report URL as the mobile reference target.
+
+New summaries classify the target as local or hosted and record its origin.
+Changing the target kind or normalized origin, or lacking a usable reference
+origin, sets `targetReview.status` to `required` before interpreting metric
+deltas. Local loopback aliases remain in the local target class, but different
+origins still require review. This review is separate from measurement-stack
+and Lighthouse run-condition review.
+
 ## Desktop comparison reference
 
 Desktop runs use

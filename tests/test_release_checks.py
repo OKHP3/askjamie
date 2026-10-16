@@ -1058,6 +1058,7 @@ def test_lighthouse_routes_preserves_normal_output_contract():
         "tool",
         "environment",
         "property",
+        "targetReview",
         "baseline",
         "controls",
         "pages",
@@ -1339,7 +1340,18 @@ process.stdout.write(JSON.stringify({
     assert "must record desktop run conditions" in emitted["mobileConditionsRejected"]
 
 
-def test_lighthouse_cli_desktop_run_uses_the_desktop_reference(tmp_path):
+@pytest.mark.parametrize(
+    "base_url,reference_origin,expected_target_review",
+    [
+        ("http://127.0.0.1:5000", "http://127.0.0.1:5000", "not-required"),
+        ("http://127.0.0.1:6000", "http://127.0.0.1:5000", "required"),
+        ("https://fixture.invalid", "http://127.0.0.1:5000", "required"),
+        ("http://127.0.0.1:5000", None, "required"),
+    ],
+)
+def test_lighthouse_cli_desktop_run_uses_the_desktop_reference(
+    tmp_path, base_url, reference_origin, expected_target_review
+):
     if os.name == "nt":
         pytest.skip("POSIX fake executables require shebang support unavailable on Windows")
     node_bin = shutil.which("node")
@@ -1359,6 +1371,10 @@ def test_lighthouse_cli_desktop_run_uses_the_desktop_reference(tmp_path):
         ROOT / "assets/docs/performance-baseline-desktop-2026-09-07.json",
         root / "assets/docs/performance-baseline-desktop-2026-09-07.json",
     )
+    reference_path = root / "assets/docs/performance-baseline-desktop-2026-09-07.json"
+    reference = json.loads(reference_path.read_text(encoding="utf-8"))
+    reference["property"] = reference_origin
+    reference_path.write_text(json.dumps(reference), encoding="utf-8")
     (root / "assets/audit").mkdir(parents=True)
     lighthouse_dir = root / "node_modules/.bin"
     lighthouse_dir.mkdir(parents=True)
@@ -1415,6 +1431,7 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
             node_bin,
             "scripts/lighthouse-routes.mjs",
             "--preset=desktop",
+            f"--base-url={base_url}",
             "--date=2099-01-02",
             "--run-id=desktop-reference",
         ],
@@ -1431,6 +1448,15 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["baseline"] == "assets/docs/performance-baseline-desktop-2026-09-07.json"
     assert summary["measurementStackReview"]["status"] == "not-required"
+    expected_kind = "hosted" if base_url.startswith("https:") else "local"
+    assert summary["environment"] == f"{expected_kind.title()} target, desktop preset"
+    assert summary["targetReview"]["status"] == expected_target_review
+    assert summary["targetReview"]["current"]["kind"] == expected_kind
+    if expected_target_review == "required":
+        assert result.stderr.count("LIGHTHOUSE TARGET REVIEW REQUIRED:") == 1
+        assert summary["targetReview"]["action"] in result.stderr
+    else:
+        assert "LIGHTHOUSE TARGET REVIEW REQUIRED:" not in result.stderr
     assert summary["runConditionsReview"]["status"] == "required"
     assert summary["runConditionsReview"]["changedComponents"] == ["chromeFlags"]
     assert summary["runConditionsReview"]["baseline"]["formFactor"] == "desktop"
@@ -1454,7 +1480,7 @@ def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without
         """
 import { readFileSync } from "node:fs";
 import { defaultSettings as lighthouseDefaultSettings } from "./node_modules/lighthouse/core/config/constants.js";
-import { CHROME_STARTUP_FLAGS, CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
+import { CHROME_STARTUP_FLAGS, CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, HISTORICAL_REFERENCE_TARGET_URL, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, getLighthouseReference, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
 const fixtureConfigSettingKeys = Object.keys(report.configSettings).sort();
@@ -1483,6 +1509,11 @@ const controlledRunConditions = Object.fromEntries(
     { ...conditions, blockedUrlPatterns: CONTROLLED_BLOCKED_URL_PATTERNS }
   ])
 );
+const mobileReference = getLighthouseReference("mobile", baseline);
+const desktopReference = getLighthouseReference("desktop", JSON.parse(readFileSync(
+  "assets/docs/performance-baseline-desktop-2026-09-07.json",
+  "utf8"
+)));
 const emit = (
   controlled,
   measurementStack,
@@ -1508,6 +1539,22 @@ const emit = (
   }
   return summary;
 };
+const targetSummary = (
+  baseUrl,
+  baselineTargetUrl = HISTORICAL_REFERENCE_TARGET_URL,
+  preset = "desktop"
+) =>
+  createSummary({
+    date: "2099-01-02",
+    preset,
+    controlled: false,
+    baseUrl,
+    measurementStack: baseline.measurementStack,
+    baselineMeasurementStack: baseline.measurementStack,
+    runConditionsReports: allBaselineRunConditions,
+    baselineRunConditions: matchingReferenceRunConditions,
+    baselineTargetUrl
+  });
 const changedRunConditions = {
   ...baselineRunConditions,
   collectionTiming: {
@@ -1559,6 +1606,32 @@ const missingChromeFlags = {
 };
 process.stdout.write(JSON.stringify({
   routes: LIGHTHOUSE_ROUTES,
+  referenceTargets: {
+    mobile: mobileReference.targetUrl,
+    desktop: desktopReference.targetUrl
+  },
+  targetCases: {
+    localAlias: targetSummary("http://localhost:5000"),
+    localOriginChange: targetSummary("http://localhost:6000"),
+    localSameOrigin: targetSummary(
+      "http://localhost:5000/run",
+      "http://localhost:5000/reference"
+    ),
+    missingReference: targetSummary("http://localhost:5000", null),
+    invalidReference: targetSummary("http://localhost:5000", "ftp://localhost:5000"),
+    mobileMatchingReference: targetSummary(
+      "http://mobile.localhost:5000/run",
+      "http://mobile.localhost:5000/reference",
+      "mobile"
+    ),
+    desktopMatchingReference: targetSummary(
+      "http://desktop.localhost:6000/run",
+      "http://desktop.localhost:5000/reference",
+      "desktop"
+    ),
+    hostedAgainstLocal: targetSummary("https://askjamie.bot"),
+    hostedOriginChange: targetSummary("https://staging.askjamie.bot", "https://askjamie.bot")
+  },
   fixtureConfigSettingKeys,
   inventoriedConfigSettingKeys,
   lighthouseSchemaConfigSettingKeys,
@@ -1628,10 +1701,14 @@ process.stdout.write(JSON.stringify({
     emitted = json.loads(result.stdout)
     assert not list((ROOT / "assets/audit").glob("lighthouse-2099-01-02*"))
     assert emitted["routes"] == expected_routes
+    assert emitted["referenceTargets"] == {
+        "mobile": "http://127.0.0.1:5000",
+        "desktop": "http://127.0.0.1:5000",
+    }
 
     normal = emitted["normal"]
     assert emitted["parsedChromiumVersion"] == "153.0.8010.12"
-    assert normal["schemaVersion"] == 6
+    assert normal["schemaVersion"] == 7
     assert normal["capturedAt"] == "2099-01-02"
     assert emitted["fixtureConfigSettingKeys"] == emitted["inventoriedConfigSettingKeys"]
     assert emitted["lighthouseSchemaConfigSettingKeys"] == emitted["inventoriedConfigSettingKeys"]
@@ -1656,7 +1733,35 @@ process.stdout.write(JSON.stringify({
         "changedComponents": [],
         "action": "No Lighthouse or Chromium version change from the historical reference measurement stack.",
     }
-    assert normal["environment"] == "Local or supplied static server, mobile preset"
+    assert normal["environment"] == "Hosted target, mobile preset"
+    assert normal["targetReview"]["status"] == "required"
+    assert normal["targetReview"]["changedComponents"] == ["targetKind"]
+    assert emitted["targetCases"]["localAlias"]["targetReview"]["changedComponents"] == [
+        "origin",
+    ]
+    assert emitted["targetCases"]["localAlias"]["targetReview"]["current"]["kind"] == "local"
+    assert emitted["targetCases"]["localOriginChange"]["targetReview"]["changedComponents"] == [
+        "origin",
+    ]
+    assert emitted["targetCases"]["localSameOrigin"]["targetReview"]["status"] == "not-required"
+    assert emitted["targetCases"]["missingReference"]["targetReview"]["changedComponents"] == [
+        "reference target unavailable",
+    ]
+    assert emitted["targetCases"]["invalidReference"]["targetReview"]["changedComponents"] == [
+        "reference target unavailable",
+    ]
+    mobile_target_review = emitted["targetCases"]["mobileMatchingReference"]
+    assert mobile_target_review["environment"] == "Local target, mobile preset"
+    assert mobile_target_review["targetReview"]["status"] == "not-required"
+    desktop_target_review = emitted["targetCases"]["desktopMatchingReference"]
+    assert desktop_target_review["environment"] == "Local target, desktop preset"
+    assert desktop_target_review["targetReview"]["changedComponents"] == ["origin"]
+    assert emitted["targetCases"]["hostedAgainstLocal"]["targetReview"]["changedComponents"] == [
+        "targetKind",
+    ]
+    assert emitted["targetCases"]["hostedOriginChange"]["targetReview"]["changedComponents"] == [
+        "origin",
+    ]
     assert normal["runConditions"]["condition"] == "normal"
     assert normal["runConditions"]["reports"]["homepage.json"]["formFactor"] == "mobile"
     assert normal["runConditions"]["reports"]["homepage.json"]["chromeFlags"] == [
@@ -1818,7 +1923,7 @@ process.stdout.write(JSON.stringify({
         "chromiumVersion",
     ]
     assert "Owner review is required" in controlled["measurementStackReview"]["action"]
-    assert controlled["environment"] == "Local or supplied static server, controlled mobile preset"
+    assert controlled["environment"] == "Hosted target, controlled mobile preset"
     assert controlled["runConditions"]["condition"] == "controlled"
     assert controlled["runConditionsReview"]["status"] == "not-required"
     assert controlled["runConditionsReview"]["baseline"]["blockedUrlPatterns"] is None
@@ -1842,7 +1947,7 @@ process.stdout.write(JSON.stringify({
         "search": {"performance": 91, "lcpMs": 3000},
     }}
     for summary in (normal, controlled):
-        assert summary["schemaVersion"] == 6
+        assert summary["schemaVersion"] == 7
         assert summary["property"] == "https://fixture.invalid"
         assert summary["baseline"] == "assets/audit/lighthouse-baseline-2026-08-22.json"
         assert set(summary["pages"]) == set(expected_routes)

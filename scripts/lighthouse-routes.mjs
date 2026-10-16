@@ -188,6 +188,9 @@ const CHROME_FLAGS_ARGUMENT = `--chrome-flags=${CHROME_STARTUP_FLAGS.join(" ")}`
 
 export const DESKTOP_REFERENCE_PATH = "assets/docs/performance-baseline-desktop-2026-09-07.json";
 export const MOBILE_REFERENCE_PATH = "assets/audit/lighthouse-baseline-2026-08-22.json";
+// The saved mobile raw reports all requested 127.0.0.1:5000. Their compact
+// summary's property field disagrees and is not used as target evidence.
+export const HISTORICAL_REFERENCE_TARGET_URL = "http://127.0.0.1:5000";
 
 function canonicalizeJson(value) {
   if (Array.isArray(value)) return value.map(canonicalizeJson);
@@ -220,6 +223,7 @@ export function getLighthouseReference(preset, baseline) {
       runConditions: HISTORICAL_REFERENCE_RUN_CONDITIONS,
       measurementStackReferenceNote: undefined,
       approval: null,
+      targetUrl: HISTORICAL_REFERENCE_TARGET_URL,
     };
   }
   if (preset !== "desktop") {
@@ -251,6 +255,7 @@ export function getLighthouseReference(preset, baseline) {
     runConditions: baseline.runConditions,
     measurementStackReferenceNote: baseline.measurementStackReferenceNote,
     approval: baseline.approval ?? null,
+    targetUrl: baseline.property ?? null,
     integrityFingerprint,
   };
 }
@@ -410,6 +415,51 @@ export function parseChromiumVersion(output) {
   return match[1];
 }
 
+function classifyLighthouseTarget(targetUrl) {
+  if (typeof targetUrl !== "string" || targetUrl.trim().length === 0) return null;
+  let url;
+  try {
+    url = new URL(targetUrl);
+  } catch {
+    return null;
+  }
+  if (!["http:", "https:"].includes(url.protocol)) return null;
+  const hostname = url.hostname.toLowerCase();
+  const isLoopback = hostname === "localhost"
+    || hostname.endsWith(".localhost")
+    || hostname === "[::1]"
+    || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+  return {
+    kind: isLoopback ? "local" : "hosted",
+    origin: url.origin,
+  };
+}
+
+export function createLighthouseTargetReview(targetUrl, baselineTargetUrl) {
+  const current = classifyLighthouseTarget(targetUrl);
+  const baseline = classifyLighthouseTarget(baselineTargetUrl);
+  const changedComponents = [];
+  if (!current) changedComponents.push("current target unavailable");
+  if (!baseline) changedComponents.push("reference target unavailable");
+  if (current && baseline) {
+    if (current.kind !== baseline.kind) {
+      changedComponents.push("targetKind");
+    } else if (current.origin !== baseline.origin) {
+      changedComponents.push("origin");
+    }
+  }
+  const reviewRequired = changedComponents.length > 0;
+  return {
+    baseline: baseline ?? { kind: "unavailable", origin: null },
+    current: current ?? { kind: "unavailable", origin: null },
+    status: reviewRequired ? "required" : "not-required",
+    changedComponents,
+    action: reviewRequired
+      ? "Owner review is required before interpreting Lighthouse deltas because the target URL differs from or is unavailable in the reference."
+      : "No local-versus-hosted target change from the reference.",
+  };
+}
+
 export function createSummary({
   date,
   preset,
@@ -419,6 +469,7 @@ export function createSummary({
   baselineMeasurementStack,
   runConditionsReports = {},
   baselineRunConditions = HISTORICAL_REFERENCE_RUN_CONDITIONS,
+  baselineTargetUrl = HISTORICAL_REFERENCE_TARGET_URL,
   baselinePath = MOBILE_REFERENCE_PATH,
   measurementStackReferenceNote = "Historical reference only. The exact Chromium 148.0.7778.96 build is inferred from Playwright metadata; historical reports establish major version 148, not an independently owner-approved exact build.",
   referenceApproval = null,
@@ -430,9 +481,16 @@ export function createSummary({
     ? versionFields.filter((field) => measurementStack[field] !== baselineMeasurementStack[field])
     : ["baseline measurement stack unavailable"];
   const reviewRequired = changedComponents.length > 0;
+  const targetReview = createLighthouseTargetReview(baseUrl, baselineTargetUrl);
+  const targetKind = targetReview.current.kind;
+  const environmentTarget = targetKind === "local"
+    ? "Local target"
+    : targetKind === "hosted"
+      ? "Hosted target"
+      : "Unknown target";
 
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     capturedAt: date,
     tool: `Lighthouse ${measurementStack.lighthouseVersion}`,
     measurementStack,
@@ -458,9 +516,10 @@ export function createSummary({
       baselineRunConditions,
     }),
     environment: controlled
-      ? "Local or supplied static server, controlled mobile preset"
-      : `Local or supplied static server, ${preset} preset`,
+      ? `${environmentTarget}, controlled mobile preset`
+      : `${environmentTarget}, ${preset} preset`,
     property: baseUrl,
+    targetReview: targetReview,
     baseline: baselinePath,
     ...(referenceApproval === null ? {} : {
       referenceApproval: summarizeReferenceApproval(
@@ -981,6 +1040,7 @@ function main() {
     baselineMeasurementStack: reference.measurementStack,
     runConditionsReports,
     baselineRunConditions: reference.runConditions,
+    baselineTargetUrl: reference.targetUrl,
     baselinePath: reference.path,
     measurementStackReferenceNote: reference.measurementStackReferenceNote,
     referenceApproval: reference.approval,
@@ -1015,6 +1075,10 @@ function main() {
       `BRANDGUARD RUN-CONDITION REVIEW REQUIRED: ${summary.runConditionsReview.changedComponents.join(", ")} changed from the historical reference.`,
     );
     console.warn(summary.runConditionsReview.action);
+  }
+  if (summary.targetReview.status === "required") {
+    console.warn(`LIGHTHOUSE TARGET REVIEW REQUIRED: ${summary.targetReview.changedComponents.join(", ")}.`);
+    console.warn(summary.targetReview.action);
   }
   if (summary.referenceApproval?.ownerApproved === false) {
     console.warn(`DESKTOP REFERENCE NOT OWNER-APPROVED: ${summary.referenceApproval.action}`);
