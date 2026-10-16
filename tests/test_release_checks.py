@@ -1432,6 +1432,9 @@ fs.writeFileSync(reportPath, JSON.stringify(report));
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["baseline"] == "assets/docs/performance-baseline-desktop-2026-09-07.json"
     assert summary["measurementStackReview"]["status"] == "not-required"
+    assert summary["environment"] == "Local target, desktop preset"
+    assert summary["targetReview"]["status"] == "not-required"
+    assert summary["targetReview"]["current"]["kind"] == "local"
     assert summary["runConditionsReview"]["status"] == "required"
     assert summary["runConditionsReview"]["changedComponents"] == ["chromeFlags"]
     assert summary["runConditionsReview"]["baseline"]["formFactor"] == "desktop"
@@ -1455,7 +1458,7 @@ def test_lighthouse_summary_fixture_covers_normal_and_controlled_outputs_without
         """
 import { readFileSync } from "node:fs";
 import { defaultSettings as lighthouseDefaultSettings } from "./node_modules/lighthouse/core/config/constants.js";
-import { CHROME_STARTUP_FLAGS, CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, HISTORICAL_REFERENCE_TARGET_URL, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
+import { CHROME_STARTUP_FLAGS, CONTROLLED_BLOCKED_URL_PATTERNS, HISTORICAL_REFERENCE_MEASUREMENT_STACK, HISTORICAL_REFERENCE_RUN_CONDITIONS, HISTORICAL_REFERENCE_TARGET_URL, LIGHTHOUSE_CONFIG_SETTINGS_INVENTORY, createSummary, getLighthouseReference, LIGHTHOUSE_ROUTES, parseChromiumVersion, summarizePage, summarizeRunConditions } from "./scripts/lighthouse-routes.mjs";
 
 const report = JSON.parse(readFileSync("tests/fixtures/lighthouse-summary-report.json", "utf8"));
 const fixtureConfigSettingKeys = Object.keys(report.configSettings).sort();
@@ -1484,6 +1487,14 @@ const controlledRunConditions = Object.fromEntries(
     { ...conditions, blockedUrlPatterns: CONTROLLED_BLOCKED_URL_PATTERNS }
   ])
 );
+const mobileReference = getLighthouseReference("mobile", JSON.parse(readFileSync(
+  "assets/audit/lighthouse-baseline-2026-08-22.json",
+  "utf8"
+)));
+const desktopReference = getLighthouseReference("desktop", JSON.parse(readFileSync(
+  "assets/docs/performance-baseline-desktop-2026-09-07.json",
+  "utf8"
+)));
 const emit = (
   controlled,
   measurementStack,
@@ -1572,6 +1583,10 @@ const missingChromeFlags = {
 };
 process.stdout.write(JSON.stringify({
   routes: LIGHTHOUSE_ROUTES,
+  referenceTargets: {
+    mobile: mobileReference.targetUrl,
+    desktop: desktopReference.targetUrl
+  },
   targetCases: {
     localAlias: targetSummary("http://localhost:5000"),
     hostedAgainstLocal: targetSummary("https://askjamie.bot"),
@@ -1646,6 +1661,10 @@ process.stdout.write(JSON.stringify({
     emitted = json.loads(result.stdout)
     assert not list((ROOT / "assets/audit").glob("lighthouse-2099-01-02*"))
     assert emitted["routes"] == expected_routes
+    assert emitted["referenceTargets"] == {
+        "mobile": "http://127.0.0.1:5000",
+        "desktop": "http://127.0.0.1:5000",
+    }
 
     normal = emitted["normal"]
     assert emitted["parsedChromiumVersion"] == "153.0.8010.12"

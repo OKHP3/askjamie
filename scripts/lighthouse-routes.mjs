@@ -519,7 +519,7 @@ export function createSummary({
       ? `${environmentTarget}, controlled mobile preset`
       : `${environmentTarget}, ${preset} preset`,
     property: baseUrl,
-    targetReview,
+    targetReview: targetReview,
     baseline: baselinePath,
     ...(referenceApproval === null ? {} : {
       referenceApproval: summarizeReferenceApproval(
