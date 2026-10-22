@@ -12690,14 +12690,14 @@ async function runWithPlaywright(previousWarningBaseline) {
   const warningCount = countBrowserWarnings(report);
   saveCompletedBrowserWarningBaseline(report);
   console.log(
-    `\nTotal: ${report.total_checks} checks — ${report.passing_checks} passed, ${report.failing_checks} failures, ${warningCount} warnings`
+    `\nTotal: ${report.total_checks} checks: ${report.passing_checks} passed, ${report.failing_checks} failures, ${warningCount} warnings`
   );
   console.log(formatBrowserWarningTrend(warningCount, previousWarningBaseline));
   const failureSummary = summarizeBrowserFailures(report);
   if (failureSummary.length > 0) {
     console.log('Failures by message:');
     for (const { message, count } of failureSummary) {
-      console.log(`  ${count} occurrences — ${message}`);
+      console.log(`  ${count} occurrences: ${message}`);
     }
   }
   if (warningCount > 0) {
@@ -12713,7 +12713,7 @@ async function runWithPlaywright(previousWarningBaseline) {
         countB - countA ||
         (messageA < messageB ? -1 : messageA > messageB ? 1 : 0)
     )) {
-      console.log(`  ${count} occurrences — ${message}`);
+      console.log(`  ${count} occurrences: ${message}`);
     }
   }
   console.log(`Browser QA duration: ${(report.duration_ms / 1000).toFixed(1)}s`);
@@ -12893,7 +12893,7 @@ async function staticAnalysis() {
 
   console.log(`\nStatic-lint: ${pagesFound} pages × ${VIEWPORTS.length} viewports = ${results.length} checks`);
   if (skippedRoutes.length > 0) {
-    console.log(`Skipped: ${skippedRoutes.length} sitemap route(s) — not checked because local HTML files were missing.`);
+    console.log(`Skipped: ${skippedRoutes.length} sitemap route(s): not checked because local HTML files were missing.`);
     console.log('STATIC LINT INCOMPLETE: skipped sitemap routes were not checked.');
   }
   console.log(`Passing: ${report.passing_checks} | Failing: ${totalFails}`);

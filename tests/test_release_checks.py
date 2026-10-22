@@ -586,7 +586,7 @@ def test_lazy_image_browser_boundary_records_deferred_engine_expansion():
         "Firefox and WebKit checks are deferred until a separate reviewed "
         "compatibility decision explicitly names any additional target engines."
     ) in policy
-    assert "## Browser target review — 2026-10-18" in policy
+    assert "## Browser target review: 2026-10-18" in policy
     assert (
         "Chromium remains the only target engine for the automated "
         "lazy-image compatibility check."
@@ -1311,7 +1311,7 @@ def test_responsive_qa_static_output_omits_browser_versions_and_matches_saved_to
 
     assert result.returncode == 1, result.stderr
     assert "Static-lint requested with --static." in result.stdout
-    assert "Skipped: 1 sitemap route(s) — not checked because local HTML files were missing." in result.stdout
+    assert "Skipped: 1 sitemap route(s): not checked because local HTML files were missing." in result.stdout
     assert "STATIC LINT INCOMPLETE: skipped sitemap routes were not checked." in result.stdout
     assert "ALL CHECKS PASS." not in result.stdout
     assert "Browser runtime:" not in result.stdout
@@ -2178,7 +2178,7 @@ def test_responsive_qa_distinguishes_navigation_failure_from_delayed_ready_warni
         for row in server_error_rows
     ) == RESPONSIVE_QA_VIEWPORT_COUNT
     assert re.search(
-        rf"^Total: {report['total_checks']} checks — "
+        rf"^Total: {report['total_checks']} checks: "
         rf"{report['passing_checks']} passed, {report['failing_checks']} failures, "
         rf"{sum(len(row.get('warnings', [])) for row in report['results'])} warnings$",
         result.stdout,
@@ -11152,7 +11152,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
         assert saved_report["total_checks"] == passing_rows + failing_rows
         warning_count = sum(len(row.get("warnings", [])) for row in saved_rows)
         summary = re.search(
-            r"^Total: (\d+) checks — (\d+) passed, (\d+) failures, (\d+) warnings$",
+            r"^Total: (\d+) checks: (\d+) passed, (\d+) failures, (\d+) warnings$",
             run_result.stdout,
             re.MULTILINE,
         )
@@ -11171,7 +11171,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
         warning_output = run_result.stdout.split("Warnings by message:", 1)[1]
         warning_output = warning_output.split("\nBrowser QA duration:", 1)[0]
         breakdown = re.findall(
-            r"^  (\d+) occurrences — (.+)$",
+            r"^  (\d+) occurrences: (.+)$",
             warning_output,
             re.MULTILINE,
         )

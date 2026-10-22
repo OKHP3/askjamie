@@ -431,8 +431,8 @@ export function markdownReport(report) {
         (measurement.passed ? 'PASS' : 'FAIL');
       lines.push(
         '',
-        `### ${measurement.viewport.name} — ${measurement.viewport.width} × ` +
-        `${measurement.viewport.height} — ${measurementStatus}`,
+        `### ${measurement.viewport.name}: ${measurement.viewport.width} × ` +
+        `${measurement.viewport.height}: ${measurementStatus}`,
         `- Measured: ${measurement.measured ?? 'yes'}`,
         `- Critical stylesheet: ${JSON.stringify(measurement.stylesheet_response)}`,
         `- Critical stylesheet integrity: ${JSON.stringify(measurement.stylesheet_integrity)}`,

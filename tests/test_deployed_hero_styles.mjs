@@ -204,8 +204,8 @@ test('retains route- and viewport-labeled not-measured evidence when the browser
         `## ${route.path.replaceAll('/', '\\/')}(?:\\n|$)`,
       ));
       assert.ok(markdown.includes(
-        `### ${measurement.viewport.name} — ${measurement.viewport.width} × ` +
-        `${measurement.viewport.height} — NOT_MEASURED`,
+        `### ${measurement.viewport.name}: ${measurement.viewport.width} × ` +
+        `${measurement.viewport.height}: NOT_MEASURED`,
       ));
     }
   }
@@ -266,8 +266,8 @@ test('retains completed measurements and reports a browser crash mid-check', asy
     assert.equal(measurement.status, 'NOT_MEASURED');
     assert.equal(measurement.measured, false);
   }
-  assert.match(markdown, /### narrow-phone — 320 × 844 — PASS/);
-  assert.match(markdown, /### standard-phone — 390 × 844 — NOT_MEASURED/);
+  assert.match(markdown, /### narrow-phone: 320 × 844: PASS/);
+  assert.match(markdown, /### standard-phone: 390 × 844: NOT_MEASURED/);
 });
 
 test('fails only the narrow-phone measurement when its width-specific hero style regresses', async () => {

@@ -50,7 +50,7 @@ Chromium results as evidence for another engine.
 
 **Reviewed automated QA browser engines:** Chromium
 
-## Browser target review — 2026-10-18
+## Browser target review: 2026-10-18
 
 The site is a public-facing portfolio, but the project does not publish a
 general supported-browser matrix. The Safari 17.4+ statement in the README is
