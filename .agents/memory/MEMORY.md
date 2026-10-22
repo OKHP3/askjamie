@@ -1,19 +1,54 @@
-- [AskJamie audit execution pattern](askjamie-audit-execution.md) — audit reports are action lists; execute every finding, don't just document them
-- [height=auto removal pattern](img-height-auto.md) — removing height="auto" breaks audit checks; always add explicit pixel heights for square images
-- [FK scoring approach](fk-scoring.md) — treat closing block-level HTML tags as sentence boundaries or list items inflate FK scores artificially
-- [Git credential pattern](git-credentials.md) — GITHUB_PAT must be re-applied each session before push via git-credentials store
-- [AskJamie contrast corrections](contrast-corrections.md) — two originally reported contrast failures were calculation errors; correct ratios both pass AA
-- [Mermaid keyboard focus](mermaid-keyboard-focus.md) — aria-hidden does not remove generated SVG anchors from Chromium tab order; pair it with tabindex="-1"
-- [GitHub Pages artifact publishing](github-pages-artifact-publishing.md) — workflow mode and an explicit page-tree allowlist are required to publish only the validated public site
-- [Plain-language term validation](plain-language-term-validation.md) — check explanatory prose only, with stack-safe exclusion handling for shared UI
-- [Portable skill package integrity](portable-skill-package-integrity.md) — resolve every referenced resource before treating a skill as portable
-- [Public tree audit traversal](public-tree-audit-traversal.md) — prune workspace-managed directories before recursive validation scans
-- [Pages artifact working tree](pages-artifact-working-tree.md) — artifact preparation can touch the tracked dist-pages tree; restore it before cleanup or pushing
-- [Merge marker false positives](merge-marker-false-positives.md) — conflict resolvers may mistake decorative seven-equals comment rules for unresolved markers
-- [Branch cleanup recovery refs](branch-cleanup-recovery.md) — date-stamped recovery refs and a full ref snapshot protect local-only branch deletion
-- [Mobile critical-rendering evidence](mobile-critical-rendering-evidence.md) — isolate deferred theme/font gains from lab variance and keep the 2.5-second claim evidence-bound
-- [Font geometry evidence isolation](font-geometry-evidence-isolation.md) — settle the active theme before baseline, then isolate blocked font-file loading from deferred-theme shifts
-- [Lighthouse LCP lab constraint](lighthouse-lcp-lab-constraint.md) — separate emulated mobile LCP from much earlier observed paint when the runner reports zero blocking
+- [AskJamie audit execution pattern](askjamie-audit-execution.md): audit reports are action lists; execute every finding, don't just document them
+- [height=auto removal pattern](img-height-auto.md): removing height="auto" breaks audit checks; always add explicit pixel heights for square images
+- [FK scoring approach](fk-scoring.md): treat closing block-level HTML tags as sentence boundaries or list items inflate FK scores artificially
+- [Git credential pattern](git-credentials.md): GITHUB_PAT must be re-applied each session before push via git-credentials store
+- [AskJamie contrast corrections](contrast-corrections.md): two originally reported contrast failures were calculation errors; correct ratios both pass AA
+- [Mermaid keyboard focus](mermaid-keyboard-focus.md): aria-hidden does not remove generated SVG anchors from Chromium tab order; pair it with tabindex="-1"
+- [Chromium touch swipe checks](chromium-touch-swipe-checks.md): CDP swipe tests need the scroll area onscreen and touch moves spaced to trigger native scrolling
+- [Page-map theme baselines](page-map-theme-baselines.md): restore the shared theme toggle after each group while asserting pan position survives
+- [Deferred theme measurement sequencing](deferred-theme-measurement-sequencing.md): capture each component baseline before releasing one shared stylesheet gate; keep its evidence separate
+- [GitHub Pages artifact publishing](github-pages-artifact-publishing.md): workflow mode and an explicit page-tree allowlist are required to publish only the validated public site
+- [Plain-language term validation](plain-language-term-validation.md): check explanatory prose only, with stack-safe exclusion handling for shared UI
+- [Portable skill package integrity](portable-skill-package-integrity.md): resolve every referenced resource before treating a skill as portable
+- [Public tree audit traversal](public-tree-audit-traversal.md): prune workspace-managed directories before recursive validation scans
+- [Pages artifact working tree](pages-artifact-working-tree.md): artifact preparation can touch the tracked dist-pages tree; restore it before cleanup or pushing
+- [Merge marker false positives](merge-marker-false-positives.md): conflict resolvers may mistake decorative seven-equals comment rules for unresolved markers
+- [Branch cleanup recovery refs](branch-cleanup-recovery.md): date-stamped recovery refs and a full ref snapshot protect local-only branch deletion
+- [Mobile critical-rendering evidence](mobile-critical-rendering-evidence.md): isolate deferred theme/font gains from lab variance and keep the 2.5-second claim evidence-bound
+- [Font geometry evidence isolation](font-geometry-evidence-isolation.md): settle the active theme before baseline, then isolate blocked font-file loading from deferred-theme shifts
+- [Font-face decode evidence](font-face-decode-evidence.md): HTTP success and FontFaceSet ready can coexist with an errored registered face
+- [BrandGuard font-outage checks](brandguard-font-outage-checks.md): test blocked-font readability separately, after the full local theme settles, at only the measured widths
+- [BrandGuard phone action geometry](brandguard-phone-action-geometry.md): reserved flex action rows can stretch and move buttons after font swaps; fix target height and align rows from the start
+- [Lighthouse LCP lab constraint](lighthouse-lcp-lab-constraint.md): separate emulated mobile LCP from much earlier observed paint when the runner reports zero blocking
 - [Post-merge timeout diagnosis](post-merge-timeout-diagnosis.md). A Playwright page-closed stack at the hook limit may be timeout fallout; size from observed end-to-end runtime
 - [Post-merge port settings](post-merge-port-settings.md). Inspect unexpected `.replit` port changes after reconciliation before reverting them
+- [Post-merge asset fingerprints](post-merge-asset-fingerprints.md): refresh generated shared-asset URLs and CSP before validating merged frontend asset changes
 - [Retirement retention scope](retirement-retention-scope.md). Mainline baselines avoid treating pre-ledger side-branch states as deleted decisions.
+- [Git immutability test isolation](git-immutability-test-isolation.md): automatic Git maintenance can race whole-repository snapshots in temporary test repos.
+- [Remote audit ref safety](remote-audit-ref-safety.md): use ls-remote for read-only remote-head evidence; fetch --dry-run can still advance tracking refs.
+- [Retirement cache budget safety](retirement-cache-budget-safety.md): byte limits govern optional reuse, never valid record acceptance or retained audit evidence.
+- [Git working-tree fingerprints](git-working-tree-fingerprints.md): raw diffs omit dirty worktree contents; use binary diff data to distinguish dirty snapshots.
+- [Arrival-notice font geometry](arrival-notice-font-geometry.md): compare the notice container across font states; intrinsic action-width changes are not downstream layout shifts.
+- [Universe link navigation waits](universe-link-navigation-waits.md): a new-tab event can precede navigation from `about:blank`; wait for the destination URL and DOM readiness before evaluating.
+- [Failed stylesheet readiness](stylesheet-failure-readiness.md): a CSSStyleSheet object can exist after failure; safely verify rules and retain request-failure evidence.
+- [Responsive QA timing fixtures](responsive-qa-timing-fixtures.md): use clear margins inside and outside readiness cutoffs when a browser test repeats across viewports.
+- [Responsive QA fixture modules](responsive-qa-fixture-modules.md): isolated test copies of the runner must include its local imported helper modules.
+- [Archive merge fixtures](archive-merge-fixtures.md): distinguish promoted shared changes from merge-only resolution differences across multiple archive merges.
+- [ASCII-locale test boundaries](ascii-locale-test-boundaries.md): separate hosted UTF-8 bytes from Python's locale-dependent OS argument decoding.
+- [Hosted identity evidence policy](hosted-identity-evidence-policy.md): distinguish branch-specific endpoint provenance from filtered history association.
+- [Hosted history memory safety](hosted-history-memory-safety.md): hosted history may be discarded only with unknown-evidence deletion holds; retirement retention has different rules.
+- [Local branch ref disambiguation](local-branch-ref-disambiguation.md): same-named tags can make Git shorten branch names ambiguously; use full heads refs and strip the known namespace for enumeration.
+- [BrandGuard forced-colors timing](brandguard-forced-colors-timing.md): settle the hero scroll-reveal animation before judging forced-colors visibility at desktop widths.
+- [Browser accessible-name checks](browser-accessible-name-checks.md): verify the computed role name matches its visible label and uniquely identifies a control among siblings.
+- [Unicode browser fixtures](unicode-browser-fixtures.md): declare UTF-8 in controlled HTML responses when asserting non-ASCII fixture text.
+- [Forced-colors alpha contrast](forced-colors-alpha-contrast.md): composite translucent system focus colors over the opaque Canvas before calculating contrast.
+- [Remote audit test isolation](remote-audit-test-isolation.md): create temporary bare remotes at paths unique to each fixture, not shared sibling names in `/tmp`.
+- [Ledger fence safety](ledger-fence-safety.md): reject unclosed examples instead of allowing Markdown's implicit EOF closure to conceal cleanup holds.
+- [Navigation transport error codes](navigation-transport-error-codes.md): Chromium may report a dropped connection as `ERR_EMPTY_RESPONSE`, not only `ERR_CONNECTION_RESET`.
+- [Lighthouse raw route paths](lighthouse-raw-route-paths.md): compare original URL path text; URL parsing can normalize encoded dot segments before review.
+- [Node stalled-fetch fixtures](node-stalled-fetch-fixtures.md): keep a live event-loop handle during a simulated stalled fetch so its abort timeout can fire.
+- [Rendered text visibility](rendered-text-visibility.md): use browser visibility checks; Range rectangles can exist for text hidden inside collapsed disclosures.
+- [Keyboard tab test starting points](keyboard-tab-test-starting-points.md): seed a known preceding control when earlier checks may have left focus elsewhere in the document.
+- [BrandGuard font reservation timing](brandguard-font-reservation-timing.md): reserve visible notice controls after app initialization, before deferred fonts activate.
+- [Responsive QA dialog settling](responsive-qa-dialog-settling.md): settle auto-opened dialogs and isolate keyboard checks before judging focus, menu, or scroll behavior.
+- [Responsive QA report snapshots](responsive-qa-report-snapshots.md): publish progress reports atomically so recovery readers never parse a partially written JSON file.

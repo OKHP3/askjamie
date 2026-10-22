@@ -4,22 +4,64 @@
 const deferredFonts = document.querySelectorAll("link[data-deferred-fonts]");
 const deferredStyles = document.querySelectorAll("link[data-deferred-styles]");
 const isUniversePage = Boolean(document.querySelector(".universe-map-generated"));
+if (isUniversePage) {
+  const universeThemeLink = [...deferredStyles].find((link) => {
+    try {
+      const url = new URL(link.href, document.baseURI);
+      return url.origin === window.location.origin && url.pathname === "/assets/css/theme.css";
+    } catch {
+      return false;
+    }
+  });
+  const themeFailureNotice = document.querySelector("#universe-theme-status");
+  if (universeThemeLink && themeFailureNotice) {
+    const showThemeFailureNotice = () => {
+      themeFailureNotice.textContent =
+        "The page’s visual theme could not load. The page-map links and keyboard controls are still available.";
+      themeFailureNotice.hidden = false;
+    };
+    universeThemeLink.addEventListener("error", showThemeFailureNotice, { once: true });
 
-// Preserve the critical-font geometry of BrandGuard tablet pages before the
-// theme and web-font styles activate. This reserves each page's own rendered
-// line count instead of imposing fixed heights across different case studies.
-const brandGuardReservationWidth = window.innerWidth;
+    // Browsers may fetch a stylesheet before deferred scripts execute, even
+    // while its media is disabled. If that request already failed, its error
+    // event is gone; an empty same-origin sheet distinguishes it from a load
+    // still in progress and lets the notice appear immediately.
+    try {
+      if (universeThemeLink.sheet &&
+          universeThemeLink.sheet.cssRules.length === 0) {
+        showThemeFailureNotice();
+      }
+    } catch {
+      // The theme URL is local, but retain the load/error listener if the
+      // browser does not permit inspecting the stylesheet.
+    }
+  }
+}
+
+// Preserve BrandGuard fallback-font geometry at 320px and tablet/desktop
+// widths before web-font styles activate. This reserves each page's own
+// rendered line count instead of imposing fixed heights across case studies.
+let brandGuardReservationWidth = window.innerWidth;
+let brandGuardReservationGeneration = 0;
+let brandGuardFontsActivated = false;
 const needsBrandGuardFontReservation =
-  (window.innerWidth === 320 || (window.innerWidth >= 768 && window.innerWidth <= 899)) &&
+  (window.innerWidth === 320 || window.innerWidth >= 768) &&
   document.body?.classList.contains("askjamie-main") &&
   document.querySelector(".askjamie-breadcrumb");
+let scheduleBrandGuardReservation = () => {};
 
-const reserveBrandGuardTabletGeometry = () => {
-  // A delayed stylesheet callback must not stamp measurements for an old width.
-  if (window.innerWidth !== brandGuardReservationWidth) return;
+const isBrandGuardReservationWidth = (width) => width === 320 || width >= 768;
+
+const reserveBrandGuardTabletGeometry = (expectedWidth, expectedGeneration) => {
+  // A delayed callback must not stamp measurements for a width that has changed.
+  if (window.innerWidth !== expectedWidth ||
+      brandGuardReservationWidth !== expectedWidth ||
+      brandGuardReservationGeneration !== expectedGeneration ||
+      !isBrandGuardReservationWidth(expectedWidth)) return false;
   const selectors = [
     ".site-header .container",
     ".site-specials",
+    ".capability-transition",
     ".capability-transition > *",
     ".askjamie-breadcrumb",
     ".askjamie-hero-copy > *",
@@ -30,47 +72,54 @@ const reserveBrandGuardTabletGeometry = () => {
       if (height > 0) {
         element.style.minHeight = `${Math.ceil(height * 100) / 100}px`;
         element.dataset.fontGeometryReserved = "true";
+        element.dataset.fontGeometryReservedWidth = String(expectedWidth);
       }
     });
   });
+  return true;
 };
 
 if (needsBrandGuardFontReservation) {
   let appDomReady = document.readyState === "complete";
+  let reservationStylesReady = false;
+  let activateTabletFontsAfterReservation = false;
+  const tabletFontStylesheet = document.querySelector("link[data-brandguard-tablet-fonts]");
+  scheduleBrandGuardReservation = () => {
+    if (!appDomReady || !reservationStylesReady ||
+        !isBrandGuardReservationWidth(window.innerWidth)) return;
+    const expectedWidth = window.innerWidth;
+    const expectedGeneration = brandGuardReservationGeneration;
+    window.setTimeout(() => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!reserveBrandGuardTabletGeometry(expectedWidth, expectedGeneration)) return;
+        if (activateTabletFontsAfterReservation) {
+          if (tabletFontStylesheet) tabletFontStylesheet.media = "all";
+          brandGuardFontsActivated = true;
+          activateTabletFontsAfterReservation = false;
+        }
+      }));
+    }, 0);
+  };
   document.addEventListener("DOMContentLoaded", () => {
     appDomReady = true;
+    scheduleBrandGuardReservation();
   }, { once: true });
+
   const deferredThemeLink = document.querySelector("link[data-deferred-styles]");
   if (deferredThemeLink) {
-    reserveBrandGuardTabletGeometry();
+    // The transition notice reveals its access button from app.js at
+    // DOMContentLoaded. Do not measure an incomplete notice.
+    reservationStylesReady = true;
+    scheduleBrandGuardReservation();
   } else {
-    const tabletFontStylesheet = document.querySelector("link[data-brandguard-tablet-fonts]");
     const themeStylesheet = [...document.querySelectorAll('link[rel~="stylesheet"]')]
       .find((link) => new URL(link.href).pathname === "/assets/css/theme.css");
-    const reserveAndActivateTabletFonts = () => {
-      const reserveAfterAppInitialization = () => {
-        // The transition notice reveals its access button from app.js at
-        // DOMContentLoaded. Do not measure an incomplete notice or activate
-        // fonts until that synchronous initializer has finished.
-        window.setTimeout(() => {
-          requestAnimationFrame(() => requestAnimationFrame(() => {
-            reserveBrandGuardTabletGeometry();
-            if (tabletFontStylesheet) tabletFontStylesheet.media = "all";
-          }));
-        }, 0);
-      };
-      if (!appDomReady) {
-        document.addEventListener(
-          "DOMContentLoaded",
-          reserveAfterAppInitialization,
-          { once: true }
-        );
-      } else {
-        reserveAfterAppInitialization();
-      }
-    };
     const reserveAfterThemeStyles = () => {
-      reserveAndActivateTabletFonts();
+      // Keep the tablet font stylesheet disabled until the fallback-font
+      // baseline is measured at the current viewport.
+      activateTabletFontsAfterReservation = true;
+      reservationStylesReady = true;
+      scheduleBrandGuardReservation();
     };
     if (!themeStylesheet || themeStylesheet.sheet?.cssRules.length) {
       reserveAfterThemeStyles();
@@ -103,10 +152,10 @@ if (isUniversePage && (deferredFonts.length || deferredStyles.length)) {
     ".universe-map-generated > p",
     ".universe-map-group > summary",
     ".universe-map-group[open] li",
+    ".universe-map-group[open] figcaption",
   ];
   let generation = 0;
   let reservationWidth = window.innerWidth;
-  let fontStylesReleased = false;
   let measuring = false;
   let measurementPending = false;
 
@@ -165,6 +214,12 @@ if (isUniversePage && (deferredFonts.length || deferredStyles.length)) {
       reserve(expectedGeneration, expectedWidth);
       attempt += 1;
     } while (measurementPending && attempt < 4);
+    if (measurementPending) {
+      // A resize burst can outlast the bounded frame retries. Finish with the
+      // newest viewport snapshot so an older pass cannot leave the map stale.
+      measurementPending = false;
+      reserve(generation, window.innerWidth);
+    }
     measuring = false;
   };
 
@@ -189,14 +244,11 @@ if (isUniversePage && (deferredFonts.length || deferredStyles.length)) {
     await activateTheme();
     await measureCurrentWidth();
     deferredFonts.forEach((link) => { link.media = "all"; });
-    fontStylesReleased = true;
   };
 
   const refreshVisibleUniverseGeometry = () => {
-    if (!fontStylesReleased || document.fonts.status === "loading") {
-      generation += 1;
-      void measureCurrentWidth();
-    }
+    generation += 1;
+    void measureCurrentWidth();
   };
 
   window.addEventListener("resize", () => {
@@ -204,9 +256,7 @@ if (isUniversePage && (deferredFonts.length || deferredStyles.length)) {
     generation += 1;
     reservationWidth = window.innerWidth;
     clearReservations();
-    if (!fontStylesReleased || document.fonts.status === "loading") {
-      void measureCurrentWidth();
-    }
+    void measureCurrentWidth();
   }, { passive: true });
 
   document.querySelectorAll(".universe-map-group").forEach((group) => {
@@ -233,11 +283,18 @@ if (isUniversePage && (deferredFonts.length || deferredStyles.length)) {
 // tablet range. Height-only viewport changes do not invalidate that measurement.
 window.addEventListener("resize", () => {
   if (window.innerWidth === brandGuardReservationWidth) return;
+  brandGuardReservationGeneration += 1;
+  brandGuardReservationWidth = window.innerWidth;
 
   document.querySelectorAll('[data-font-geometry-reserved="true"]').forEach((element) => {
     element.style.removeProperty("min-height");
     delete element.dataset.fontGeometryReserved;
+    delete element.dataset.fontGeometryReservedWidth;
   });
+  if (needsBrandGuardFontReservation && !brandGuardFontsActivated) {
+    // Returning to a covered width must rebuild its baseline after invalidation.
+    scheduleBrandGuardReservation();
+  }
 }, { passive: true });
 
 if (!isUniversePage && (deferredFonts.length || deferredStyles.length)) {
@@ -248,6 +305,7 @@ if (!isUniversePage && (deferredFonts.length || deferredStyles.length)) {
     deferredStyles.forEach((link) => {
       link.media = "all";
     });
+    brandGuardFontsActivated = true;
   };
 
   const enableAfterLoad = () => {

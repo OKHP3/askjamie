@@ -75,9 +75,13 @@ def recovery_snapshot(root, run):
         "stashes": run(
             ["git", "stash", "list", "--format=%H%x00%gd%x00%s"], root
         ).splitlines(),
+        # Only object IDs are evidence here; unrelated path bytes need not be
+        # UTF-8 and must not pass through the text command runner.
         "reachable_objects": sorted({
             line.split(maxsplit=1)[0]
-            for line in run(["git", "rev-list", "--all", "--objects"], root).splitlines()
+            for line in run(
+                ["git", "rev-list", "--all", "--objects", "--no-object-names"], root
+            ).splitlines()
             if line
         }),
     }

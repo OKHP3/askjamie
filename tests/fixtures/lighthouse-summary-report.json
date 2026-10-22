@@ -1,4 +1,8 @@
 {
+  "requestedUrl": "https://fixture.invalid/",
+  "mainDocumentUrl": "https://fixture.invalid/",
+  "finalDisplayedUrl": "https://fixture.invalid/",
+  "finalUrl": "https://fixture.invalid/",
   "configSettings": {
     "output": ["json"],
     "formFactor": "mobile",

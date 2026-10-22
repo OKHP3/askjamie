@@ -1,7 +1,7 @@
 # AskJamie Project Scorecard
 
-**Current as of:** 2026-09-08
-**Source baseline:** `4f4a566`
+**Current as of:** 2026-10-22
+**Closeout starting baseline:** `a98f6b56b6cf6f26057e5847c25c898f18eeef0a`. See PR #119 for integration status.
 **Purpose:** One current record of shipped capability, dated verification,
 conditional evidence, and deliberately deferred work.
 
@@ -16,14 +16,30 @@ artifact passed the repository release workflow and deployed successfully.
 
 | Capability | Current source evidence |
 | --- | --- |
-| Static website | 28 source HTML pages plus 9 developer templates. Tracked `dist-pages/` copies are generated release material, excluded from source-page counts. |
-| Discovery and explanation | 26 sitemap routes and 26 generated search entries, including the How AskJamie Works explanation page. |
+| Static website | 29 source HTML pages plus 9 developer templates. Tracked `dist-pages/` copies are generated release material, excluded from source-page counts. |
+| Discovery and explanation | 27 sitemap routes and 27 generated search entries, including the How AskJamie Works explanation page. |
 | Client-side search | Shared overlay and dedicated search route in `assets/js/app.js`, backed by generated JSON. |
 | Analytics and typography | Unconditional GA4 `G-MT9Y10YY0G` and intentionally external Google Fonts. The Legal page describes analytics use. |
-| Universe diagram | Locally vendored Mermaid 11.17.2, browser initialization, and a static fallback. |
+| Universe diagram | Locally vendored Mermaid 12.2.0, browser initialization, and a static fallback. |
 | Release pipeline | `.github/workflows/validate.yml` validates structure, fingerprints, links, Python tests, search freshness, browser responsive behavior, smoke behavior, and canonical audit before packaging and dependent Pages deployment. |
 | Release boundary | `scripts/prepare-pages-artifact.py` constructs an allowlisted artifact. Use its current manifest for file counts, not a copied historical total. |
 | Hosted checks | Separate scheduled hosted JavaScript and public GPT destination workflows retain diagnostics. Their existence does not prove any particular hosted run passed. |
+
+## October 22 closeout verification
+
+The canonical Mac checkout began clean at `a98f6b56b6cf6f26057e5847c25c898f18eeef0a`.
+Fresh local source, link, fingerprint, generated-data, static responsive,
+Python and canonical audit checks passed. A full rendered check reproduced a
+Costco 350px font shift, so the older successful release does not establish
+current font stability. PR #118 contains the measured fix.
+
+The preserved Replit candidate was reconciled from a verified private patch in a separate worktree.
+Its configured responsive inventory is 27 routes at 28 widths, or 756 rows.
+The integration receipt must distinguish that configured coverage from a
+completed successful run and must record the actual merged revision, CI,
+Pages deployment and Replit synchronization separately. No new performance
+baseline or additional browser support is approved by this reconciliation.
+Human VoiceOver/NVDA spoken output and native 200% zoom remain incomplete.
 
 ## September 8 release verification
 
@@ -51,8 +67,8 @@ artifact passed the repository release workflow and deployed successfully.
   enforced GitHub Pages control.
 - Public accessibility and appropriate publication status of case-study source
   destinations and represented external GPTs.
-- `npm audit` reports 20 transitive development-only vulnerabilities in the
-  Lighthouse and Puppeteer toolchain. Production dependencies report 0
+- The September 8 `npm audit` reported 20 transitive development-only vulnerabilities in the
+  Lighthouse and Puppeteer toolchain. At that time, production dependencies reported 0
   vulnerabilities, and the audit tool found no safe automatic fix. This is a
   tooling maintenance item, not a deployed-site finding.
 

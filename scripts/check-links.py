@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from datetime import date
@@ -39,6 +40,28 @@ SKIP_DIRS = {
 }
 SITE = "https://askjamie.bot"
 REPORT_DATE = date.today().isoformat()
+
+
+def find_html_files() -> list[Path]:
+    """Find public HTML pages without descending into workspace directories."""
+    files: list[Path] = []
+
+    def raise_scan_error(error: OSError) -> None:
+        # Do not report a clean link inventory when public files cannot be read.
+        raise error
+
+    for root, directories, filenames in os.walk(
+        ROOT, topdown=True, onerror=raise_scan_error
+    ):
+        directories[:] = sorted(
+            directory for directory in directories if directory not in SKIP_DIRS
+        )
+        files.extend(
+            Path(root) / filename
+            for filename in sorted(filenames)
+            if filename.endswith(".html")
+        )
+    return sorted(files)
 
 
 class PageIndexingMeta(HTMLParser):
@@ -126,7 +149,8 @@ def main() -> int:
     broken: list[dict] = []
     style_issues: list[dict] = []
 
-    for path in sorted(ROOT.rglob("*.html")):
+    html_files = find_html_files()
+    for path in html_files:
         rel = path.relative_to(ROOT)
         if any(s in rel.parts for s in SKIP_DIRS):
             continue
@@ -174,9 +198,8 @@ def main() -> int:
 
     file_urls = set()
     excluded_from_sitemap: list[dict] = []
-    for p in sorted(ROOT.rglob("index.html")):
-        rel = p.relative_to(ROOT)
-        if any(s in rel.parts for s in SKIP_DIRS):
+    for p in html_files:
+        if p.name != "index.html":
             continue
         exclusion = sitemap_exclusion(p)
         if exclusion:

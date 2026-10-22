@@ -3,6 +3,7 @@
 import importlib.util
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 import subprocess
@@ -15,6 +16,32 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/prepare-pages-artifact.p
 SPEC = importlib.util.spec_from_file_location("pages_artifact_safety", SCRIPT)
 pages = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(pages)
+
+
+def workflow_run_script(workflow, step_name):
+    step = workflow.split(f"- name: {step_name}", 1)[1].split("\n      - name:", 1)[0]
+    lines = step.splitlines()
+    run_line = next(index for index, line in enumerate(lines) if line == "        run: |")
+    body = []
+    for line in lines[run_line + 1:]:
+        if line.startswith("          "):
+            body.append(line[10:])
+        elif not line.strip():
+            body.append("")
+        else:
+            break
+    return "\n".join(body).rstrip() + "\n"
+
+
+def run_workflow_script(script, cwd, env):
+    return subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
+        cwd=cwd,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 class PagesArtifactSafetyTests(unittest.TestCase):
@@ -224,6 +251,192 @@ class PagesArtifactSafetyTests(unittest.TestCase):
             self.assertIn("if: always()", step)
         self.assertIn("path: artifacts/deployed-pages", after_deploy)
         self.assertIn("retention-days: 90", after_deploy)
+
+    def test_post_deployment_hero_check_downloads_release_css_for_the_deployment_revision(self):
+        workflow = (SCRIPT.parent.parent /
+                    ".github/workflows/post-deployment-hero-styles.yml").read_text()
+        self.assertIn("actions: read", workflow)
+        self.assertIn("name: pages-site-${{ github.event.workflow_run.head_sha || github.sha }}", workflow)
+        self.assertIn("run-id: ${{ steps.validated-release.outputs.run_id }}", workflow)
+        self.assertIn("github-token: ${{ secrets.GITHUB_TOKEN }}", workflow)
+        self.assertIn("--expected-css=.validated-pages/assets/css/critical-hero.css", workflow)
+        self.assertIn("github.event.workflow_run.id", workflow)
+        self.assertIn("gh run list", workflow)
+
+    def test_post_deployment_hero_check_reports_and_retains_missing_validated_artifact(self):
+        workflow = (SCRIPT.parent.parent /
+                    ".github/workflows/post-deployment-hero-styles.yml").read_text()
+        diagnostic = workflow.split(
+            "- name: Record validated artifact retrieval failure", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("always()", diagnostic)
+        self.assertIn("steps.validated-release.outcome == 'failure'", diagnostic)
+        self.assertIn("steps.download-validated-release.outcome == 'failure'", diagnostic)
+        self.assertIn("SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}", diagnostic)
+        self.assertIn("The validated Pages artifact for source revision", diagnostic)
+        self.assertIn(
+            r'The matching validation run was [\`$VALIDATION_RUN_ID\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$VALIDATION_RUN_ID)',
+            diagnostic,
+        )
+        no_run_message = diagnostic.split("else", 1)[1].split("fi", 1)[0]
+        self.assertIn("No successful validation run for this revision could be located.", no_run_message)
+        self.assertNotIn("](", no_run_message)
+        self.assertIn("may have expired or otherwise become unavailable", diagnostic)
+        self.assertIn("No artifact from another revision was substituted", diagnostic)
+        self.assertIn("artifacts/deployed-hero-style-check/report.md", diagnostic)
+
+        summary = workflow.split("- name: Add route-specific receipt to the run summary", 1)[1].split(
+            "- name:", 1
+        )[0]
+        retained = workflow.split("- name: Retain deployed hero-style evidence", 1)[1]
+        self.assertIn("if: always()", summary)
+        self.assertIn("report.md", summary)
+        self.assertIn("if: always()", retained)
+        self.assertIn("path: artifacts/deployed-hero-style-check/", retained)
+        self.assertIn("name: pages-site-${{ github.event.workflow_run.head_sha || github.sha }}", workflow)
+        self.assertIn("run-id: ${{ steps.validated-release.outputs.run_id }}", workflow)
+
+    def test_missing_validation_run_reports_revision_and_retains_failure_summary(self):
+        workflow = (SCRIPT.parent.parent /
+                    ".github/workflows/post-deployment-hero-styles.yml").read_text()
+        source_revision = "revision-without-validation"
+        workdir = self.base / "missing-validation-run"
+        bin_dir = workdir / "bin"
+        bin_dir.mkdir(parents=True)
+        gh = bin_dir / "gh"
+        gh.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$GH_CALLS\"\n")
+        gh.chmod(0o755)
+        output_file = workdir / "github-output"
+        summary_file = workdir / "github-summary"
+        gh_calls = workdir / "gh-calls"
+
+        env = os.environ.copy()
+        env.update({
+            "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}",
+            "SOURCE_REVISION": source_revision,
+            "VALIDATION_RUN_ID": "",
+            "GITHUB_OUTPUT": str(output_file),
+            "GITHUB_STEP_SUMMARY": str(summary_file),
+            "GITHUB_SERVER_URL": "https://github.example",
+            "GITHUB_REPOSITORY": "owner/repository",
+            "GH_CALLS": str(gh_calls),
+        })
+
+        lookup = run_workflow_script(
+            workflow_run_script(workflow, "Find the successful validation run for this revision"),
+            workdir,
+            env,
+        )
+        self.assertNotEqual(lookup.returncode, 0)
+        self.assertIn("--commit " + source_revision, gh_calls.read_text())
+        self.assertEqual(output_file.read_text() if output_file.exists() else "", "")
+
+        report = run_workflow_script(
+            workflow_run_script(workflow, "Record validated artifact retrieval failure"),
+            workdir,
+            env,
+        )
+        self.assertEqual(report.returncode, 0, report.stderr)
+        report_path = workdir / "artifacts/deployed-hero-style-check/report.md"
+        report_content = report_path.read_text()
+        self.assertIn(
+            f"The validated Pages artifact for source revision `{source_revision}` is unavailable.",
+            report_content,
+        )
+        self.assertIn("No successful validation run for this revision could be located.", report_content)
+        self.assertIn("No artifact from another revision was substituted.", report_content)
+        self.assertNotIn("](", report_content)
+
+        summary = run_workflow_script(
+            workflow_run_script(workflow, "Add route-specific receipt to the run summary"),
+            workdir,
+            env,
+        )
+        self.assertEqual(summary.returncode, 0, summary.stderr)
+        self.assertEqual(summary_file.read_text(), report_content)
+        retained = workflow.split("- name: Retain deployed hero-style evidence", 1)[1]
+        self.assertIn("if: always()", retained)
+        self.assertIn("path: artifacts/deployed-hero-style-check/", retained)
+        self.assertIn("deployed-hero-style-check-${{ github.event.workflow_run.head_sha || github.sha }}",
+                      retained)
+
+    def test_failed_exact_artifact_download_reports_run_and_never_uses_other_revision(self):
+        workflow = (SCRIPT.parent.parent /
+                    ".github/workflows/post-deployment-hero-styles.yml").read_text()
+        source_revision = "deployment-revision"
+        other_revision = "different-revision"
+        validation_run_id = "run-1842"
+        workdir = self.base / "missing-exact-artifact"
+        workdir.mkdir()
+        output_file = workdir / "github-output"
+        summary_file = workdir / "github-summary"
+        env = os.environ.copy()
+        env.update({
+            "SOURCE_REVISION": source_revision,
+            "VALIDATION_RUN_ID": validation_run_id,
+            "GITHUB_OUTPUT": str(output_file),
+            "GITHUB_STEP_SUMMARY": str(summary_file),
+            "GITHUB_SERVER_URL": "https://github.example",
+            "GITHUB_REPOSITORY": "owner/repository",
+        })
+
+        lookup = run_workflow_script(
+            workflow_run_script(workflow, "Find the successful validation run for this revision"),
+            workdir,
+            env,
+        )
+        self.assertEqual(lookup.returncode, 0, lookup.stderr)
+        self.assertEqual(output_file.read_text(), f"run_id={validation_run_id}\n")
+
+        download_step = workflow.split(
+            "- name: Download the exact validated Pages artifact", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("uses: actions/download-artifact@v8", download_step)
+        self.assertIn(
+            "name: pages-site-${{ github.event.workflow_run.head_sha || github.sha }}",
+            download_step,
+        )
+        self.assertIn("run-id: ${{ steps.validated-release.outputs.run_id }}", download_step)
+
+        # The exact artifact is absent; only a different revision's artifact exists.
+        available_artifacts = {
+            (validation_run_id, f"pages-site-{other_revision}"): "wrong revision contents",
+        }
+        exact_artifact = (validation_run_id, f"pages-site-{source_revision}")
+        self.assertNotIn(exact_artifact, available_artifacts)
+
+        report_env = env | {"VALIDATION_RUN_ID": validation_run_id}
+        report = run_workflow_script(
+            workflow_run_script(workflow, "Record validated artifact retrieval failure"),
+            workdir,
+            report_env,
+        )
+        self.assertEqual(report.returncode, 0, report.stderr)
+        report_path = workdir / "artifacts/deployed-hero-style-check/report.md"
+        report_content = report_path.read_text()
+        self.assertIn(
+            f"The validated Pages artifact for source revision `{source_revision}` is unavailable.",
+            report_content,
+        )
+        self.assertIn(
+            f"The matching validation run was [`{validation_run_id}`]"
+            f"(https://github.example/owner/repository/actions/runs/{validation_run_id}), "
+            "but its exact artifact could not be retrieved.",
+            report_content,
+        )
+        self.assertIn("No artifact from another revision was substituted.", report_content)
+        self.assertNotIn("wrong revision contents", report_content)
+
+        summary = run_workflow_script(
+            workflow_run_script(workflow, "Add route-specific receipt to the run summary"),
+            workdir,
+            env,
+        )
+        self.assertEqual(summary.returncode, 0, summary.stderr)
+        self.assertEqual(summary_file.read_text(), report_content)
+        retained = workflow.split("- name: Retain deployed hero-style evidence", 1)[1]
+        self.assertIn("if: always()", retained)
+        self.assertIn("path: artifacts/deployed-hero-style-check/", retained)
 
 
 if __name__ == "__main__":

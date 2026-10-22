@@ -227,6 +227,14 @@ These focused checks do not establish every width or font-loading timing.
 Native 200% browser zoom is incomplete. Headless shortcuts, viewport resizing
 and CSS scaling do not establish native zoom or human spoken output.
 
+The October 22, 2026 preserved Replit candidate expands responsive QA to 28
+viewports and 756 route/viewport rows across the same 27 content routes.
+It adds narrow-width font boundaries, forced-color and theme-outage checks,
+keyboard and touch navigation checks, and retained per-destination evidence.
+The Costco subtitle reserves its measured two fallback lines at exactly 350px.
+This inventory describes configured coverage. Use the current run receipt for
+results; it does not establish other engines, native zoom or human speech.
+
 ### Agent skills
 
 The `.agents/skills/` directory holds Agent Skills for AI assistants. Not all
@@ -309,7 +317,7 @@ changes:
 python3 scripts/validate-site.py
 python3 scripts/check-links.py
 python3 -m pytest
-node --test tests/test_capture_visual_baseline.mjs
+node --test tests/test_capture_visual_baseline.mjs tests/test_font_baseline_readiness.mjs
 python3 scripts/cache-bust.py --check
 python3 scripts/build-search-index.py --check
 python3 scripts/sync-universe-map.py --check
@@ -319,7 +327,9 @@ python3 scripts/audit-site.py --quiet
 
 The Node visual-capture regression checks safe capture destinations, readiness,
 and the small responsive header-avatar sources across tracked public pages.
-Site Validation runs this command as a required check.
+The font-baseline fixtures also require completed application startup and reject
+a transition control that never initializes. Site Validation runs this command
+as a required check.
 
 The Universe freshness check verifies generated page content and the search
 index provenance hash without rewriting outputs. CI runs it after search-index

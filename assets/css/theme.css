@@ -3544,9 +3544,17 @@ html[data-theme="light"] .pf-boundary-label--private    { color: #475569; }
   .primary-nav {
     position: fixed;
     inset: 3.75rem 0 auto 0;
+    max-height: calc(100vh - 3.75rem);
+    overflow-y: auto;
     background: #020617; /* default: OverKill blueprint */
     transform: translateY(-120%);
     transition: transform 0.2s ease;
+  }
+
+  .primary-nav a[href] {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   /* Brand-specific mobile menu backgrounds */
@@ -7539,6 +7547,17 @@ html body.askjamie-main {
   white-space: nowrap;
 }
 
+/* Responsive QA activates this same-origin override on isolated pages to
+   verify that BrandGuard breadcrumbs tolerate increased text spacing. */
+html[data-responsive-qa-text-spacing="true"]
+  .askjamie-main .askjamie-breadcrumb,
+html[data-responsive-qa-text-spacing="true"]
+  .askjamie-main .askjamie-breadcrumb * {
+  letter-spacing: 0.12em !important;
+  word-spacing: 0.16em !important;
+  line-height: 1.5 !important;
+}
+
 /* Smaller, inline logo for breadcrumb (doesn't affect main hero logo) */
 .askjamie-main .askjamie-logo--crumb {
   margin-bottom: 0; /* override hero logo spacing */
@@ -7619,6 +7638,48 @@ html body.askjamie-main {
 }
 
 @media (max-width: 340px) {
+  .askjamie-main:is(.askjamie-brandguard-page, .brandguard-lvmh-page, .brandguard-bfs-page)
+    .site-header.nav-open .primary-nav a[href]:focus-visible {
+    outline: 3px solid var(--color-accent, #2d6f7e);
+    outline-offset: 2px;
+    position: relative;
+    z-index: 1;
+    scroll-margin-block: 8px;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-actions,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-actions {
+    align-content: flex-start;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-actions > a,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-actions > a {
+    display: inline-flex;
+    flex: 0 0 100%;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 100%;
+    height: 6.5rem;
+    min-height: 6.5rem;
+    padding: 0.7rem 1.4rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .askjamie-main:is(.askjamie-brandguard-page, .brandguard-lvmh-page, .brandguard-bfs-page)
+    .askjamie-hero-copy .hero-actions > a:focus-visible {
+    outline: 3px solid var(--color-accent, #2d6f7e);
+    outline-offset: 3px;
+    scroll-margin-block: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
   .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label,
   .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-label {
     flex: 1 1 100%;
@@ -7629,6 +7690,66 @@ html body.askjamie-main {
 
   .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-separator,
   .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-separator {
+    display: none;
+  }
+
+}
+
+@media (forced-colors: active) and (max-width: 340px) {
+  .askjamie-main:is(.askjamie-brandguard-page, .brandguard-lvmh-page, .brandguard-bfs-page)
+    .askjamie-hero-copy .hero-actions > a:focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: 3px;
+    forced-color-adjust: auto;
+  }
+}
+
+@media (min-width: 341px) and (max-width: 370px) {
+  /* Reserve the fallback breadcrumb's extra line so font loading cannot move the hero. */
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb {
+    min-height: 14.6rem;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-label {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-separator,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-separator {
+    display: none;
+  }
+
+  .askjamie-main[class*="brandguard"] .askjamie-breadcrumb a:focus-visible,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb a:focus-visible {
+    outline: 3px solid var(--color-accent, #2d6f7e);
+    outline-offset: 3px;
+    position: relative;
+    z-index: 1;
+    scroll-margin-block: 8px;
+  }
+}
+
+/* Keep longer BrandGuard breadcrumb labels inside the viewport at the
+   400px/401px edges when only system fallback fonts are available. */
+@media (min-width: 400px) and (max-width: 401px) {
+  .askjamie-main[class*="brandguard"] .askjamie-breadcrumb {
+    min-height: 14.54rem;
+  }
+
+  .askjamie-main[class*="brandguard"] .askjamie-breadcrumb .breadcrumb-label {
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .askjamie-main[class*="brandguard"] .askjamie-breadcrumb .breadcrumb-separator {
     display: none;
   }
 }
@@ -7818,6 +7939,19 @@ html body.askjamie-main {
     min-height: 2lh;
   }
 
+  /* Preserve fallback wraps that change after Kalam loads at 400px. */
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-tagline {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-case-dollar-general .askjamie-hero-copy .hero-subtitle {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.brandguard-case-dollar-general .askjamie-hero-copy .hero-tagline {
+    min-height: 6lh;
+  }
+
   .askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-subtitle {
     min-height: 8lh;
   }
@@ -7873,6 +8007,29 @@ html body.askjamie-main {
   }
 }
 
+/* The first width outside the 350–355px reservations exposed two fallback
+   wraps: the hub subtitle and BFS heading. Keep those measured blocks steady. */
+@media (min-width: 356px) and (max-width: 356px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+}
+
+/* The BFS heading keeps its four-line fallback reservation through 359px. */
+@media (min-width: 356px) and (max-width: 359px) {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 4lh;
+  }
+}
+
+/* LVMH and BFS transition copy loses one fallback line at 364px. */
+@media (min-width: 364px) and (max-width: 364px) {
+  .askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2) {
+    min-height: 7lh;
+  }
+}
+
 /* Keep the measured seven-line fallback transition copy and BFS headline
    from shortening when branded fonts load at the 370px edge. */
 @media (min-width: 365px) and (max-width: 370px) {
@@ -7897,6 +8054,72 @@ html body.askjamie-main {
   }
 }
 
+/* Reserve only fallback wraps measured on the outer 349px edge. */
+@media (min-width: 349px) and (max-width: 349px) {
+  .askjamie-main.askjamie-brandguard-page .capability-transition > h2,
+  .askjamie-main.brandguard-lvmh-page .capability-transition > h2,
+  .askjamie-main.brandguard-bfs-page .capability-transition > h2 {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1 {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 7lh;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy h1 {
+    min-height: 2lh;
+  }
+}
+
+/* Keep the transition panel and measured hero wraps stable at 371px. */
+@media (min-width: 371px) and (max-width: 371px) {
+  .askjamie-main.askjamie-brandguard-page .capability-transition > h2,
+  .askjamie-main.brandguard-lvmh-page .capability-transition > h2,
+  .askjamie-main.brandguard-bfs-page .capability-transition > h2 {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(2) {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2),
+  .askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2) {
+    min-height: 7lh;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .capability-transition > p:nth-of-type(3),
+  .askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(3),
+  .askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(3) {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 3lh;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy h1 {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy .hero-tagline {
+    min-height: 3lh;
+  }
+}
+
 /* Case-study copy uses an active Google Fonts stylesheet. Match fallback line
    counts before those faces load so each measured hero keeps its geometry. */
 @media (min-width: 381px) and (max-width: 400px) {
@@ -7917,6 +8140,101 @@ html body.askjamie-main {
 
   .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-tagline {
     letter-spacing: -0.04em;
+  }
+}
+
+/* The 401px layout leaves the 390px tracking band; reserve only the measured
+   fallback wraps at this edge so the loaded BrandGuard fonts do not move copy. */
+@media (min-width: 401px) and (max-width: 401px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.brandguard-case-lego .askjamie-hero-copy h1 {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 3lh;
+  }
+
+  .askjamie-main.brandguard-starbucks .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-starbucks .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.brandguard-case-brooks-running .askjamie-hero-copy .hero-tagline {
+    min-height: 7lh;
+  }
+
+  .askjamie-main.coke-brandguard .site-header,
+  .askjamie-main.brandguard-case-dollar-general .site-header {
+    min-height: 11.37rem;
+  }
+
+  .askjamie-main.coke-brandguard .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-case-scheels .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy h1 {
+    min-height: 2lh;
+  }
+
+  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-subtitle {
+    min-height: 7lh;
+  }
+
+  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-tagline {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-tagline,
+  .askjamie-main.brandguard-case-dollar-general .askjamie-hero-copy .hero-tagline {
+    min-height: 6lh;
+  }
+
+  .askjamie-main.brandguard-case-discount-tire .askjamie-hero-copy h1 {
+    min-height: 3lh;
+  }
+
+  .askjamie-main.brandguard-case-discount-tire .askjamie-hero-copy .hero-tagline {
+    min-height: 5lh;
+  }
+
+  .askjamie-main.brandguard-case-hershey .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-case-mathews-archery .askjamie-hero-copy h1 {
+    min-height: 3lh;
+  }
+
+  .askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-subtitle {
+    min-height: 8lh;
+  }
+
+  .askjamie-main.brandguard-case-hershey .askjamie-hero-copy .hero-tagline {
+    min-height: 5lh;
+  }
+
+  .askjamie-main.brandguard-case-mathews-archery .askjamie-hero-copy .hero-subtitle {
+    min-height: 7lh;
+  }
+
+  .askjamie-main.brandguard-case-mathews-archery .askjamie-hero-copy .hero-tagline {
+    min-height: 3lh;
+  }
+
+  .askjamie-main.brandguard-case-scheels .askjamie-hero-copy .hero-subtitle {
+    min-height: 7lh;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 4lh;
+  }
+
+  .askjamie-main.brandguard-lvmh-page .askjamie-hero-copy .hero-tagline {
+    min-height: 3lh;
   }
 }
 
@@ -8314,6 +8632,55 @@ html[data-color-scheme="dark"] .glee-search-page__form, html[data-color-scheme="
   stroke: var(--color-fg) !important;
 }
 
+@media (forced-colors: active) {
+  .askjamie-main .universe-map-generated .universe-map-group {
+    background-color: Canvas;
+    border: 1px solid CanvasText;
+  }
+  .askjamie-main .universe-map-generated .universe-map-group > summary {
+    color: CanvasText;
+  }
+  .askjamie-main .universe-map-generated .universe-map-group a[data-universe-node] {
+    color: LinkText;
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+    text-underline-offset: 0.15em;
+  }
+  .askjamie-main .universe-map-generated .universe-map-group > summary:focus-visible,
+  .askjamie-main .universe-map-generated .universe-map-group a[data-universe-node]:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 3px;
+  }
+  .askjamie-main .universe-map-generated .mermaid svg,
+  .askjamie-main .askjamie-hero--universe .mermaid svg {
+    forced-color-adjust: none;
+  }
+  .askjamie-main .universe-map-generated .mermaid .node rect,
+  .askjamie-main .askjamie-hero--universe .mermaid .node rect,
+  .askjamie-main .universe-map-generated .mermaid .edgeLabel rect,
+  .askjamie-main .askjamie-hero--universe .mermaid .edgeLabel rect {
+    fill: Canvas !important;
+    stroke: CanvasText !important;
+  }
+  .askjamie-main .universe-map-generated .mermaid .nodeLabel *,
+  .askjamie-main .askjamie-hero--universe .mermaid .nodeLabel *,
+  .askjamie-main .universe-map-generated .mermaid .nodeLabel,
+  .askjamie-main .askjamie-hero--universe .mermaid .nodeLabel,
+  .askjamie-main .universe-map-generated .mermaid .edgeLabel *,
+  .askjamie-main .askjamie-hero--universe .mermaid .edgeLabel *,
+  .askjamie-main .universe-map-generated .mermaid .edgeLabel {
+    color: CanvasText !important;
+    fill: CanvasText !important;
+  }
+  .askjamie-main .universe-map-generated .mermaid .flowchart-link,
+  .askjamie-main .askjamie-hero--universe .mermaid .flowchart-link,
+  .askjamie-main .universe-map-generated .mermaid marker path,
+  .askjamie-main .askjamie-hero--universe .mermaid marker path {
+    stroke: CanvasText !important;
+    fill: CanvasText !important;
+  }
+}
+
 /* Keep source syntax out of the visitor view before rendering or without JS. */
 .askjamie-main .askjamie-mermaid-shell .mermaid:not([data-universe-ready="1"]) {
   visibility: hidden;
@@ -8343,6 +8710,13 @@ section[data-status-presentation="disclosure"] .project-card { border-top: 2px s
 /* Let enlarged AskJamie text reflow instead of sizing grids to long words. */
 .askjamie-main .brandguard-case-card { display: block; height: 100%; color: inherit; text-decoration: none; }
 .askjamie-main .brandguard-case-card:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 4px; }
+@media (max-width: 767px) {
+  .askjamie-main[class*="brandguard"] main a.btn[href],
+  .askjamie-main.askjamie-brandguard-page main a.brandguard-case-card[href] {
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
+}
 html[data-theme="light"] .askjamie-main .site-footer p { color: var(--color-muted); }
 html[data-theme="light"] .askjamie-main .site-footer a { color: var(--color-inline-link); }
 html[data-theme="light"] .askjamie-main .site-footer h3,
@@ -8362,6 +8736,14 @@ html[data-theme="light"] .askjamie-main .site-footer h4 { color: var(--color-fg)
 @media (max-width: 768px) {
   .askjamie-main .askjamie-hero-copy { padding-inline: 0; }
   .askjamie-main .primary-nav .submenu { min-width: 0; }
+  .askjamie-main .primary-nav ul { align-items: stretch; }
+  .askjamie-main .primary-nav li { width: 100%; }
+  .askjamie-main .primary-nav a {
+    display: block;
+    width: 100%;
+    line-height: 1.5rem;
+    white-space: nowrap;
+  }
 }
 @media (max-width: 600px) {
  body:not(.glee-main):not(.askjamie-main) .a14-editorial-hero h1 { font-size: 1.9rem; }
@@ -8439,5 +8821,38 @@ html[data-theme="light"] .askjamie-main .site-footer h4 { color: var(--color-fg)
 @media (min-width: 381px) and (max-width: 400px) {
   .askjamie-main .universe-map-group li:has(> a[href="/legal/"]) {
     min-block-size: 7lh;
+  }
+}
+
+/* Preserve line counts observed in the October 22 Mac font review. */
+@media (min-width: 355px) and (max-width: 358px) {
+  .askjamie-main[class*="brandguard"] .capability-transition > p:nth-of-type(2) {
+    min-height: 7lh;
+  }
+}
+@media (min-width: 355px) and (max-width: 355px) {
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-subtitle {
+    min-height: 2lh;
+  }
+}
+@media (min-width: 361px) and (max-width: 364px) {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 3lh;
+  }
+}
+@media (min-width: 371px) and (max-width: 371px) {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy .hero-tagline {
+    min-height: 5lh;
+  }
+}
+@media (min-width: 900px) and (max-width: 900px) {
+  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-tagline {
+    min-height: 4lh;
+  }
+}
+@media (min-width: 356px) and (max-width: 356px),
+       (min-width: 401px) and (max-width: 401px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
   }
 }

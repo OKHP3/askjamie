@@ -11,13 +11,17 @@ freshly read tip.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
 import re
+import selectors
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Callable, Iterable
 from urllib.parse import quote, urlparse
@@ -65,11 +69,53 @@ IGNORED_DIRS = {
 KEBAB_OK = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REPLIT_BRANCH_PATTERNS = re.compile(r"^(subrepl-|replit-agent$|agent/)")
 HOSTED_COMMAND_TIMEOUT_SECONDS = 30
+HOSTED_COMMAND_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 HOSTED_HISTORY_MAX_PAGES = 10
+# Shared by successful histories across all requested provider/ref pairs.
+# Conservative Python-object accounting, not a wire-size or whole-process cap.
+HOSTED_HISTORY_MAX_RETAINED_BYTES = 16 * 1024 * 1024
+
+
+class HostedHistoryBudget:
+    """Bound retained JSON trees; count shared objects again rather than undercount."""
+
+    def __init__(self) -> None:
+        self.used = 0
+
+    def page_size(self, value: object, pending: int) -> int | None:
+        remaining = HOSTED_HISTORY_MAX_RETAINED_BYTES - self.used - pending
+        size = 0
+        # Iterator stack is depth-bounded, unlike a worklist of every JSON leaf.
+        stack = [iter((value,))]
+        while stack:
+            try:
+                node = next(stack[-1])
+            except StopIteration:
+                stack.pop()
+                continue
+            size += sys.getsizeof(node)
+            if size > remaining:
+                return None
+            if isinstance(node, dict):
+                stack.append(iter(node.values()))
+                stack.append(iter(node.keys()))
+            elif isinstance(node, list):
+                stack.append(iter(node))
+        return size
 
 
 class AuditError(RuntimeError):
     """A Git or repository precondition failed."""
+
+
+class HostedOutputLimitExceeded(RuntimeError):
+    """Hosted output was discarded rather than used as partial evidence."""
+
+
+def print_json(report: object, *, indent: int | None = None) -> None:
+    """Write JSON incrementally, preserving dumps defaults and print's newline."""
+    json.dump(report, sys.stdout, indent=indent)
+    sys.stdout.write("\n")
 
 
 def run(args: list[str], cwd: Path) -> str:
@@ -174,7 +220,7 @@ def audit_branches(root: Path, base: str) -> tuple[list[dict[str, object]], str]
 
 
 def hosted_command(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    """Bound a hosted read-only command without allowing interactive auth."""
+    """Bound a hosted read-only command and decode its output as strict UTF-8."""
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     ssh_command = env.get("GIT_SSH_COMMAND", "ssh").strip() or "ssh"
@@ -186,10 +232,65 @@ def hosted_command(args: list[str], cwd: Path) -> subprocess.CompletedProcess[st
     if not replaced:
         ssh_command = f"{ssh_command} -o BatchMode=yes"
     env["GIT_SSH_COMMAND"] = ssh_command
-    return subprocess.run(
-        args, cwd=cwd, capture_output=True, text=True,
-        stdin=subprocess.DEVNULL, env=env, timeout=HOSTED_COMMAND_TIMEOUT_SECONDS,
-    )
+    # Drain both pipes concurrently in bounded chunks; communicate() and
+    # capture_output=True buffer arbitrarily large responses before returning.
+    deadline = time.monotonic() + HOSTED_COMMAND_TIMEOUT_SECONDS
+    with subprocess.Popen(
+        # POSIX exec accepts bytes: avoid locale-dependent re-encoding of refs.
+        [arg.encode("utf-8", errors="strict") for arg in args] if os.name == "posix" else args,
+        cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL, env=env, start_new_session=True,
+    ) as process:
+        try:
+            output = [bytearray(), bytearray()]
+            total = 0
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ, 0)
+                selector.register(process.stderr, selectors.EVENT_READ, 1)
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(args, HOSTED_COMMAND_TIMEOUT_SECONDS)
+                    for key, _ in selector.select(remaining):
+                        chunk = os.read(
+                            key.fileobj.fileno(),
+                            min(65536, HOSTED_COMMAND_MAX_OUTPUT_BYTES - total + 1),
+                        )
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                            continue
+                        total += len(chunk)
+                        if total > HOSTED_COMMAND_MAX_OUTPUT_BYTES:
+                            output.clear()
+                            raise HostedOutputLimitExceeded(
+                                "hosted command output exceeded "
+                                f"{HOSTED_COMMAND_MAX_OUTPUT_BYTES} bytes "
+                                "(combined stdout/stderr); output discarded"
+                            )
+                        output[key.data].extend(chunk)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(args, HOSTED_COMMAND_TIMEOUT_SECONDS)
+            try:
+                process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                raise subprocess.TimeoutExpired(args, HOSTED_COMMAND_TIMEOUT_SECONDS) from None
+            # Hosted Git/GitHub output uses UTF-8 independently of the local
+            # locale. Never replace invalid bytes in evidence used for cleanup.
+            stdout, stderr = (
+                data.decode("utf-8", errors="strict").replace("\r\n", "\n").replace("\r", "\n")
+                for data in output
+            )
+            return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+        except BaseException:
+            # Include helper/auth subprocesses which may still hold a pipe open.
+            # Never call communicate() here: even discarded output must be bounded.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            raise
 
 
 def parse_hosted_branch(value: str) -> tuple[str, str]:
@@ -249,6 +350,10 @@ def gh_api_json(root: Path, endpoint: str) -> tuple[object | None, str | None]:
         return None, "GitHub CLI (`gh`) is not installed"
     try:
         result = hosted_command(["gh", "api", endpoint], root)
+    except HostedOutputLimitExceeded as exc:
+        return None, f"GitHub API {exc}"
+    except UnicodeDecodeError as exc:
+        return None, f"GitHub API output could not be decoded: {exc}"
     except subprocess.TimeoutExpired as exc:
         return None, f"GitHub API request timed out after {exc.timeout} seconds"
     except OSError as exc:
@@ -260,6 +365,11 @@ def gh_api_json(root: Path, endpoint: str) -> tuple[object | None, str | None]:
         return json.loads(result.stdout), None
     except json.JSONDecodeError as exc:
         return None, f"GitHub API returned invalid JSON: {exc}"
+    except (MemoryError, RecursionError) as exc:
+        return None, (
+            f"GitHub API JSON parsing resource failure ({type(exc).__name__}); "
+            "output discarded"
+        )
 
 
 def valid_pull_request_classification(record: object) -> bool:
@@ -272,12 +382,56 @@ def valid_pull_request_classification(record: object) -> bool:
     return merged_at is None or (isinstance(merged_at, str) and bool(merged_at.strip()))
 
 
+def pull_request_association_error(
+    record: dict, repository: str, branch: str,
+) -> str | None:
+    """Require a verifiable head; the query filter alone is not association proof."""
+    head = record.get("head")
+    if not isinstance(head, dict):
+        return "missing or invalid head association metadata"
+    ref = head.get("ref")
+    repo = head.get("repo")
+    if (
+        not isinstance(ref, str) or not ref
+        or not isinstance(repo, dict)
+        or not isinstance(repo.get("full_name"), str) or not repo["full_name"]
+    ):
+        return "missing or invalid head association metadata"
+    if ref != branch or repo["full_name"].lower() != repository.lower():
+        return "head association does not match the requested repository and branch"
+    return None
+
+
+def deployment_association_error(record: dict, branch: str) -> str | None:
+    """Require the exact branch ref; a commit alone cannot identify a branch."""
+    ref = record.get("ref")
+    if not isinstance(ref, str) or not ref.strip():
+        return "missing or invalid deployment association metadata"
+    if ref != branch:
+        return "deployment association does not match the requested branch"
+    # Historical deployments need not use today's branch tip. SHA is optional,
+    # but a supplied value must be a full object ID, not malformed metadata.
+    if "sha" in record and (
+        not isinstance(record["sha"], str)
+        or re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", record["sha"]) is None
+    ):
+        return "missing or invalid deployment association metadata"
+    return None
+
+
 def gh_api_list(
     root: Path, endpoint: str, label: str,
     record_validator: Callable[[object], bool] | None = None,
+    record_error: Callable[[dict], str | None] | None = None,
+    *,
+    history_budget: HostedHistoryBudget | None = None,
 ) -> tuple[list | None, str | None]:
-    """Read at most 10 100-item pages; discard history unless completion is proven."""
+    """Bound retained objects and pages; discard history unless completion is proven."""
+    if history_budget is None:
+        history_budget = HostedHistoryBudget()
+    pending_bytes = 0
     items: list = []
+    full_pages: dict[bytes, int] = {}
     for page in range(1, HOSTED_HISTORY_MAX_PAGES + 1):
         data, error = gh_api_json(root, f"{endpoint}&per_page=100&page={page}")
         if error:
@@ -286,11 +440,55 @@ def gh_api_list(
             return None, f"GitHub {label} response on page {page} was not a list"
         if len(data) > 100 or any(not isinstance(item, dict) for item in data):
             return None, f"GitHub {label} response on page {page} contained invalid records"
+        try:
+            page_bytes = history_budget.page_size(data, pending_bytes)
+        except (MemoryError, RecursionError) as exc:
+            return None, (
+                f"GitHub {label} history incomplete at page {page}: "
+                f"retained history accounting resource failure ({type(exc).__name__}); "
+                "partial history discarded"
+            )
+        if page_bytes is None:
+            return None, (
+                f"GitHub {label} history incomplete at page {page}: "
+                f"retained history memory budget exhausted "
+                f"({HOSTED_HISTORY_MAX_RETAINED_BYTES} bytes); partial history discarded"
+            )
+        pending_bytes += page_bytes
         if record_validator is not None and any(not record_validator(item) for item in data):
             return None, f"GitHub {label} response on page {page} contained invalid classification fields"
+        if record_error is not None:
+            for item in data:
+                error = record_error(item)
+                if error:
+                    return None, f"GitHub {label} response on page {page}: {error}"
+        if len(data) == 100:
+            try:
+                digest = hashlib.sha256()
+                for chunk in json.JSONEncoder(
+                    sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                ).iterencode(data):
+                    digest.update(chunk.encode("utf-8", errors="surrogatepass"))
+                fingerprint = digest.digest()
+            except (MemoryError, RecursionError) as exc:
+                return None, (
+                    f"GitHub {label} history incomplete at page {page}: "
+                    f"page fingerprint resource failure ({type(exc).__name__}); "
+                    "partial history discarded"
+                )
+            if fingerprint in full_pages:
+                return None, (
+                    f"GitHub {label} history incomplete at page {page}: "
+                    f"repeated full page (matches page {full_pages[fingerprint]}); "
+                    "no short or empty page confirmed completion"
+                )
+            full_pages[fingerprint] = page
         items.extend(data)
         if len(data) < 100:
+            # Failed histories never reserve capacity needed by later checks.
+            history_budget.used += pending_bytes
             return items, None
+        data = None  # Do not keep the previous page alive during the next parse.
     return None, (
         f"GitHub {label} history incomplete after page {HOSTED_HISTORY_MAX_PAGES}: "
         f"pagination budget exhausted ({HOSTED_HISTORY_MAX_PAGES} pages); "
@@ -299,7 +497,8 @@ def gh_api_list(
 
 
 def github_hosted_evidence(
-    root: Path, remote_url: str | None, branch: str
+    root: Path, remote_url: str | None, branch: str,
+    *, history_budget: HostedHistoryBudget | None = None,
 ) -> dict[str, object]:
     """Collect protection, deployment, and PR evidence when GitHub is usable."""
     repository = github_repository(remote_url)
@@ -311,6 +510,8 @@ def github_hosted_evidence(
             "pull_requests": unknown_hosted_evidence(reason),
         }
     owner, repo = repository
+    if history_budget is None:
+        history_budget = HostedHistoryBudget()
     encoded_repo = f"{quote(owner, safe='')}/{quote(repo, safe='')}"
     encoded_branch = quote(branch, safe="")
     branch_data, branch_error = gh_api_json(
@@ -320,7 +521,19 @@ def github_hosted_evidence(
         protection: dict[str, object] = unknown_hosted_evidence(branch_error)
     elif isinstance(branch_data, dict):
         protected = branch_data.get("protected")
-        if isinstance(protected, bool):
+        # The branch-specific endpoint supplies association when name is absent.
+        # A supplied name must corroborate it, never silently contradict it.
+        if "name" in branch_data and (
+            not isinstance(branch_data["name"], str) or not branch_data["name"].strip()
+        ):
+            protection = unknown_hosted_evidence(
+                "GitHub branch response: missing or invalid branch association metadata"
+            )
+        elif "name" in branch_data and branch_data["name"] != branch:
+            protection = unknown_hosted_evidence(
+                "GitHub branch response: branch association does not match the requested branch"
+            )
+        elif isinstance(protected, bool):
             protection = {
                 "status": "protected" if protected else "unprotected",
                 "source": "github-api", "repository": f"{owner}/{repo}",
@@ -332,9 +545,12 @@ def github_hosted_evidence(
             )
     else:
         protection = unknown_hosted_evidence("GitHub branch response was not an object")
+    del branch_data
 
     deployments_data, deployments_error = gh_api_list(
         root, f"repos/{encoded_repo}/deployments?ref={encoded_branch}", "deployments",
+        record_error=lambda item: deployment_association_error(item, branch),
+        history_budget=history_budget,
     )
     if deployments_error:
         deployments: dict[str, object] = unknown_hosted_evidence(deployments_error)
@@ -351,11 +567,14 @@ def github_hosted_evidence(
         }
     else:
         deployments = unknown_hosted_evidence("GitHub deployments response was not a list")
+    del deployments_data
 
     head = quote(f"{owner}:{branch}", safe="")
     pull_requests_data, pull_requests_error = gh_api_list(
         root, f"repos/{encoded_repo}/pulls?state=all&head={head}", "pull-request",
         record_validator=valid_pull_request_classification,
+        record_error=lambda item: pull_request_association_error(item, f"{owner}/{repo}", branch),
+        history_budget=history_budget,
     )
     if pull_requests_error:
         pull_requests: dict[str, object] = unknown_hosted_evidence(pull_requests_error)
@@ -381,6 +600,7 @@ def github_hosted_evidence(
 def audit_hosted_branches(root: Path, requested: Iterable[str]) -> dict[str, object]:
     """Audit each exact provider/ref pair without collapsing provider state."""
     entries: list[dict[str, object]] = []
+    history_budget = HostedHistoryBudget()
     for value in requested:
         provider, branch = parse_hosted_branch(value)
         remote, remote_url = remote_url_for_provider(root, provider)
@@ -395,6 +615,10 @@ def audit_hosted_branches(root: Path, requested: Iterable[str]) -> dict[str, obj
                 probe = hosted_command(
                     ["git", "ls-remote", "--heads", remote, entry["full_ref"]], root,
                 )
+            except HostedOutputLimitExceeded as exc:
+                probe_error = f"hosted remote {exc}"
+            except UnicodeDecodeError as exc:
+                probe_error = f"hosted remote output could not be decoded: {exc}"
             except subprocess.TimeoutExpired as exc:
                 probe_error = f"hosted remote lookup timed out after {exc.timeout} seconds"
             except OSError as exc:
@@ -431,7 +655,9 @@ def audit_hosted_branches(root: Path, requested: Iterable[str]) -> dict[str, obj
             "classification": "present", "ref_status": "present",
             "tip": matching_lines[0],
         })
-        evidence = github_hosted_evidence(root, remote_url, branch)
+        evidence = github_hosted_evidence(
+            root, remote_url, branch, history_budget=history_budget,
+        )
         entry.update(evidence)
         blocking_reasons: list[str] = []
         protection = evidence["protection"]
@@ -610,6 +836,18 @@ def audit_detritus(root: Path) -> list[dict[str, object]]:
     return sorted(found, key=lambda item: str(item["folder"]))
 
 
+def hosted_argument(value: str) -> str:
+    """Interpret POSIX hosted argv bytes as UTF-8 without Unicode normalization."""
+    if os.name != "posix":
+        return value
+    try:
+        return os.fsencode(value).decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise argparse.ArgumentTypeError(
+            "hosted provider/branch arguments must be valid UTF-8"
+        ) from exc
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".")
@@ -663,7 +901,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--hosted-branch", "--hosted-ref", dest="hosted_branches",
-        action="append", default=[], metavar="PROVIDER=BRANCH",
+        action="append", default=[], metavar="PROVIDER=BRANCH", type=hosted_argument,
         help="audit an exact hosted branch through a remote; repeat for each provider/ref",
     )
     parser.add_argument(
@@ -716,13 +954,13 @@ def main() -> int:
                 root, args.audit_retirement_history, args.ledger_baseline,
                 args.approve_ledger_migration,
             )
-            print(json.dumps({"retirement_history": result}, indent=2))
+            print_json({"retirement_history": result}, indent=2)
             return 0 if result["passed"] else 1
         if args.snapshot_recovery:
             snapshot = recovery_guard.recovery_snapshot(root, run)
             path = Path(args.snapshot_recovery).resolve()
             recovery_guard.write_recovery_snapshot(path, snapshot)
-            print(json.dumps({"snapshot_file": str(path), "recovery_snapshot": snapshot}, indent=2))
+            print_json({"snapshot_file": str(path), "recovery_snapshot": snapshot}, indent=2)
             return 0
         if args.validate_retirement_ledger:
             approvals = [
@@ -736,7 +974,7 @@ def main() -> int:
                 baseline_policy=args.ledger_baseline_policy,
                 migrations=args.approve_ledger_migration,
             )
-            print(json.dumps({"retirement_ledger": result}, indent=2))
+            print_json({"retirement_ledger": result}, indent=2)
             return 0
         if args.verify_recovery:
             before = recovery_guard.read_recovery_snapshot(Path(args.verify_recovery).resolve())
@@ -756,10 +994,10 @@ def main() -> int:
             )
             if ledger_result is not None:
                 result["retirement_ledger"] = ledger_result
-            print(json.dumps({
+            print_json({
                 "snapshot_file": str(Path(args.verify_recovery).resolve()),
                 "recovery_guard": result,
-            }, indent=2))
+            }, indent=2)
             return 0 if result["passed"] else 1
         if args.fetch:
             run(["git", "fetch", "--all"], root)
@@ -768,7 +1006,7 @@ def main() -> int:
                 raise AuditError("--check-delete requires --branch")
             if not args.reviewed_head:
                 raise AuditError("--check-delete requires --reviewed-head")
-            print(json.dumps(
+            print_json(
                 prepare_branch_deletion(
                     root,
                     args.branch,
@@ -776,7 +1014,7 @@ def main() -> int:
                     remote=args.remote,
                 ),
                 indent=2,
-            ))
+            )
             return 0
         ensure_base(root, args.base)
         branches, current = audit_branches(root, args.base)
@@ -792,10 +1030,13 @@ def main() -> int:
         }
         if args.hosted_branches:
             report["hosted_lifecycle"] = audit_hosted_branches(root, args.hosted_branches)
-        print(json.dumps(report, indent=2))
+        print_json(report, indent=2)
         return 0
     except (AuditError, OSError, recovery_guard.RecoveryError, retirement_ledger.LedgerError) as exc:
-        print(json.dumps({"error": str(exc), "root": str(root)}))
+        report = {"error": str(exc), "root": str(root)}
+        if isinstance(exc, retirement_ledger.RetentionHoldsError):
+            report["retention_holds"] = exc.retention_holds
+        print_json(report)
         return 1
 
 

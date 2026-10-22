@@ -44,7 +44,7 @@ responsive-qa:      node scripts/responsive-qa.mjs --static
 site-audit:         python3 scripts/audit-site.py --quiet
 ```
 
-The post-merge hook is `scripts/post-merge.sh`, with a 480-second timeout. It
+The post-merge hook is `scripts/post-merge.sh`, with a 1,800-second timeout. It
 verifies key files, rebuilds the search index, and checks the audit, structure,
 links, asset fingerprints, Python regressions, responsive browser behavior,
 and JavaScript smoke tests. A failed gate stops the hook. Review generated-file

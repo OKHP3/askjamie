@@ -12,7 +12,7 @@ the results. The report records a historical capture. The current site
 intentionally uses Google Fonts and unconditional page-shell GA4.
 The mobile raw Lighthouse reports are in
 `assets/audit/lighthouse-baseline-2026-08-22/`. The compact mobile summary is
-`assets/audit/lighthouse-baseline-2026-08-22.json`. Desktop trend comparisons
+`assets/docs/performance-baseline-mobile-2026-08-22.json`. The compact reference is retained in tracked documentation so clean checkouts can run the comparison; its historical measurements and approval boundaries are unchanged. Desktop trend comparisons
 use the separate reference at
 `assets/docs/performance-baseline-desktop-2026-09-07.json`.
 
@@ -55,9 +55,13 @@ repeated BrandGuard samples; a missing setting is marked unavailable.
 
 The route runner also records the exact explicit Chrome startup flags supplied
 to Lighthouse for every route and repeated sample. The historical mobile and
-desktop references do not record these flags. They are not backfilled into
-either reference; comparison therefore requires owner review until a reference
-with recorded flags is established.
+desktop references do not record these flags, and their raw Lighthouse reports
+do not establish which flags were supplied. They are not backfilled into either
+reference. Because the run-condition review compares each report against its
+reference, runs require owner review while either reference lacks recorded
+flags; a changed or unavailable flag list also requires review. A caller that
+cannot establish the startup flags must record them as unavailable rather than
+assuming the current runner defaults.
 
 Each mobile report's effective settings are compared with the approved
 historical mobile conditions. Controlled runs are checked against their
@@ -83,18 +87,22 @@ tool-version changes and condition changes remain independently visible.
 
 ## Lighthouse target review
 
-The saved mobile raw reports and desktop reference identify
-`http://127.0.0.1:5000` as their requested target. The compact mobile summary's
-`property` field says `https://askjamie.bot`, which conflicts with those raw
-reports. That historical summary and all measurements remain unchanged; the
-runner uses the raw-report URL as the mobile reference target.
+The saved mobile raw reports identify `http://127.0.0.1:5000` as their requested
+target origin; this is recorded as `HISTORICAL_REFERENCE_TARGET_ORIGIN` with the
+runner's mobile reference. The desktop reference records its own `targetOrigin`
+in `assets/docs/performance-baseline-desktop-2026-09-07.json`. The compact
+mobile summary's `property` field says `https://askjamie.bot`, which conflicts
+with those raw reports. That historical summary and all measurements remain
+unchanged; the runner uses the raw-report origin as the mobile reference
+target.
 
 New summaries classify the target as local or hosted and record its origin.
-Changing the target kind or normalized origin, or lacking a usable reference
+Changing the target kind or origin, or lacking a usable matching reference
 origin, sets `targetReview.status` to `required` before interpreting metric
-deltas. Local loopback aliases remain in the local target class, but different
-origins still require review. This review is separate from measurement-stack
-and Lighthouse run-condition review.
+deltas. Mobile and desktop runs use only their corresponding reference origin.
+Local loopback aliases remain in the local target class, but different origins
+still require review. This review is separate from measurement-stack and
+Lighthouse run-condition review.
 
 ## Desktop comparison reference
 
@@ -115,6 +123,19 @@ approver, and approval date are recorded in the desktop reference JSON. This
 approval metadata does not affect the mobile comparison or its review gate.
 
 ### Desktop repeatability check, 2026-10-03
+
+To capture the same kind of evidence in one command, run
+`node scripts/lighthouse-routes.mjs --preset=desktop --desktop-repeats=3`.
+The repeat count is the total number of complete four-route passes (2–10).
+Each pass is stored under `pass-01/`, `pass-02/`, and so on, with the raw
+Lighthouse JSON for all four routes. The summary records per-route ranges for
+performance score, LCP, FCP, Speed Index, and TBT, plus each pass's report path
+and values. New summaries also record `sourceRevision` and
+`sourceWorkingTreeClean` for the runner's checkout; these are captured before
+the output directory is created. A hosted target's deployed revision is not
+inferred from the local checkout. This option is desktop-only and writes a new
+audit capture; it does not update the desktop candidate or its owner-approval
+metadata.
 
 Three independent four-route desktop passes were captured with the same
 Lighthouse 12.8.2 / Chromium 148.0.7778.96 stack and the recorded desktop
@@ -154,12 +175,18 @@ far above the candidate values. The raw shift audits identify the page's
 `main` element as the dominant shifting content, with web-font loads recorded
 among the shift contributors.
 
+| Capture | Git revision | Working tree |
+| --- | --- | --- |
+| October 3 repeats | `b8179b56e6b0` | Clean |
+| September 7 candidate | Not recorded | Not recorded |
+
 The new runs used the clean checkout at revision `b8179b56e6b0`; the September
-candidate does not record its source revision. Therefore, the measured
-difference cannot be attributed to Lighthouse run-to-run variance alone or
-treated as a same-source repeatability comparison. The evidence does not
-establish that the September candidate is representative. Its JSON, including
-`approval.status: "not-recorded"`, was left unchanged; owner approval remains
+candidate's retained JSON now explicitly records both source fields as
+unavailable, with the reason that the original capture did not preserve them.
+Therefore, the measured difference cannot be attributed to Lighthouse
+run-to-run variance alone or treated as a same-source repeatability comparison.
+The evidence does not establish that the September candidate is representative.
+Its `approval.status: "not-recorded"` remains unchanged; owner approval remains
 unrecorded pending an owner decision.
 
 Normal and controlled mobile runs are separate conditions in the summary.

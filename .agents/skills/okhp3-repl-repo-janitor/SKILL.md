@@ -38,15 +38,37 @@ Use this skill instead of those two when the scope is "one Repl, tidy the branch
 ## Safety contract
 
 1. Start read-only. Run the bundled audit script or equivalent `git`/`gh` inspection before proposing any change. Never delete a branch, PR, file, or folder during discovery.
-2. Refresh remote-tracking refs non-interactively. The audit uses `GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes`, and a closed stdin; if refresh is unavailable it still prints local evidence but marks `remote_refresh.classification` as `remote-unavailable` and blocks cleanup planning. Never pass `--prune` until every stale remote branch has been classified.
+2. Query remote branch heads non-interactively without changing local refs. The audit uses `GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes`, and a closed stdin. Successful remote listings appear in `remote_refresh.remote_refs`; failed queries are individually identified in `remote_refresh.failures`. Remote availability alone does not update local tracking refs, and merge checks still use the requested local base ref. If any remote is unavailable, the audit still prints local and successful-remote evidence but marks `remote_refresh.classification` as `remote-unavailable` and blocks cleanup planning. Never pass `--prune` until every stale remote branch has been classified.
 3. Treat "merged into origin/main," "closed pull request," and "abandoned with no PR" as three different facts. Check the actual PR state (via the `git-remote` skill or `gh pr view`) before recommending deletion — an old branch can still have an open, wanted PR.
 4. A Replit-generated name (`subrepl-*`, `replit-agent`, `agent/*`) is a hint that the branch may be an ephemeral task-agent artifact, not proof it is safe to delete. Confirm it is merged or explicitly abandoned before including it in the delete list. The current/active branch (checked out, or the one the live agent session is using) is never a deletion candidate.
 5. For naming cleanup, apply the kebab-case default (`references/naming-conventions.md`) but respect the documented exceptions: PascalCase React components, camelCase hooks, ALL-CAPS root governance files (`README.md`, `LICENSE`, `CHANGELOG.md`, `AGENTS.md`, etc.), and files whose name is dictated by a tool or a web standard (`package.json`, `.replit`, `robots.txt`, `CNAME`, ...).
 6. Renaming a file changes import paths and, if it is web content, deployed URLs. Update every importer in the same change, and never rename a file that is live-linked without a redirect or transition plan.
 7. Always produce a written plan before touching anything. Wait for the user to say "go" (or otherwise explicitly approve the exact items) before executing.
 8. Never rewrite `main`, force-push, or delete stashes/archive refs without a separately stated and confirmed recovery plan.
+9. A recorded commit SHA does not keep its Git object reachable. Before removing the last branch or ref that retains an archived commit, create a separate archive branch at that exact commit and, when it must remain reviewable beyond this checkout, push and verify that branch on the remote. Never force-update an existing archive branch; if preservation cannot be verified, keep the source ref and block pruning.
 
 ## Workflow
+
+### Preserve archived commits before cleanup
+
+A ledger SHA records which commit was intended for review; it does not retain the commit. Git may eventually prune an object that is no longer reachable from any ref, so do not treat a SHA in a ledger as a backup.
+
+Before deleting a source branch whose commit must remain reviewable, create a uniquely named archive branch at the exact saved SHA. For example:
+
+```bash
+git cat-file -e '<full-sha>^{commit}'
+git branch 'archive/<source-name>-<YYYY-MM-DD>' '<full-sha>'
+git rev-parse 'archive/<source-name>-<YYYY-MM-DD>^{commit}'
+```
+
+Confirm the final command prints the saved SHA. The new branch is a separate ref; creating it does not change the source branch. If later reviews must work from another clone or after this checkout is lost, push that archive branch without force and confirm the remote ref points to the same SHA:
+
+```bash
+git push origin 'archive/<source-name>-<YYYY-MM-DD>'
+git ls-remote --heads origin 'refs/heads/archive/<source-name>-<YYYY-MM-DD>'
+```
+
+The `ls-remote` result must show the saved SHA. Keep the archive branch out of routine deletion and pruning, and do not proceed with source-branch cleanup if the archive ref is missing or has a different tip. A separately stored, verified Git bundle is an alternative when a remote archive branch is unsuitable. Merely writing the SHA into a ledger, report, or task note is not preservation.
 
 ### 1. Inventory branches and PRs
 
@@ -55,7 +77,12 @@ python3 .agents/skills/okhp3-repl-repo-janitor/scripts/audit-repo.py \
   --root . --base origin/main
 ```
 
-This performs a non-interactive `git fetch --all` and prints a JSON report: every local branch with its last-commit metadata,
+This queries each configured remote with non-interactive `git ls-remote --heads`
+and prints the observed remote branch tips in `remote_refresh.remote_refs`.
+It does not update `refs/remotes/*`; `remote_refresh.tracking_refs_changed` is
+false. Local branch merge checks still use the selected local base ref, so
+compare that ref with the reported remote head before relying on merge status
+for cleanup planning. The report includes every local branch with its last-commit metadata,
 whether it is merged into the base branch, whether its name matches a known
 Replit-generated pattern, whether the non-current local refs match the
 decision ledger, and whether each named archive tip is represented on the
@@ -93,12 +120,40 @@ stable active-ledger path exists. Otherwise it selects the newest valid
 `.agents/branch-decision-ledger-YYYY-MM-DD.md` by ISO date. Pass
 `--decision-ledger <path>` to audit a specific historical ledger; an explicit
 path always overrides active-ledger discovery.
-If the remote cannot be refreshed, `remote_refresh.classification` is
-`remote-unavailable`; local branch, naming, and detritus evidence is still
-printed, but the nonzero exit status blocks cleanup planning until refresh
-succeeds.
-Explicit exclusions in the ledger count as written coverage. It never mutates
-anything.
+If a remote cannot be queried, `remote_refresh.classification` is
+`remote-unavailable`; each failed remote and its diagnostic is listed in
+`remote_refresh.failures`. Successful remote heads remain in
+`remote_refresh.remote_refs`, and local branch, naming, and detritus evidence
+is still printed, but the nonzero exit status blocks cleanup planning until
+every remote can be queried. With no configured remotes, the classification is
+`no-remotes`. A successful listing is classified as `remote-available` and
+includes current branch-head SHAs, without changing the local repository's
+remote-tracking refs.
+Explicit exclusions in the ledger count as written **hold** coverage, never
+permission to archive or delete. A **keep** decision may coexist with a hold
+for the exact same (case-sensitive) branch name. An **archive** decision may
+not: both `--check-ledger` and the full audit fail and report
+`decision_hold_conflicts`, including the branch, `decision_line`,
+`decision_content`, `hold_line`, `hold_content`, and a repair reason. Every
+conflicting decision/hold pair retains its original line number and content,
+including branches named in a multi-branch hold bullet, regardless of section
+order. The hold remains effective: the archive report marks the branch
+`unverifiable`, even if already promoted or backed by valid reconciliation or
+supersession approval. Change the archive decision to **keep**, or explicitly
+resolve the hold in the ledger before planning archive cleanup; archive
+approval alone cannot override it. This cross-section rule is separate from
+duplicate decision rows, duplicate exclusions, reconciliation evidence, and
+historical retirement drift. The audit never mutates anything.
+
+Hold entries belong under `## Explicit exclusions and holds`. Recognizable
+ATX heading variants (small title typos, shortened hold titles, `&` in place
+of `and`, or a different heading level) fail closed: both checks report
+`unsupported_hold_section_headings` with the line, original content, and
+repair reason. Entries under these unsupported headings are not accepted as
+validated holds; correct the heading and rerun the audit. Archive equivalence
+may still pass independently, but it cannot make the overall audit pass while
+this diagnostic remains. Matching is limited to the hold title's words, not
+arbitrary prose headings that merely discuss holds.
 
 To validate a draft ledger before running the repository audit, use:
 
