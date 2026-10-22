@@ -7840,6 +7840,13 @@ html body.askjamie-main {
   }
 }
 
+/* Preserve the two fallback subtitle lines measured at 350px. */
+@media (min-width: 350px) and (max-width: 350px) {
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-subtitle {
+    min-height: 2lh;
+  }
+}
+
 /* Reserve only the line counts measured at the 350px edge. */
 @media (min-width: 350px) and (max-width: 355px) {
   .askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2),
