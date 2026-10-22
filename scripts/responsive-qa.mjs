@@ -12254,6 +12254,31 @@ async function runWithPlaywright(previousWarningBaseline) {
                  warnings };
       }
 
+      // Application startup may reveal and open the arrival note after a slow
+      // stylesheet response. Settle it before dismissing that dialog or taking
+      // any fallback-font measurements.
+      if (checkBrandGuardFonts) {
+        try {
+          await waitForFontBaselineReadiness(page, BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS);
+        } catch (error) {
+          return {
+            url, viewport: vp.name, width: vp.width, height: vp.height,
+            mode: 'playwright', pass: false,
+            errors: [
+              `BRANDGUARD WEB FONT BASELINE UNAVAILABLE: application initialization ` +
+              `did not settle (${error.message.split('\n')[0]}); font geometry was not compared`,
+            ],
+            warnings,
+            hero_font_geometry: {
+              application_readiness: { status: 'unavailable' },
+              comparison: 'not-performed-application-unavailable',
+              before: null,
+              after: null,
+            },
+          };
+        }
+      }
+
       // Review the underlying layout after acknowledging the arrival note.
       // At the 320px keyboard-focus routes, verify the actual Escape close
       // restores focus before continuing the hero-action Tab sequence.
