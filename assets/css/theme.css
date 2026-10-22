@@ -8150,7 +8150,10 @@ html[data-responsive-qa-text-spacing="true"]
     min-height: 6lh;
   }
 
-  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1,
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 4lh;
+  }
+
   .askjamie-main.brandguard-case-lego .askjamie-hero-copy h1 {
     min-height: 4lh;
   }
