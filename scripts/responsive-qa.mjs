@@ -6478,8 +6478,11 @@ async function runBrandGuardMobileNavigationKeyboard(page, route) {
     '[data-transition-dialog][open] [data-transition-dismiss]'
   );
   if (await transitionDismiss.isVisible()) await transitionDismiss.click();
+  // The native close event restores focus after dialog.open becomes false.
+  // Wait for that handler to finish before beginning the keyboard journey.
   await page.waitForFunction(() =>
-    !document.querySelector('[data-transition-dialog][open]')
+    !document.querySelector('[data-transition-dialog][open]') &&
+    !document.body.classList.contains('capability-transition-open')
   );
   try {
     await page.waitForFunction(() =>
