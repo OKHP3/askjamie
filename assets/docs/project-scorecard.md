@@ -1,7 +1,7 @@
 # AskJamie Project Scorecard
 
 **Current as of:** 2026-10-22
-**Source baseline:** `a98f6b56b6cf6f26057e5847c25c898f18eeef0a`; October 22 reconciliation candidate pending integration
+**Closeout starting baseline:** `a98f6b56b6cf6f26057e5847c25c898f18eeef0a`. See PR #119 for integration status.
 **Purpose:** One current record of shipped capability, dated verification,
 conditional evidence, and deliberately deferred work.
 
@@ -33,7 +33,7 @@ Python and canonical audit checks passed. A full rendered check reproduced a
 Costco 350px font shift, so the older successful release does not establish
 current font stability. PR #118 contains the measured fix.
 
-The preserved Replit candidate is being reconciled in a separate worktree.
+The preserved Replit candidate was reconciled from a verified private patch in a separate worktree.
 Its configured responsive inventory is 27 routes at 28 widths, or 756 rows.
 The integration receipt must distinguish that configured coverage from a
 completed successful run and must record the actual merged revision, CI,
@@ -67,8 +67,8 @@ Human VoiceOver/NVDA spoken output and native 200% zoom remain incomplete.
   enforced GitHub Pages control.
 - Public accessibility and appropriate publication status of case-study source
   destinations and represented external GPTs.
-- `npm audit` reports 20 transitive development-only vulnerabilities in the
-  Lighthouse and Puppeteer toolchain. Production dependencies report 0
+- The September 8 `npm audit` reported 20 transitive development-only vulnerabilities in the
+  Lighthouse and Puppeteer toolchain. At that time, production dependencies reported 0
   vulnerabilities, and the audit tool found no safe automatic fix. This is a
   tooling maintenance item, not a deployed-site finding.
 
