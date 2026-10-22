@@ -4978,7 +4978,12 @@ def test_universe_large_page_map_closes_destinations_after_navigation_failures(t
             content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
             self._respond(file_path.read_bytes(), content_type)
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    class FixtureServer(http.server.ThreadingHTTPServer):
+        # Mermaid imports many local chunks together. Preserve intentional
+        # connection-drop behavior without overflowing the asset listen queue.
+        request_queue_size = 512
+
+    server = FixtureServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = True
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
