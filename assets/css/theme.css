@@ -7842,6 +7842,10 @@ html body.askjamie-main {
 
 /* Reserve only the line counts measured at the 350px edge. */
 @media (min-width: 350px) and (max-width: 355px) {
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-subtitle {
+    min-height: 2lh;
+  }
+
   .askjamie-main.brandguard-bfs-page .capability-transition > p:nth-of-type(2),
   .askjamie-main.brandguard-lvmh-page .capability-transition > p:nth-of-type(2) {
     min-height: 7lh;
