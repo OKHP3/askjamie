@@ -84,6 +84,7 @@ import {
   formatBrowserWarningTrend,
 } from './responsive-qa-warning-trend.mjs';
 import { summarizeBrowserFailures } from './responsive-qa-failure-summary.mjs';
+import { waitForFontBaselineReadiness } from './font-baseline-readiness.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -7384,6 +7385,35 @@ async function checkBrandGuardWebFontGeometry(
     }
   }
 
+  let appBaselineReadiness;
+  try {
+    appBaselineReadiness = await waitForFontBaselineReadiness(
+      page, BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS
+    );
+  } catch (error) {
+    releaseFontRequests();
+    const reason = error.message.split('\n')[0];
+    errors.push(
+      `BRANDGUARD WEB FONT BASELINE UNAVAILABLE: application initialization ` +
+      `did not settle (${reason}); font geometry was not compared`
+    );
+    return {
+      errors,
+      evidence: {
+        threshold_px: BRANDGUARD_FONT_GEOMETRY_TOLERANCE_PX,
+        timeout_ms: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+        application_readiness: { status: 'unavailable', reason },
+        comparison: 'not-performed-application-unavailable',
+        before: null,
+        after: null,
+        font_loading: null,
+        font_resources: fontResponses,
+        font_resource_failures: fontResourceFailures,
+        shifts: [],
+      },
+    };
+  }
+
   const capture = () => page.evaluate((selectors) => {
     const geometry = {};
     for (const selector of selectors) {
@@ -8407,6 +8437,7 @@ async function checkBrandGuardWebFontGeometry(
     evidence: {
       threshold_px: BRANDGUARD_FONT_GEOMETRY_TOLERANCE_PX,
       timeout_ms: BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS,
+      application_readiness: { status: 'ready', ...appBaselineReadiness },
       font_stylesheet_mode: fontStylesheetMode,
       deferred_theme: deferredThemeLink
         ? { ...deferredThemeLink, media_after_settle: 'all' }

@@ -23,6 +23,7 @@ cannot be mistaken for current pipeline commands.
 | `check-critical-theme-drift.py` | active | Verify the first-viewport critical CSS contract against the shared AskJamie theme |
 | `sync-foundation-files.py` | active | 3-way sync of theme.css/app.js/mermaid-init.js across the three sibling repos |
 | `responsive-qa.mjs` | active | Responsive QA entry point |
+| `font-baseline-readiness.mjs` | active | Require application startup before capturing BrandGuard fallback-font geometry |
 | `experience-qa.cjs` | active | Focused Playwright checks for AskJamie search, resilient content visibility, and footer contrast |
 | `post-merge.sh` | active | Post-merge rebuild and validation hook |
 | `capture-visual-baseline.mjs` | active | Capture the dated visual reference set |

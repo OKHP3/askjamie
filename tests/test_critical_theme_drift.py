@@ -3057,6 +3057,10 @@ def test_responsive_qa_fails_on_missing_or_unexpected_brandguard_routes(tmp_path
             ROOT / "scripts" / "responsive-qa-failure-summary.mjs",
             scripts_dir / "responsive-qa-failure-summary.mjs",
         )
+        shutil.copy2(
+            ROOT / "scripts" / "font-baseline-readiness.mjs",
+            scripts_dir / "font-baseline-readiness.mjs",
+        )
         sitemap_entries = '<url><loc>https://askjamie.bot/about/</loc></url>'
         if sitemap_route:
             sitemap_entries += f'<url><loc>https://askjamie.bot{sitemap_route}</loc></url>'

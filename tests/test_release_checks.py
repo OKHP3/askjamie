@@ -86,6 +86,7 @@ def _copy_responsive_qa_dependencies(destination):
         "page-map-sweep-performance.mjs",
         "responsive-qa-warning-trend.mjs",
         "responsive-qa-failure-summary.mjs",
+        "font-baseline-readiness.mjs",
     ):
         shutil.copy2(
             ROOT / "scripts" / dependency,
@@ -2935,6 +2936,7 @@ def test_responsive_qa_writes_partial_report_when_context_setup_stops(tmp_path, 
             "scripts/page-map-sweep-performance.mjs",
             "scripts/responsive-qa-warning-trend.mjs",
             "scripts/responsive-qa-failure-summary.mjs",
+            "scripts/font-baseline-readiness.mjs",
             "sitemap.xml",
             "setup",
         ],
