@@ -17,6 +17,10 @@ done
 echo "Post-merge: rebuilding search index..."
 python3 scripts/build-search-index.py
 
+echo "Post-merge: refreshing shared asset fingerprints and CSP..."
+python3 scripts/cache-bust.py
+python3 scripts/generate-csp.py
+
 echo "Post-merge: running full site auditor..."
 python3 scripts/audit-site.py --quiet
 if [ $? -ne 0 ]; then

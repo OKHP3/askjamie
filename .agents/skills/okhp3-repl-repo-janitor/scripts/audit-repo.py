@@ -28,6 +28,9 @@ What it reports:
       UTF-8 commit text remains a JSON string; commit text containing invalid
       UTF-8 bytes uses the same Base64 object representation of the exact
       text bytes.
+      UTF-8 branch names remain JSON strings; branch names containing invalid
+      UTF-8 bytes use the same Base64 object representation of the exact
+      ref-name bytes.
   4. Naming violations: files/folders whose names break the kebab-case
      default (PascalCase, camelCase, spaces, uppercase extensions) outside
      the recognized structural exceptions (React components/hooks, root
@@ -36,10 +39,13 @@ What it reports:
      tmp, temp, _unused, unused, _drafts, _scratch, _old, and hyphen
      variants), with tracked/untracked/gitignored status for each.
 
-This script only reads; it never deletes, renames, or force-pushes anything.
+This script only reads; it never updates local refs, deletes, renames, or
+force-pushes anything. Remote branch heads are queried and included in the
+report, but branch merge checks still use the requested local base ref.
 Treat its output as evidence for a plan, not as an execution instruction.
 """
 import argparse
+import difflib
 import base64
 import json
 import os
@@ -113,8 +119,37 @@ def sh(args, cwd):
     ).stdout.strip()
 
 
+def _remote_head_row_error(line: bytes) -> str | None:
+    """Return why an ls-remote row is invalid, or None when it is a head row."""
+    sha, separator, ref = line.partition(b"\t")
+    if not separator:
+        return "missing tab separator"
+    if not re.fullmatch(rb"[0-9a-f]{40}", sha):
+        return "revision must be a 40-character lowercase hexadecimal SHA"
+    if not ref.startswith(b"refs/heads/") or ref == b"refs/heads/":
+        return "ref must name a branch under refs/heads/"
+    if (
+        b".." in ref
+        or b"@{" in ref
+        or b"//" in ref
+        or ref.endswith((b"/", b"."))
+        or any(
+            byte <= 0x20
+            or byte == 0x7f
+            or byte in b" ~^:?*[\\"
+            for byte in ref
+        )
+        or any(
+            component.startswith(b".") or component.endswith(b".lock")
+            for component in ref.split(b"/")
+        )
+    ):
+        return "ref is not a valid Git ref name"
+    return None
+
+
 def refresh_remote(root: Path) -> dict[str, object]:
-    """Refresh remote-tracking refs without allowing an interactive prompt."""
+    """Read remote branch heads without changing local refs."""
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     ssh_command = env.get("GIT_SSH_COMMAND", "ssh").strip() or "ssh"
@@ -127,13 +162,12 @@ def refresh_remote(root: Path) -> dict[str, object]:
         ssh_command = f"{ssh_command} -o BatchMode=yes"
     env["GIT_SSH_COMMAND"] = ssh_command
     try:
-        result = subprocess.run(
-            ["git", "fetch", "--all"],
+        remotes_result = subprocess.run(
+            ["git", "remote"],
             cwd=root,
             capture_output=True,
             text=True,
             check=False,
-            env=env,
             stdin=subprocess.DEVNULL,
         )
     except OSError as exc:
@@ -142,21 +176,115 @@ def refresh_remote(root: Path) -> dict[str, object]:
             "classification": "remote-unavailable",
             "non_interactive": True,
             "detail": f"{type(exc).__name__}: {exc}",
+            "tracking_refs_changed": False,
         }
-    if result.returncode == 0:
+    if remotes_result.returncode != 0:
+        diagnostic = remotes_result.stderr or remotes_result.stdout
+        detail = _decode_remote_diagnostic(
+            diagnostic.encode("utf-8", errors="surrogateescape")
+        )
         return {
-            "status": "ok",
-            "classification": "refreshed",
+            "status": "unavailable",
+            "classification": "remote-unavailable",
             "non_interactive": True,
+            "detail": detail or "git remote failed without diagnostic output",
+            "tracking_refs_changed": False,
         }
 
-    detail = (result.stderr or result.stdout).strip()
+    remotes = remotes_result.stdout.splitlines()
+    if not remotes:
+        return {
+            "status": "ok",
+            "classification": "no-remotes",
+            "non_interactive": True,
+            "remotes": [],
+            "remote_refs": [],
+            "tracking_refs_changed": False,
+        }
+
+    remote_refs: list[dict[str, str]] = []
+    failures: list[dict[str, object]] = []
+    for remote in remotes:
+        try:
+            result = subprocess.run(
+                ["git", "ls-remote", "--heads", remote],
+                cwd=root,
+                capture_output=True,
+                check=False,
+                env=env,
+                stdin=subprocess.DEVNULL,
+            )
+        except OSError as exc:
+            failures.append({
+                "remote": remote,
+                "detail": f"{type(exc).__name__}: {exc}",
+            })
+            continue
+        if result.returncode != 0:
+            diagnostic = result.stderr if result.stderr.strip() else result.stdout
+            detail = _decode_remote_diagnostic(diagnostic)
+            if not detail:
+                detail = "git ls-remote failed without diagnostic output"
+            failures.append({"remote": remote, "detail": detail})
+            continue
+        for line_number, line in enumerate(result.stdout.splitlines(), start=1):
+            sha, separator, ref = line.partition(b"\t")
+            row_error = _remote_head_row_error(line)
+            if row_error:
+                failures.append({
+                    "remote": remote,
+                    "detail": (
+                        f"malformed git ls-remote output on line {line_number}: "
+                        f"{row_error}"
+                    ),
+                    "line": line_number,
+                    "row": line.decode("utf-8", errors="backslashreplace"),
+                })
+                continue
+            remote_refs.append({
+                "remote": remote,
+                "ref": ref.decode("utf-8", errors="surrogateescape"),
+                "sha": sha.decode("ascii", errors="replace"),
+            })
+
+    if not failures:
+        return {
+            "status": "ok",
+            "classification": "remote-available",
+            "non_interactive": True,
+            "remotes": remotes,
+            "remote_refs": remote_refs,
+            "tracking_refs_changed": False,
+        }
     return {
         "status": "unavailable",
         "classification": "remote-unavailable",
         "non_interactive": True,
-        "exit_code": result.returncode,
-        "detail": detail[:500] or "git fetch --all failed without diagnostic output",
+        "detail": (
+            (
+                f"{failures[0]['remote']}: {failures[0]['detail']}"
+                if isinstance(failures[0]["detail"], str)
+                else failures[0]["detail"]
+            )
+            if len(failures) == 1
+            else "\n".join(
+                f"{failure['remote']}: "
+                + (
+                    failure["detail"]
+                    if isinstance(failure["detail"], str)
+                    else json.dumps(
+                        failure["detail"],
+                        ensure_ascii=True,
+                        sort_keys=True,
+                    )
+                )
+                for failure in failures
+            )
+        ),
+        "failures": failures,
+        "remotes": remotes,
+        "remote_refs": remote_refs,
+        "tracking_refs_changed": False,
     }
 
 
@@ -170,38 +298,128 @@ class DecisionLedger(NamedTuple):
     duplicate_decision_rows: list[dict[str, object]]
     unsupported_decision_labels: list[dict[str, object]]
     malformed_exclusion_entries: list[dict[str, object]]
+    unsupported_hold_section_headings: list[dict[str, object]]
     duplicate_exclusion_entries: list[dict[str, object]]
+    decision_hold_conflicts: list[dict[str, object]]
+
+
+class LocalBranchEvidenceError(Exception):
+    """Raised when Git cannot start the command that lists local branches."""
+
+    def __init__(self, error: OSError) -> None:
+        self.detail = f"{type(error).__name__}: {error}"
+        super().__init__(self.detail)
+
+
+class CurrentBranchEvidenceError(Exception):
+    """Raised when Git cannot determine which local branch is checked out."""
+
+    def __init__(
+        self, detail: str, branches: list[dict[str, object]]
+    ) -> None:
+        self.detail = detail
+        self.branches = branches
+        super().__init__(detail)
+
+
+class MergeStatusEvidenceError(Exception):
+    """Raised when Git cannot determine which local branches are merged."""
+
+    def __init__(
+        self, detail: str, branches: list[dict[str, object]]
+    ) -> None:
+        self.detail = detail
+        self.branches = branches
+        super().__init__(detail)
 
 
 def audit_branches(root: Path, base: str, *, refresh: bool = True):
     if refresh:
         refresh_remote(root)
-    branches = sh(
-        ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads/"],
-        root,
-    ).splitlines()
-    merged = set(
-        sh(["git", "branch", "--merged", base, "--format=%(refname:short)"], root)
-        .splitlines()
-    )
+    try:
+        branches = _git_ref_lines(
+            root, "for-each-ref", "--format=%(refname:strip=2)", "refs/heads/"
+        )
+    except OSError as exc:
+        raise LocalBranchEvidenceError(exc) from exc
     ledger = []
     for b in branches:
         if not b:
             continue
         last = _git_bytes_result(
-            root, "log", "-1", "--encoding=none", "--format=%ci|%an|%s", b
+            root,
+            "log",
+            "-1",
+            "--encoding=none",
+            "--format=%ci|%an|%s",
+            f"refs/heads/{b}",
         ).stdout.rstrip(b"\n")
         date, author, subject = (last.split(b"|", 2) + [b"", b"", b""])[:3]
         ledger.append({
             "branch": b,
-            "is_current": b == sh(["git", "branch", "--show-current"], root),
-            "tip_sha": sh(["git", "rev-parse", b], root),
-            "merged_into_base": b in merged,
+            "tip_sha": sh(["git", "rev-parse", f"refs/heads/{b}"], root),
+            "merged_into_base": None,
             "last_commit_date": _decode_commit_text(date),
             "last_commit_author": _decode_commit_text(author),
             "last_commit_subject": _decode_commit_text(subject),
             "replit_generated_pattern": bool(REPLIT_BRANCH_PATTERNS.match(b)),
         })
+
+    for branch in ledger:
+        branch["is_current"] = None
+    try:
+        current_result = _git_bytes_result(root, "branch", "--show-current")
+    except OSError as exc:
+        raise CurrentBranchEvidenceError(
+            f"{type(exc).__name__}: {exc}", ledger
+        ) from exc
+    if current_result.returncode != 0:
+        diagnostic = current_result.stderr or current_result.stdout
+        detail = diagnostic.decode("utf-8", errors="replace").strip()
+        if not detail:
+            detail = "git branch --show-current failed without diagnostic output"
+        raise CurrentBranchEvidenceError(
+            f"git branch --show-current failed "
+            f"(exit {current_result.returncode}): {detail}",
+            ledger,
+        )
+    current = [
+        line.decode("utf-8", errors="surrogateescape")
+        for line in current_result.stdout.splitlines()
+    ]
+    current_branch = current[0] if current else ""
+    for branch in ledger:
+        branch["is_current"] = branch["branch"] == current_branch
+
+    try:
+        merged_result = _git_bytes_result(
+            root,
+            "for-each-ref",
+            f"--merged={base}",
+            "--format=%(refname:strip=2)",
+            "refs/heads/",
+        )
+    except OSError as exc:
+        raise MergeStatusEvidenceError(
+            f"{type(exc).__name__}: {exc}", ledger
+        ) from exc
+    if merged_result.returncode != 0:
+        diagnostic = merged_result.stderr or merged_result.stdout
+        detail = diagnostic.decode("utf-8", errors="replace").strip()
+        if not detail:
+            detail = "git for-each-ref failed without diagnostic output"
+        raise MergeStatusEvidenceError(
+            f"git for-each-ref --merged={base} failed "
+            f"(exit {merged_result.returncode}): {detail}",
+            ledger,
+        )
+
+    merged = {
+        line.decode("utf-8", errors="surrogateescape")
+        for line in merged_result.stdout.splitlines()
+    }
+    for branch in ledger:
+        branch["merged_into_base"] = branch["branch"] in merged
     return ledger
 
 
@@ -212,8 +430,31 @@ def _table_cells(line: str) -> list[str]:
     return [cell.strip() for cell in line.strip().strip("|").split("|")]
 
 
+def _resembles_hold_heading(title: str) -> bool:
+    """Recognize bounded title variants, not arbitrary prose mentioning holds."""
+    words = title.lower().replace("&", "and").split()
+    for expected in (
+        ("explicit", "exclusions", "and", "holds"),
+        ("exclusions", "and", "holds"),
+        ("explicit", "holds"),
+    ):
+        if len(words) == len(expected) and all(
+            difflib.SequenceMatcher(None, word, target).ratio()
+            >= (2 / 3 if target == "and" else 0.8)
+            for word, target in zip(words, expected)
+        ):
+            return True
+    return False
+
+
 def parse_decision_ledger(path: Path) -> DecisionLedger:
-    """Parse the decision table and explicit holds from a markdown ledger."""
+    """Parse live ledger sections, ignoring fenced Markdown examples.
+
+    Fences use at least three backticks or tildes, indented at most three
+    spaces. Only the same character, repeated at least as many times with
+    trailing whitespace only, closes a fence. Unclosed examples are rejected
+    rather than allowing an accidental opener to hide later cleanup holds.
+    """
     if not path.is_file():
         raise ValueError(f"decision ledger does not exist: {path}")
 
@@ -228,12 +469,51 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
     seen_decisions: dict[str, tuple[int, str]] = {}
     unsupported_decision_labels: list[dict[str, object]] = []
     malformed_exclusion_entries: list[dict[str, object]] = []
+    unsupported_hold_section_headings: list[dict[str, object]] = []
     duplicate_exclusion_entries: list[dict[str, object]] = []
     seen_exclusions: dict[str, int] = {}
+    archive_sources: list[tuple[str, int, str]] = []
+    hold_sources: dict[str, list[tuple[int, str]]] = {}
     section = ""
+    fence: tuple[str, int, int] | None = None
     for line_number, line in enumerate(
         path.read_text(encoding="utf-8").splitlines(), start=1
     ):
+        if fence is not None:
+            character, length, _ = fence
+            if re.fullmatch(
+                rf" {{0,3}}{re.escape(character)}{{{length},}}[ \t]*", line
+            ):
+                fence = None
+            continue
+        opener = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if opener and not (
+            opener.group(1)[0] == "`" and "`" in opener.group(2)
+        ):
+            fence = (opener.group(1)[0], len(opener.group(1)), line_number)
+            continue
+        # Inspect all ATX levels before exact section dispatch. Do not interpret
+        # entries beneath unsupported titles as approved exclusions.
+        atx_heading = re.match(r"^ {0,3}(#{1,6})\s+(.+?)\s*$", line)
+        if atx_heading:
+            title = re.sub(r"\s+#+$", "", atx_heading.group(2)).lower()
+            supported = (
+                atx_heading.group(1) == "##"
+                and title == "explicit exclusions and holds"
+            )
+            if _resembles_hold_heading(title):
+                if not supported:
+                    unsupported_hold_section_headings.append({
+                        "line": line_number,
+                        "content": line,
+                        "reason": (
+                            "unsupported hold-section heading; use "
+                            "'## Explicit exclusions and holds' so holds "
+                            "can be validated before cleanup"
+                        ),
+                    })
+                section = "explicit exclusions and holds" if supported else ""
+                continue
         heading = re.match(r"^##\s+(.+?)\s*$", line)
         if heading:
             section = heading.group(1).lower()
@@ -299,6 +579,8 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
                 "decision": decision,
                 "tip_sha": cells[2].strip("`").lower(),
             })
+            if decision == "archive":
+                archive_sources.append((branch, line_number, line))
             if decision not in SUPPORTED_RETENTION_DECISIONS:
                 unsupported_decision_labels.append({
                     "line": line_number,
@@ -384,7 +666,20 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
         elif section == "explicit exclusions and holds":
             if not line.strip():
                 continue
-            if not line.lstrip().startswith("-"):
+            # Keep introductory prose, but never silently discard something
+            # shaped like a hold: tables (with or without an opening pipe),
+            # alternate lists, blockquotes, or a branch-led entry missing its
+            # bullet. A single-token "branch: reason" is an attempted entry;
+            # ordinary multi-word introductory prose remains allowed.
+            stripped = line.lstrip()
+            if not (
+                stripped.startswith(("-", "`", "|", ">"))
+                or re.match(
+                    r"(?:[+*]\s|\d+[.)]\s|[^\s|]+\s*\||"
+                    r"[^\s:]+:|\S+\s+—(?:\s|$))",
+                    stripped,
+                )
+            ):
                 continue
             # A bullet may document several refs, e.g. "`main`, `branch-a`,
             # and `branch-b` — active work".
@@ -417,12 +712,37 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
                 else:
                     seen_exclusions[branch] = line_number
                 exclusions.append(branch)
+                hold_sources.setdefault(branch, []).append((line_number, line))
 
+    if fence is not None:
+        raise ValueError(
+            f"decision ledger has an unclosed code fence at line {fence[2]}: "
+            f"{path}; close the example before auditing cleanup holds"
+        )
+
+    # Compare after parsing so section order never changes hold precedence.
+    decision_hold_conflicts = [
+        {
+            "branch": branch,
+            "decision_line": decision_line,
+            "decision_content": decision_content,
+            "hold_line": hold_line,
+            "hold_content": hold_content,
+            "reason": (
+                "archive decision conflicts with an explicit hold; "
+                "change the decision to keep or explicitly resolve the hold "
+                "before planning archive cleanup"
+            ),
+        }
+        for branch, decision_line, decision_content in archive_sources
+        for hold_line, hold_content in hold_sources.get(branch, [])
+    ]
     if not (
         decisions
         or exclusions
         or malformed_decision_rows
         or malformed_exclusion_entries
+        or unsupported_hold_section_headings
         or malformed_archive_reconciliation_rows
     ):
         raise ValueError(f"decision ledger has no branch coverage rows: {path}")
@@ -436,35 +756,41 @@ def parse_decision_ledger(path: Path) -> DecisionLedger:
         duplicate_decision_rows=duplicate_decision_rows,
         unsupported_decision_labels=unsupported_decision_labels,
         malformed_exclusion_entries=malformed_exclusion_entries,
+        unsupported_hold_section_headings=unsupported_hold_section_headings,
         duplicate_exclusion_entries=duplicate_exclusion_entries,
+        decision_hold_conflicts=decision_hold_conflicts,
     )
 
 
-def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
-    """Validate ledger syntax without reading Git state or contacting a remote."""
-    ledger = parse_decision_ledger(ledger_path)
-    findings = (
-        ledger.malformed_decision_rows
-        or ledger.duplicate_decision_rows
-        or ledger.unsupported_decision_labels
-        or ledger.malformed_exclusion_entries
-        or ledger.duplicate_exclusion_entries
-        or ledger.malformed_archive_reconciliation_rows
-        or ledger.duplicate_archive_reconciliation_rows
-    )
-    return {
-        "ledger_path": str(ledger_path),
-        "decision_row_count": len(ledger.decisions),
-        "exclusion_branch_count": len(ledger.exclusions),
+def _decision_ledger_structure_report(
+    ledger: DecisionLedger, ledger_path: Path
+) -> dict[str, object]:
+    """Keep reported safety diagnostics and their blocking gate in one place."""
+    diagnostics = {
         "malformed_decision_rows": ledger.malformed_decision_rows,
         "duplicate_decision_rows": ledger.duplicate_decision_rows,
         "unsupported_decision_labels": ledger.unsupported_decision_labels,
         "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
+        "unsupported_hold_section_headings": ledger.unsupported_hold_section_headings,
         "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
+        "decision_hold_conflicts": ledger.decision_hold_conflicts,
         "malformed_archive_reconciliation_rows": ledger.malformed_archive_reconciliation_rows,
         "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
-        "ok": not findings,
     }
+    return {
+        "ledger_path": str(ledger_path),
+        "decision_row_count": len(ledger.decisions),
+        "exclusion_branch_count": len(ledger.exclusions),
+        **diagnostics,
+        "ok": not any(diagnostics.values()),
+    }
+
+
+def validate_decision_ledger_structure(ledger_path: Path) -> dict[str, object]:
+    """Validate ledger syntax without reading Git state or contacting a remote."""
+    return _decision_ledger_structure_report(
+        parse_decision_ledger(ledger_path), ledger_path
+    )
 
 
 def audit_decision_ledger(
@@ -475,6 +801,7 @@ def audit_decision_ledger(
 ) -> dict[str, object]:
     """Compare non-current local branches with written ledger coverage."""
     ledger = parse_decision_ledger(ledger_path)
+    structure = _decision_ledger_structure_report(ledger, ledger_path)
     local_by_name = {
         str(branch["branch"]): branch
         for branch in branches
@@ -524,35 +851,19 @@ def audit_decision_ledger(
             })
 
     return {
-        "ledger_path": str(ledger_path),
+        **structure,
         "covered_branch_count": len(covered),
-        "decision_row_count": len(ledger.decisions),
-        "exclusion_branch_count": len(ledger.exclusions),
         "missing_branches": missing_branches,
         "tip_sha_drift": sorted(tip_sha_drift, key=lambda item: item["branch"]),
         "invalid_tip_sha": sorted(invalid_tip_sha, key=lambda item: item["branch"]),
         "stale_ledger_rows": sorted(
             stale_ledger_rows, key=lambda item: (item["branch"], item["kind"])
         ),
-        "malformed_decision_rows": ledger.malformed_decision_rows,
-        "duplicate_decision_rows": ledger.duplicate_decision_rows,
-        "unsupported_decision_labels": ledger.unsupported_decision_labels,
-        "malformed_exclusion_entries": ledger.malformed_exclusion_entries,
-        "duplicate_exclusion_entries": ledger.duplicate_exclusion_entries,
-        "malformed_archive_reconciliation_rows": ledger.malformed_archive_reconciliation_rows,
-        "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
-        "ok": not (
+        "ok": bool(structure["ok"]) and not (
             missing_branches
             or tip_sha_drift
             or invalid_tip_sha
             or stale_ledger_rows
-            or ledger.malformed_decision_rows
-            or ledger.duplicate_decision_rows
-            or ledger.unsupported_decision_labels
-            or ledger.malformed_exclusion_entries
-            or ledger.duplicate_exclusion_entries
-            or ledger.malformed_archive_reconciliation_rows
-            or ledger.duplicate_archive_reconciliation_rows
         ),
     }
 
@@ -568,6 +879,15 @@ def _git_result(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _git_ref_lines(root: Path, *args: str) -> list[str]:
+    """Read Git ref names as reversible strings, without assuming UTF-8."""
+    result = _git_bytes_result(root, *args)
+    return [
+        line.decode("utf-8", errors="surrogateescape")
+        for line in result.stdout.splitlines()
+    ]
+
+
 def _git_bytes_result(
     root: Path, *args: str
 ) -> subprocess.CompletedProcess[bytes]:
@@ -580,6 +900,34 @@ def _git_bytes_result(
     )
 
 
+def _archive_git_result(
+    root: Path,
+    *args: str,
+    binary: bool = False,
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
+    """Keep archive comparison startup failures inside the audit report."""
+    try:
+        if binary:
+            return _git_bytes_result(root, *args)
+        return _git_result(root, *args)
+    except OSError as exc:
+        diagnostic = f"{type(exc).__name__}: {exc}"
+        if binary:
+            stdout: str | bytes = b""
+            stderr: str | bytes = diagnostic.encode("utf-8", errors="replace")
+        else:
+            stdout = ""
+            stderr = diagnostic
+        result = subprocess.CompletedProcess(
+            ["git", *args],
+            127,
+            stdout=stdout,
+            stderr=stderr,
+        )
+        result.startup_diagnostic = diagnostic
+        return result
+
+
 def _verified_commit(root: Path, ref: str) -> str | None:
     """Return a full commit SHA when ref resolves to a commit, otherwise None."""
     result = _git_result(root, "rev-parse", "--verify", f"{ref}^{{commit}}")
@@ -587,6 +935,110 @@ def _verified_commit(root: Path, ref: str) -> str | None:
         return None
     value = result.stdout.strip()
     return value if SHA_PATTERN.fullmatch(value) else None
+
+
+def audit_merge_base_evidence(
+    root: Path, base: str, remote_refresh: dict[str, object]
+) -> dict[str, object]:
+    """Compare the selected local base with its advertised remote head."""
+    base_sha = _verified_commit(root, base)
+    if base_sha is None:
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "classification": "selected-base-unavailable",
+            "selected_base": base,
+            "stale": None,
+        }
+
+    canonical_base = (
+        base if base.startswith("refs/remotes/") else f"refs/remotes/{base}"
+    )
+    remote_path = canonical_base.removeprefix("refs/remotes/")
+    configured_remotes = remote_refresh.get("remotes", [])
+    if not configured_remotes:
+        configured_remotes = [
+            str(item.get("remote", ""))
+            for item in remote_refresh.get("remote_refs", [])
+        ]
+    remote_matches = sorted(
+        (
+            str(remote)
+            for remote in configured_remotes
+            if remote_path.startswith(f"{remote}/")
+        ),
+        key=len,
+        reverse=True,
+    )
+    if not remote_matches:
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "classification": "selected-base-is-not-a-remote-tracking-ref",
+            "selected_base": base,
+            "selected_base_sha": base_sha,
+            "canonical_base": None,
+            "stale": None,
+        }
+
+    remote = remote_matches[0]
+    branch = remote_path[len(remote) + 1:]
+    if not branch:
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "classification": "selected-base-is-not-a-remote-branch",
+            "selected_base": base,
+            "selected_base_sha": base_sha,
+            "canonical_base": canonical_base,
+            "stale": None,
+        }
+
+    remote_ref = f"refs/heads/{branch}"
+    remote_refs = remote_refresh.get("remote_refs", [])
+    advertised = next(
+        (
+            item
+            for item in remote_refs
+            if item.get("remote") == remote and item.get("ref") == remote_ref
+        ),
+        None,
+    )
+    if advertised is None:
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "classification": (
+                "advertised-remote-head-unavailable"
+                if remote_refresh.get("status") != "ok"
+                else "advertised-remote-head-missing"
+            ),
+            "selected_base": base,
+            "selected_base_sha": base_sha,
+            "canonical_base": canonical_base,
+            "remote": remote,
+            "remote_ref": remote_ref,
+            "stale": None,
+        }
+
+    remote_sha = str(advertised.get("sha", ""))
+    is_stale = base_sha != remote_sha
+    return {
+        "ok": not is_stale,
+        "status": "stale" if is_stale else "current",
+        "classification": (
+            "base-differs-from-advertised-remote-head"
+            if is_stale
+            else "base-matches-advertised-remote-head"
+        ),
+        "selected_base": base,
+        "selected_base_sha": base_sha,
+        "canonical_base": canonical_base,
+        "remote": remote,
+        "remote_ref": remote_ref,
+        "remote_sha": remote_sha,
+        "stale": is_stale,
+    }
 
 
 def _decode_commit_text(value: bytes) -> str | dict[str, str]:
@@ -598,6 +1050,44 @@ def _decode_commit_text(value: bytes) -> str | dict[str, str]:
             "encoding": "base64",
             "data": base64.b64encode(value).decode("ascii"),
         }
+
+
+def _decode_remote_diagnostic(value: bytes) -> str | dict[str, str]:
+    """Keep UTF-8 fetch diagnostics readable and preserve invalid bytes exactly."""
+    try:
+        return value.decode("utf-8").strip()[:500]
+    except UnicodeDecodeError:
+        return {
+            "encoding": "base64",
+            "data": base64.b64encode(value).decode("ascii"),
+        }
+
+
+def _json_safe(value: object) -> object:
+    """Encode strings containing surrogateescaped bytes as lossless JSON data."""
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            try:
+                raw = value.encode("utf-8", errors="surrogateescape")
+            except UnicodeEncodeError:
+                return value
+            return {
+                "encoding": "base64",
+                "data": base64.b64encode(raw).decode("ascii"),
+            }
+        return value
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _json_safe(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 def _as_bytes(output: str | bytes) -> bytes:
@@ -724,13 +1214,20 @@ def audit_archive_equivalents(
     for row in archive_rows:
         branch = row["branch"]
         tip_sha = row["tip_sha"]
-        branch_tip = _verified_commit(root, branch)
+        branch_tip = _verified_commit(root, f"refs/heads/{branch}")
         report: dict[str, object] = {
             "branch": branch,
             "tip_sha": tip_sha,
             "branch_tip_sha": branch_tip,
             "file_difference_direction": "active-line-to-archive-tip",
         }
+        if branch in ledger.exclusions:
+            report.update({
+                "classification": "unverifiable",
+                "error": "explicit hold cannot be overridden by archive approval",
+            })
+            reports.append(report)
+            continue
         if branch in ambiguous_branches:
             report.update({
                 "classification": "unverifiable",
@@ -754,58 +1251,168 @@ def audit_archive_equivalents(
             })
             reports.append(report)
             continue
+        object_type_result = _archive_git_result(
+            root, "cat-file", "-t", tip_sha
+        )
+        if object_type_result.returncode == 0:
+            object_type = object_type_result.stdout.strip()
+            if object_type != "commit":
+                report.update({
+                    "classification": "unverifiable",
+                    "error": (
+                        f"archive tip SHA identifies a local {object_type} "
+                        f"object, not a commit, and cannot be reviewed: {tip_sha}"
+                    ),
+                })
+                reports.append(report)
+                continue
         if _verified_commit(root, tip_sha) is None:
             report.update({
                 "classification": "unverifiable",
-                "error": f"archive tip does not resolve to a commit: {tip_sha}",
+                "error": (
+                    "archive tip SHA is unavailable as a local commit object "
+                    f"and cannot be reviewed: {tip_sha}"
+                ),
             })
             reports.append(report)
             continue
 
-        cherry = _git_bytes_result(root, "cherry", "-v", active_line, tip_sha)
+        # Pin every comparison to the commit verified above. In particular,
+        # when the caller selected a historical commit by SHA, never let a
+        # moving branch name change the comparison after validation.
+        cherry = _archive_git_result(
+            root, "cherry", "-v", active_tip, tip_sha, binary=True
+        )
         archive_commits = _parse_cherry_lines(cherry.stdout)
-        active_only = _git_bytes_result(
+        active_only = _archive_git_result(
             root,
             "log",
             "--encoding=none",
             "--format=%H%x09%s",
-            f"{tip_sha}..{active_line}",
+            f"{tip_sha}..{active_tip}",
+            binary=True,
         )
-        archive_only = _git_bytes_result(
+        archive_only = _archive_git_result(
             root,
             "log",
             "--encoding=none",
             "--format=%H%x09%s",
-            f"{active_line}..{tip_sha}",
+            f"{active_tip}..{tip_sha}",
+            binary=True,
         )
-        tree_result = _git_result(root, "rev-parse", f"{active_line}^{{tree}}")
-        archive_tree_result = _git_result(root, "rev-parse", f"{tip_sha}^{{tree}}")
+        archive_only_merges = _archive_git_result(
+            root,
+            "log",
+            "--merges",
+            "--encoding=none",
+            "--format=%H%x09%s",
+            f"{active_tip}..{tip_sha}",
+            binary=True,
+        )
+        tree_result = _archive_git_result(
+            root, "rev-parse", f"{active_tip}^{{tree}}"
+        )
+        archive_tree_result = _archive_git_result(
+            root, "rev-parse", f"{tip_sha}^{{tree}}"
+        )
         active_tree = tree_result.stdout.strip()
         archive_tree = archive_tree_result.stdout.strip()
         # Keep rename detection disabled so a moved file remains an explicit
         # add/delete pair and reviewers can see both the old and new paths.
-        file_diff = _git_bytes_result(
+        file_diff = _archive_git_result(
             root,
             "diff",
             "--no-renames",
             "--name-status",
             "-z",
-            active_line,
+            active_tip,
             tip_sha,
+            binary=True,
         )
+        archive_only_merge_commits = _parse_commit_lines(
+            archive_only_merges.stdout
+        )
+        merge_resolution_differences = []
+        merge_resolution_results = {}
+        merge_tip_difference_results = {}
+        for merge_commit in archive_only_merge_commits:
+            merge_sha = merge_commit["sha"]
+            result = _archive_git_result(
+                root,
+                "show",
+                "--remerge-diff",
+                "--format=",
+                "--name-status",
+                "-z",
+                merge_sha,
+                binary=True,
+            )
+            merge_resolution_results[merge_sha] = result
+            tip_difference_result = _archive_git_result(
+                root,
+                "diff",
+                "--no-renames",
+                "--name-status",
+                "-z",
+                merge_sha,
+                tip_sha,
+                binary=True,
+            )
+            merge_tip_difference_results[merge_sha] = tip_difference_result
+            merge_resolution_differences.append({
+                "merge_commit": merge_commit,
+                "file_differences": _parse_file_differences(result.stdout),
+                "archive_tip_differences_since_merge": _parse_file_differences(
+                    tip_difference_result.stdout
+                ),
+            })
+        parsed_file_differences = _parse_file_differences(file_diff.stdout)
+        latest_archive_path_results = {}
+        for index, difference in enumerate(parsed_file_differences):
+            path = difference["path"]
+            if isinstance(path, str):
+                latest_archive_path_results[index] = _archive_git_result(
+                    root,
+                    "--literal-pathspecs",
+                    "log",
+                    "-1",
+                    "--format=%H",
+                    f"{active_tip}..{tip_sha}",
+                    "--",
+                    path,
+                )
         comparison_results = {
             "git cherry": cherry,
             "active-only log": active_only,
             "archive-only log": archive_only,
+            "archive-only merge log": archive_only_merges,
             "active tree": tree_result,
             "archive tree": archive_tree_result,
             "file diff": file_diff,
         }
-        failed_comparisons = [
-            name
-            for name, result in comparison_results.items()
-            if result.returncode != 0
-        ]
+        comparison_results.update({
+            f"latest archive commit for file difference {index}": result
+            for index, result in latest_archive_path_results.items()
+        })
+        comparison_results.update({
+            f"merge resolution diff {merge_sha}": result
+            for merge_sha, result in merge_resolution_results.items()
+        })
+        comparison_results.update({
+            f"archive tip diff since merge {merge_sha}": result
+            for merge_sha, result in merge_tip_difference_results.items()
+        })
+        failed_comparisons = []
+        for name, result in comparison_results.items():
+            if result.returncode == 0:
+                continue
+            startup_diagnostic = getattr(result, "startup_diagnostic", None)
+            if startup_diagnostic:
+                failed_comparisons.append(
+                    f"{name} (startup failure: {startup_diagnostic})"
+                )
+            else:
+                failed_comparisons.append(name)
         if failed_comparisons:
             report.update({
                 "classification": "unverifiable",
@@ -815,9 +1422,56 @@ def audit_archive_equivalents(
             })
             reports.append(report)
             continue
-        unrepresented = sum(
+        unrepresented_patch_commits = sum(
             item["patch_status"] == "unrepresented"
             for item in archive_commits
+        )
+        archive_side_differences = parsed_file_differences
+        path_attribution_is_available = (
+            len(latest_archive_path_results) == len(archive_side_differences)
+        )
+        latest_archive_commit_by_path = {
+            difference["path"]: latest_archive_path_results[index].stdout.strip()
+            for index, difference in enumerate(archive_side_differences)
+            if index in latest_archive_path_results
+            and latest_archive_path_results[index].stdout.strip()
+        }
+        if path_attribution_is_available:
+            # Keep patch-commit counts consistent with git cherry. For merge
+            # resolutions, however, count only the merge that last changed a
+            # path still differing at the archive tip.
+            unrepresented_merge_commits = []
+            for evidence in merge_resolution_differences:
+                merge_sha = evidence["merge_commit"]["sha"]
+                if any(
+                    latest_archive_commit_by_path.get(path) == merge_sha
+                    for difference in evidence["file_differences"]
+                    for path in [difference["path"]]
+                    if isinstance(path, str)
+                ):
+                    unrepresented_merge_commits.append(
+                        evidence["merge_commit"]
+                    )
+        else:
+            # Preserve the existing conservative merge totals for paths which
+            # cannot be passed back to Git as text pathspecs.
+            unrepresented_merge_commits = [
+                evidence["merge_commit"]
+                for evidence in merge_resolution_differences
+                if any(
+                    resolution_difference["path"] == archive_difference["path"]
+                    for resolution_difference in evidence["file_differences"]
+                    for archive_difference in archive_side_differences
+                    if not any(
+                        later_difference["path"] == archive_difference["path"]
+                        for later_difference in evidence[
+                            "archive_tip_differences_since_merge"
+                        ]
+                    )
+                )
+            ]
+        unrepresented = (
+            unrepresented_patch_commits + len(unrepresented_merge_commits)
         )
         reconciliation = reconciliation_by_tip.get((branch, tip_sha))
         reconciliation_is_active = False
@@ -848,8 +1502,16 @@ def audit_archive_equivalents(
             "commit_differences": {
                 "archive_commits": archive_commits,
                 "archive_only_commits": _parse_commit_lines(archive_only.stdout),
+                "archive_only_merge_commits": archive_only_merge_commits,
+                "latest_archive_commit_by_path": [
+                    {"path": path, "sha": sha}
+                    for path, sha in latest_archive_commit_by_path.items()
+                ],
+                "merge_resolution_differences": merge_resolution_differences,
+                "unrepresented_merge_commits": unrepresented_merge_commits,
                 "active_only_commits": _parse_commit_lines(active_only.stdout),
                 "unrepresented_commit_count": unrepresented,
+                "unrepresented_patch_commit_count": unrepresented_patch_commits,
                 "promoted_commit_count": sum(
                     item["patch_status"] == "already-promoted"
                     for item in archive_commits
@@ -860,7 +1522,7 @@ def audit_archive_equivalents(
                 "archive_tip_tree": archive_tree,
                 "same": bool(active_tree and active_tree == archive_tree),
             },
-            "file_differences": _parse_file_differences(file_diff.stdout),
+            "file_differences": parsed_file_differences,
         })
         if reconciliation_is_active and reconciliation:
             report["reconciliation_evidence"] = {
@@ -903,7 +1565,8 @@ def audit_archive_equivalents(
         "unverifiable": sorted(unverifiable),
         "duplicate_archive_reconciliation_rows": ledger.duplicate_archive_reconciliation_rows,
         "duplicate_decision_rows": ledger.duplicate_decision_rows,
-        "ok": not unrepresented and not unverifiable and not ambiguous_tips and not ambiguous_branches,
+        "decision_hold_conflicts": ledger.decision_hold_conflicts,
+        "ok": not unrepresented and not unverifiable and not ambiguous_tips and not ambiguous_branches and not ledger.decision_hold_conflicts,
     }
 
 
@@ -1005,8 +1668,31 @@ def main():
             report = validate_decision_ledger_structure(ledger_path)
             print(json.dumps(report, indent=2))
             return 0 if bool(report["ok"]) else 1
+        selected_base_sha = _verified_commit(root, args.base)
+        if selected_base_sha is None:
+            print(json.dumps({
+                "error": "selected base ref does not resolve to a commit",
+                "base": args.base,
+                "root": str(root),
+            }, indent=2))
+            return 1
         remote_refresh = refresh_remote(root)
-        branches = audit_branches(root, args.base, refresh=False)
+        merge_evidence = audit_merge_base_evidence(
+            root, args.base, remote_refresh
+        )
+        try:
+            branches = audit_branches(root, selected_base_sha, refresh=False)
+            merge_status_evidence = {
+                "status": "ok",
+                "classification": "merged-status-available",
+            }
+        except MergeStatusEvidenceError as exc:
+            branches = exc.branches
+            merge_status_evidence = {
+                "status": "unavailable",
+                "classification": "merged-status-unavailable",
+                "detail": exc.detail,
+            }
         current = next(
             (
                 str(branch["branch"])
@@ -1030,19 +1716,53 @@ def main():
             "root": str(root),
             "base": args.base,
             "remote_refresh": remote_refresh,
+            "merge_evidence": merge_evidence,
+            "merge_status_evidence": merge_status_evidence,
             "branches": branches,
             "decision_ledger": decision_ledger,
             "archive_equivalents": archive_equivalents,
             "naming_violations": audit_naming(root),
             "detritus_folders": audit_detritus(root),
         }
+    except CurrentBranchEvidenceError as exc:
+        report = {
+            "error": "current branch evidence could not be determined",
+            "root": str(root),
+            "base": args.base,
+            "remote_refresh": remote_refresh,
+            "merge_evidence": merge_evidence,
+            "branches": exc.branches,
+            "current_branch_evidence": {
+                "status": "unavailable",
+                "classification": "current-branch-evidence-unavailable",
+                "detail": exc.detail,
+            },
+        }
+        print(json.dumps(_json_safe(report), indent=2))
+        return 1
+    except LocalBranchEvidenceError as exc:
+        print(json.dumps({
+            "error": "local branch evidence could not be collected",
+            "root": str(root),
+            "base": args.base,
+            "remote_refresh": remote_refresh,
+            "merge_evidence": merge_evidence,
+            "local_branch_evidence": {
+                "status": "unavailable",
+                "classification": "local-branch-evidence-unavailable",
+                "detail": exc.detail,
+            },
+        }, indent=2))
+        return 1
     except (OSError, ValueError) as exc:
         print(json.dumps({"error": str(exc), "root": str(root)}))
         return 1
 
-    print(json.dumps(report, indent=2))
+    print(json.dumps(_json_safe(report), indent=2))
     return 0 if (
         remote_refresh["status"] == "ok"
+        and merge_evidence["status"] != "stale"
+        and merge_status_evidence["status"] == "ok"
         and bool(decision_ledger["ok"])
         and bool(archive_equivalents["ok"])
     ) else 1

@@ -27,6 +27,7 @@ import os
 import re
 import sys
 import importlib.util
+from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse, unquote
@@ -257,14 +258,25 @@ def check_plain_language_terms(path: Path, raw: str) -> list[Finding]:
 
 def find_html_files() -> list[Path]:
     files: list[Path] = []
-    for path in ROOT.rglob("*.html"):
-        rel = path.relative_to(ROOT)
-        parts = set(rel.parts)
-        if parts & SKIP_DIRS:
-            continue
-        if rel.as_posix().startswith("assets/templates/"):
-            continue
-        files.append(path)
+    def raise_scan_error(error: OSError) -> None:
+        # Skipped workspace directories are pruned before traversal.
+        # An unreadable public directory must fail validation.
+        raise error
+
+    for root, directories, filenames in os.walk(
+        ROOT, topdown=True, onerror=raise_scan_error
+    ):
+        directories[:] = sorted(
+            directory for directory in directories if directory not in SKIP_DIRS
+        )
+        for filename in sorted(filenames):
+            if not filename.endswith(".html"):
+                continue
+            path = Path(root) / filename
+            rel = path.relative_to(ROOT)
+            if rel.as_posix().startswith("assets/templates/"):
+                continue
+            files.append(path)
     return sorted(files)
 
 
@@ -298,6 +310,7 @@ def resolve_internal(href: str, source: Path) -> Path | None:
     return target
 
 
+@lru_cache(maxsize=None)
 def target_exists(target: Path) -> bool:
     if target.exists():
         if target.is_dir():

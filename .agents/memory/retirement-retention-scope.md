@@ -30,3 +30,31 @@ change the recorded extent of a violation.
 **How to apply:** Reuse immutable content reads, not commit-specific approval
 decisions. Compare cached and uncached results for removal/restoration,
 rewrite/restoration, invalid states, additions, and exact approved migrations.
+
+## Measure churn, not only stable ledgers
+
+Memory measurements for retirement review must include many distinct rewritten
+decision blobs and cold restorations; entry-limited reuse is not a bound on
+the retained ledger or the complete evidence report.
+
+**Why:** Stable histories share almost all parsed data and conceal lifetime
+growth from rewritten blobs. Evicting immutable reusable data is safe, but
+evicting retention anchors or per-commit findings would change the audit.
+
+**How to apply:** Compare peak memory and reread/revalidation counts together,
+and label Python-heap measurements separately from process RSS. Preserve
+full-output equivalence and read-only checks when changing cache limits.
+
+## Include ledgers wider than reuse limits
+
+Evaluate stable working sets larger than every reuse-cache limit, not just
+histories with many distinct blobs over time.
+
+**Why:** A sequential scan of a ledger wider than an LRU can evict its own
+entries before the next scan. Low-churn histories can therefore amplify reads,
+validation work, and parsed-object memory despite apparently effective limits.
+
+**How to apply:** Measure amplification against unique blobs/records while
+unrelated root trees change beyond snapshot-cache capacity. Keep a replaceable
+current-ledger working set separate from bounded historical reuse, and preserve
+per-tree path/mode checks and every commit-specific finding.

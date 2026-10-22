@@ -130,15 +130,64 @@ pair with `--hosted-branch origin=feature/example` (repeat as needed).
 the remote ref without fetching or pruning. For GitHub remotes it reads
 protection, deployment, and PR evidence through an installed, authenticated
 `gh` CLI; unavailable evidence remains an explicit hold.
+
+**Hosted argument encoding:** On POSIX, `--hosted-branch` / `--hosted-ref`
+values must be UTF-8 bytes, regardless of the active locale. The CLI recovers
+the original argument bytes using Python's filesystem encoding and decodes
+them as strict UTF-8 before parsing the provider/branch pair. Invalid UTF-8 is
+an argument error before any repository command, fetch, or hosted probe runs.
+Hosted subprocess arguments are sent as strict UTF-8 bytes on POSIX too.
+On systems with native Unicode arguments, the supplied Unicode is retained.
+No normalization, case folding, or replacement characters are applied:
+composed and decomposed spellings remain distinct refs. This policy does not
+change local path/other option decoding, local Git output decoding, environment
+variables, or Python's locale/UTF-8 mode.
+
+Branch protection is checked independently of deployment and PR evidence.
+If the branch response supplies `name`, it must be a nonempty string exactly
+matching the requested branch, including case and Unicode spelling (no
+normalization or full-ref aliases). A mismatched or malformed supplied name
+leaves protection `unknown`, even when `protected` is a boolean. An absent
+`name` is accepted based on the branch-specific endpoint, but `protected` must
+still be an explicit boolean. Unusable evidence retains the
+`hosted-protection-unknown` hold and its existing cleanup explanation; the
+response reason distinguishes invalid metadata from a mismatched branch.
+Other evidence checks still run.
 Deployment and PR history are read in 100-record pages, with a **10-page budget
 per history lookup**. Only a short or empty page within that budget confirms
 completion. A full tenth page exhausts the budget: the entire partial history
 is discarded, the affected evidence stays `unknown`, and its existing
 `hosted-deployment-evidence-unknown` or `hosted-pull-request-evidence-unknown`
 hold blocks deletion. The reason identifies the last page and the page limit.
-This also bounds providers that continually return full or repeated pages.
+If a full page repeats any earlier full page in the same lookup, the audit
+stops that lookup immediately, discards all partial history, and retains the
+same unknown-evidence hold. Its reason identifies the repeated page and the
+earlier matching page. Comparison ignores JSON object-key order, but preserves
+record order and values. Other evidence lookups and requested provider/ref
+pairs still run, with independent repeat detection for each lookup. The
+10-page budget remains the fallback bound for distinct full pages.
 A failed or malformed page likewise discards partial history and retains its
 unknown-evidence hold, with the failing page identified.
+Every PR must also supply `head.ref` and `head.repo.full_name` matching the
+requested branch and remote repository. Branch matching is exact (including
+case); GitHub repository matching ignores case. A different branch or fork,
+missing head metadata, or a null/deleted head repository makes the entire PR
+history `unknown`, not empty or merged. Its reason identifies the failing page
+and distinguishes missing/invalid metadata from a mismatched association.
+The existing `hosted-pull-request-evidence-unknown` hold and explanation remain
+unchanged. These association checks are separate from required `state` and
+`merged_at` classification fields.
+Every deployment must supply a nonempty `ref` exactly matching the requested
+branch (including case). A different branch, tag/full-ref spelling, or SHA-only
+ref is not branch association proof. Missing/invalid refs make the entire
+deployment history `unknown`; unrelated refs do likewise, rather than being
+silently discarded. A `sha` may be absent when the branch ref matches; if
+present, it must be a full 40- or 64-character hexadecimal object ID. Historical
+deployment SHAs need not equal the current branch tip, since a branch can
+advance after deployment and a commit can belong to multiple branches.
+Any unusable record discards partial history, identifies the failing page,
+and retains the unchanged `hosted-deployment-evidence-unknown` hold and
+explanation.
 Run hosted inspection separately from
 `--check-delete`; combining those options is rejected before fetching or
 preparing deletion commands.
@@ -160,6 +209,19 @@ history lookup and requested provider/ref pair; they are not shared across the
 audit.
 This limit does not apply to local Git checks or the separate opt-in `--fetch`.
 
+Each hosted command also has a **4 MiB (4,194,304-byte) combined stdout/stderr
+limit**, measured before decoding. Both pipes are drained concurrently in
+bounded chunks, without an unbounded memory or temporary-file capture. Output
+exactly at the limit remains usable; exceeding it stops the command and its
+helper processes and discards all its output, even if a valid response appeared
+before the excess. An oversized remote probe is `inaccessible` with an unknown
+ref and the existing `hosted-remote-inaccessible` deletion hold. An oversized
+GitHub response leaves the affected evidence `unknown` with its existing
+unknown-evidence hold; any earlier pages of that history are also discarded.
+The reason identifies the byte limit and discarded output. Other evidence
+lookups and provider/ref pairs still run, each with its own output budget.
+This byte limit does not apply to local Git checks or opt-in `--fetch`.
+
 If a hosted process cannot start (`OSError`, including a missing executable or
 permission denied), the same holds apply: a remote probe is `inaccessible` with
 an unknown ref, while the affected GitHub API evidence stays `unknown`. The
@@ -169,6 +231,23 @@ history pages discard partial evidence rather than report empty or complete
 history. Later evidence lookups and provider/ref pairs still run, with no deletion
 approval. Local Git precondition and opt-in fetch failures still stop the audit
 visibly; they are not converted into hosted holds.
+
+Hosted stdout and stderr are decoded as **strict UTF-8**, independently of the
+system locale (including an ASCII `LC_ALL=C` locale). No locale fallback,
+Unicode normalization, or replacement decoding is applied. This encoding policy
+does not change local Git checks, opt-in fetch, or operating-system decoding of
+command-line arguments.
+
+If hosted stdout or stderr cannot be decoded (`UnicodeDecodeError`), the remote
+probe becomes `inaccessible` with an unknown ref and a
+`hosted-remote-inaccessible` hold, or the affected GitHub API evidence stays
+`unknown` with its corresponding unknown-evidence hold. The reason explicitly
+identifies the decoding failure. Unusable output is discarded, including all
+previous pages of an affected history lookup; it is never repaired with
+replacement characters or treated as a missing branch, empty history, or deletion
+approval. Other evidence lookups and provider/ref pairs still run. Decoding
+failures in local Git checks or opt-in fetch remain visible failures, not hosted
+holds.
 
 ### 3. Classify every branch
 
@@ -405,8 +484,11 @@ unblocked entries are not deletion approvals and are omitted from this plan.
 | Detached HEAD | Audit may continue, but no branch deletion may be recommended until the active work is identified |
 | PR lookup unavailable | Put affected branches in `review`; never infer abandonment |
 | Hosted command times out | Preserve an inaccessible or unknown-evidence hold with a timeout reason; continue other requested checks, never approve deletion |
+| Hosted stdout/stderr exceeds 4 MiB combined | Stop the command, discard output and affected partial history, retain its inaccessible or unknown-evidence hold with a byte-limit reason, and continue other requested checks |
 | Hosted history reaches 10 full pages | Discard partial history, retain its unknown-evidence deletion hold with the page-budget reason, and continue other requested checks |
+| Hosted histories exceed the shared 16 MiB retained-object budget | Discard the affected partial history, retain its unknown-evidence deletion hold with the memory-budget reason, and continue later evidence and provider/ref checks; previously complete histories remain intact |
 | Hosted command cannot start | Preserve an inaccessible or unknown-evidence hold with the operating-system error; continue other lookups and provider/ref pairs, never approve deletion |
+| Hosted stdout or stderr cannot be decoded | Discard unusable output and partial history, preserve an inaccessible or unknown-evidence hold with a decoding reason, and continue other requested checks; never approve deletion |
 | Unique unmerged commits | Preserve in `review` unless the owner explicitly abandons them |
 | Rename affects public URL | Require redirect or transition plan before execution |
 | Approval is broad or ambiguous | Ask for exact approved line items |
@@ -414,6 +496,34 @@ unblocked entries are not deletion approvals and are omitted from this plan.
 ---
 
 ## Resources
+
+Hosted-history memory is accounted conservatively from parsed Python JSON
+objects (including nested values), not just response bytes. The 16 MiB budget
+is shared across deployment and PR histories for every provider/ref in one
+audit. Only complete histories consume it; failed histories release their
+pending allocation. Full-page repeat detection retains fixed-size SHA-256
+digests, not duplicate JSON strings. This is a retained-history budget, not a
+whole-process RSS limit: parsing one response, command buffers, report metadata,
+and JSON serialization still require temporary memory.
+
+Provider-free `tracemalloc` regressions in `tests/test_audit_repo.py` generate
+distinct ~3.9 MiB pages lazily. They cap incremental traced peak at 40 MiB for
+the default budget and for several retained provider/ref histories. A separate
+64 MiB-budget case exercises all ten full pages with peak below 64 MiB, then
+discards the incomplete history. These fixture-specific peaks are not universal
+limits for every possible JSON shape. Retirement-ledger budgets are independent.
+
+Dense ~4 MiB fixtures separately measure JSON parsing, retained-object accounting,
+and streaming fingerprinting. Tiny nested containers have a 180 MiB traced parse
+peak bound; nested escaped international text has a 64 MiB bound. Both expand
+beyond the production retention budget and must leave history unknown. A
+test-only larger retention allowance lets each parsed tree reach fingerprinting:
+incremental hashing peak must stay below 1 MiB, while default-budget rejection
+must stay below 64 KiB. Fixture construction and previously parsed trees are
+outside those phase-specific traces. These are practical CPython fixture bounds,
+not RSS caps or promises about all valid JSON. Parsing, history-accounting, and
+fingerprinting `MemoryError`/`RecursionError` failures discard affected evidence,
+preserve unknown-evidence deletion holds, and allow later hosted checks to run.
 
 - `scripts/audit-repo.py` — deterministic, no-fetch-by-default JSON audit of
   branches, naming violations, and nested detritus.

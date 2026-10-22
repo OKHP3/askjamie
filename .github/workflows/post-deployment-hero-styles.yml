@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: post-deployment-hero-styles
@@ -30,6 +31,58 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Find the successful validation run for this revision
+        id: validated-release
+        env:
+          SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+          VALIDATION_RUN_ID: ${{ github.event.workflow_run.id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_id="$VALIDATION_RUN_ID"
+          if [ -z "$run_id" ]; then
+            run_id="$(gh run list \
+              --workflow validate.yml \
+              --commit "$SOURCE_REVISION" \
+              --event push \
+              --status success \
+              --json databaseId,headSha \
+              --jq '.[0].databaseId // empty')"
+          fi
+          if [ -z "$run_id" ]; then
+            echo "No successful Site Validation run found for $SOURCE_REVISION." >&2
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download the exact validated Pages artifact
+        id: download-validated-release
+        uses: actions/download-artifact@v8
+        with:
+          name: pages-site-${{ github.event.workflow_run.head_sha || github.sha }}
+          run-id: ${{ steps.validated-release.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .validated-pages
+
+      - name: Record validated artifact retrieval failure
+        if: ${{ always() && (steps.validated-release.outcome == 'failure' || steps.download-validated-release.outcome == 'failure') }}
+        env:
+          SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+          VALIDATION_RUN_ID: ${{ steps.validated-release.outputs.run_id }}
+        run: |
+          mkdir -p artifacts/deployed-hero-style-check
+          {
+            echo "# Deployed hero-style check unavailable"
+            echo
+            echo "The validated Pages artifact for source revision \`$SOURCE_REVISION\` is unavailable."
+            if [ -n "$VALIDATION_RUN_ID" ]; then
+              echo "The matching validation run was [\`$VALIDATION_RUN_ID\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$VALIDATION_RUN_ID), but its exact artifact could not be retrieved."
+            else
+              echo "No successful validation run for this revision could be located."
+            fi
+            echo "Validated artifacts are retained for a limited time; this artifact may have expired or otherwise become unavailable."
+            echo "No artifact from another revision was substituted. Rerun Site Validation for this revision, then rerun this check."
+          } > artifacts/deployed-hero-style-check/report.md
+
       - name: Set up Node
         uses: actions/setup-node@v7.1.0
         with:
@@ -41,7 +94,7 @@ jobs:
           npm ci --no-audit --no-fund --prefer-offline
           npx playwright install --with-deps chromium
 
-      - name: Test route-specific evidence and failure handling
+      - name: Test route- and viewport-specific evidence and failure handling
         run: node --test tests/test_deployed_hero_styles.mjs
 
       - name: Check published hero styles
@@ -49,7 +102,10 @@ jobs:
         env:
           SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
           DEPLOYMENT_RUN_URL: ${{ github.event.workflow_run.html_url || github.server_url }}
-        run: node scripts/check-deployed-hero-styles.mjs --output=artifacts/deployed-hero-style-check
+        run: >-
+          node scripts/check-deployed-hero-styles.mjs
+          --expected-css=.validated-pages/assets/css/critical-hero.css
+          --output=artifacts/deployed-hero-style-check
 
       - name: Add route-specific receipt to the run summary
         if: always()

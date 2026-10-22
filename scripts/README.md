@@ -14,6 +14,7 @@ cannot be mistaken for current pipeline commands.
 | `build-search-index.py` | active | Rebuild search and then refresh the universe map |
 | `sync-universe-map.py` | active | Generate/check the universe page and public provenance from the installed skill |
 | `cache-bust.py` | active | Generate/check LF-normalized shared asset hashes, deferred app loading, and the brand import map |
+| `generate-csp.py` | active | Regenerate CSP hashes for generated inline import maps |
 | `check-links.py` | active | Check internal and external links |
 | `prepare-pages-artifact.py` | active | Build the allowlisted static release artifact |
 | `check-deployed-pages.py` | active | Compare four served files with the exact deployed artifact and check three representative exclusions |
@@ -26,7 +27,7 @@ cannot be mistaken for current pipeline commands.
 | `post-merge.sh` | active | Post-merge rebuild and validation hook |
 | `capture-visual-baseline.mjs` | active | Capture the dated visual reference set |
 | `check-public-gpt-links.py` | active | Opt-in reachability probe for public AJ01–AJ03 destinations |
-| `lighthouse-routes.mjs` | active | Run four-route desktop/mobile passes with optional repeated BrandGuard mobile samples |
+| `lighthouse-routes.mjs` | active | Run four-route desktop/mobile passes, optional complete desktop repeats, or repeated BrandGuard mobile samples |
 
 The following scripts are **reference-only**. They may still be useful for a
 deliberately scoped maintenance or migration task, but they are not part of
@@ -69,7 +70,8 @@ JavaScript smoke suites; they do not replace human assistive-technology tests.
 
 After changing a shared CSS/JS asset, run `python3 scripts/cache-bust.py`,
 then `python3 scripts/generate-csp.py` to refresh the inline import-map hash.
-CI runs `python3 scripts/cache-bust.py --check` without writing files.
+The post-merge hook runs both generators before its audits, then verifies
+freshness; CI runs `python3 scripts/cache-bust.py --check` without writing files.
 The generator owns `AUTOGEN:SHARED-ASSETS` references and the
 `AUTOGEN:BRAND-IMPORT-MAP` block in tracked production pages and templates.
 It preserves shared asset bytes and routes; SHA-256 prefixes normalize CRLF/LF.

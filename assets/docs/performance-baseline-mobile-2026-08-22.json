@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-22",
+  "tool": "Lighthouse 12.8.2",
+  "environment": "Local static server via Playwright Chromium, simulated Lighthouse lab run",
+  "property": "https://askjamie.bot",
+  "pages": {
+    "homepage": {
+      "path": "/",
+      "performance": 87,
+      "accessibility": 100,
+      "bestPractices": 100,
+      "seo": 100,
+      "lcpMs": 3757,
+      "cls": 0.033632,
+      "maxPotentialFidMs": 16,
+      "tbtMs": 0,
+      "fcpMs": 2100,
+      "lcpElement": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > p.hero-tagline"
+    },
+    "brandguard": {
+      "path": "/lens-system/okhp3-brandguard/",
+      "performance": 75,
+      "accessibility": 100,
+      "bestPractices": 100,
+      "seo": 100,
+      "lcpMs": 6611,
+      "cls": 0.002979,
+      "maxPotentialFidMs": 89,
+      "tbtMs": 40,
+      "fcpMs": 2300,
+      "lcpElement": "div.container > div.askjamie-hero-grid > div.askjamie-hero-copy > h1#hero-title"
+    },
+    "universe": {
+      "path": "/universe/",
+      "performance": 44,
+      "accessibility": 100,
+      "bestPractices": 100,
+      "seo": 100,
+      "lcpMs": 6156,
+      "cls": 0.492872,
+      "maxPotentialFidMs": 392,
+      "tbtMs": 428,
+      "fcpMs": 2300,
+      "lcpElement": "div.askjamie-hero-grid > div.askjamie-hero-copy > div.askjamie-hero-content > p.askjamie-hero-tagline"
+    },
+    "search": {
+      "path": "/search/",
+      "performance": 75,
+      "accessibility": 100,
+      "bestPractices": 100,
+      "seo": 100,
+      "lcpMs": 6456,
+      "cls": 0.068718,
+      "maxPotentialFidMs": 49,
+      "tbtMs": 0,
+      "fcpMs": 2000,
+      "lcpElement": "main#main > div.container > section.search-hero > p.search-hero-lede"
+    }
+  },
+  "thresholds": {
+    "performanceBelow": 90,
+    "clsAbove": 0.1,
+    "lcpAboveMs": 2500
+  },
+  "notes": [
+    "Lighthouse lab reports max potential FID; field INP is not available in this run.",
+    "The four JSON reports in lighthouse-baseline-2026-08-22/ are the detailed source artifacts."
+  ]
+}

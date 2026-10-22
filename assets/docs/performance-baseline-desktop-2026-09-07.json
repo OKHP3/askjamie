@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "referenceType": "desktop",
   "label": "Historical desktop comparison reference; owner approval not recorded",
   "capturedAt": "2026-09-07",
@@ -69,7 +69,12 @@
   },
   "environment": "Local or supplied static server, desktop preset",
   "property": "http://127.0.0.1:5000",
+  "targetOrigin": "http://127.0.0.1:5000",
   "sourceRun": "assets/audit/lighthouse-2026-09-07-task118-desktop/",
+  "sourceRevision": null,
+  "sourceWorkingTreeClean": null,
+  "sourceRevisionStatus": "not-recorded",
+  "sourceRevisionNote": "The September 7 capture did not preserve the Git revision or working-tree state; neither can be recovered from the retained Lighthouse reports.",
   "approval": {
     "status": "not-recorded",
     "approvedAt": null,

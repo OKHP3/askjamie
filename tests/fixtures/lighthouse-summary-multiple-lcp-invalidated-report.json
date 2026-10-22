@@ -1,0 +1,13 @@
+{
+  "audits": {
+    "metrics": {
+      "details": {
+        "items": [
+          {"lcpInvalidated": false},
+          {"lcpInvalidated": true},
+          {"lcpInvalidated": "false"}
+        ]
+      }
+    }
+  }
+}

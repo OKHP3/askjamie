@@ -227,6 +227,14 @@ These focused checks do not establish every width or font-loading timing.
 Native 200% browser zoom is incomplete. Headless shortcuts, viewport resizing
 and CSS scaling do not establish native zoom or human spoken output.
 
+The October 22, 2026 preserved Replit candidate expands responsive QA to 28
+viewports and 756 route/viewport rows across the same 27 content routes.
+It adds narrow-width font boundaries, forced-color and theme-outage checks,
+keyboard and touch navigation checks, and retained per-destination evidence.
+The Costco subtitle reserves its measured two fallback lines at exactly 350px.
+This inventory describes configured coverage. Use the current run receipt for
+results; it does not establish other engines, native zoom or human speech.
+
 ### Agent skills
 
 The `.agents/skills/` directory holds Agent Skills for AI assistants. Not all

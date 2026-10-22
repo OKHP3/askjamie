@@ -40,6 +40,31 @@ The current intended support target for this check is Chromium only. Firefox
 and WebKit checks are deferred until a separate reviewed compatibility decision
 explicitly names any additional target engines.
 
+The fixture records a separate evidence file for each executed engine. Each
+file identifies the Playwright and browser versions and records the normal,
+never-started, and late-starting request outcomes. If a later reviewed decision
+names another engine, add only those named engines to the reviewed CI install
+and execution lists, run this same fixture independently for each one, and
+retain one engine-and-version-specific evidence file per run. Do not reuse
+Chromium results as evidence for another engine.
+
+**Reviewed automated QA browser engines:** Chromium
+
+## Browser target review — 2026-10-18
+
+The site is a public-facing portfolio, but the project does not publish a
+general supported-browser matrix. The Safari 17.4+ statement in the README is
+Mermaid 12's upstream runtime baseline, not a site-wide support commitment.
+Safari/VoiceOver and Firefox/NVDA appear in the accessibility roadmap and audit
+as owner-operated sessions; the recorded sessions were not run, so they provide
+no browser-compatibility result.
+
+Therefore, Chromium remains the only target engine for the automated
+lazy-image compatibility check. This decision does not claim that the whole
+site is supported only in Chromium, nor does Chromium evidence establish
+Firefox or WebKit compatibility. Do not add those engines to this check or make
+broader support claims without another reviewed decision.
+
 Dependabot groups minor and patch updates by ecosystem. Major updates remain
 individual PRs. Five open version PRs per ecosystem allow major proposals to
 coexist with a maintenance group. There are no major-version ignore rules.

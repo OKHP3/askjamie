@@ -54,6 +54,48 @@ body.askjamie-main a {
   text-decoration: none;
 }
 
+.askjamie-main #universe-theme-status[hidden] {
+  display: none !important;
+}
+
+.askjamie-main .universe-theme-status {
+  margin: 1rem auto;
+  padding: 0.75rem 1rem;
+  border: 2px solid #2e2b29;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #2e2b29;
+  font-weight: 600;
+}
+
+@media (forced-colors: active) {
+  .askjamie-main .universe-theme-status {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  /* Keep the static page-map fallback usable before deferred theme CSS runs. */
+  .askjamie-main .universe-map-generated .universe-map-group {
+    background-color: Canvas;
+    border: 1px solid CanvasText;
+  }
+  .askjamie-main .universe-map-generated .universe-map-group > summary {
+    color: CanvasText;
+  }
+  .askjamie-main .universe-map-generated .universe-map-group a[data-universe-node] {
+    color: LinkText;
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+    text-underline-offset: 0.15em;
+  }
+  .askjamie-main .universe-map-generated .universe-map-group > summary:focus-visible,
+  .askjamie-main .universe-map-generated .universe-map-group a[data-universe-node]:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 3px;
+  }
+}
+
 .askjamie-main .site-header {
   position: sticky;
   top: 0;
@@ -394,6 +436,10 @@ body.askjamie-main a {
   font-weight: 600;
 }
 
+.askjamie-main [data-transition-open][hidden] {
+  display: none;
+}
+
 .askjamie-main .btn-primary {
   background: linear-gradient(135deg, #2d6f7e, #3c8ea1);
   color: #f9fafb;
@@ -466,6 +512,17 @@ body.askjamie-main a {
 
   .askjamie-main .askjamie-hero-visual {
     justify-content: flex-end;
+  }
+}
+
+@media (max-width: 768px) {
+  .askjamie-main .primary-nav ul { align-items: stretch; }
+  .askjamie-main .primary-nav li { width: 100%; }
+  .askjamie-main .primary-nav a {
+    display: block;
+    width: 100%;
+    line-height: 1.5rem;
+    white-space: nowrap;
   }
 }
 
@@ -549,6 +606,39 @@ body.askjamie-main a {
 }
 
 @media (max-width: 340px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-actions,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-actions {
+    align-content: flex-start;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-actions > a,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-hero-copy .hero-actions > a {
+    display: inline-flex;
+    flex: 0 0 100%;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 100%;
+    height: 6.5rem;
+    min-height: 6.5rem;
+    padding: 0.7rem 1.4rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .askjamie-main:is(.askjamie-brandguard-page, .brandguard-lvmh-page, .brandguard-bfs-page)
+    .askjamie-hero-copy .hero-actions > a:focus-visible {
+    outline: 3px solid var(--color-accent, #2d6f7e);
+    outline-offset: 3px;
+    scroll-margin-block: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
   .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label,
   .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-label {
     flex: 1 1 100%;
@@ -559,6 +649,55 @@ body.askjamie-main a {
 
   .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-separator,
   .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-separator {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) and (max-width: 340px) {
+  .askjamie-main:is(.askjamie-brandguard-page, .brandguard-lvmh-page, .brandguard-bfs-page)
+    .askjamie-hero-copy .hero-actions > a:focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: 3px;
+    forced-color-adjust: auto;
+  }
+}
+
+@media (min-width: 341px) and (max-width: 370px) {
+  /* Reserve the fallback breadcrumb's extra line so font loading cannot move the hero. */
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb {
+    min-height: 14.6rem;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-label,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-label {
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .askjamie-main.askjamie-brandguard-page .askjamie-breadcrumb .breadcrumb-separator,
+  .askjamie-main:has(.brandguard-demo-notice) .askjamie-breadcrumb .breadcrumb-separator {
+    display: none;
+  }
+}
+
+/* Keep longer BrandGuard breadcrumb labels inside the viewport at the
+   400px/401px edges when only system fallback fonts are available. */
+@media (min-width: 400px) and (max-width: 401px) {
+  .askjamie-main[class*="brandguard"] .askjamie-breadcrumb {
+    min-height: 14.54rem;
+  }
+
+  .askjamie-main[class*="brandguard"] .askjamie-breadcrumb .breadcrumb-label {
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .askjamie-main[class*="brandguard"] .askjamie-breadcrumb .breadcrumb-separator {
     display: none;
   }
 }

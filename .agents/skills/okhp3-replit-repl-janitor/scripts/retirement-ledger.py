@@ -5,13 +5,29 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
+from collections import OrderedDict
 from datetime import date
-from functools import lru_cache
 from pathlib import Path
+from types import SimpleNamespace
 
 
 class LedgerError(ValueError):
     """A retained retirement decision is not safe to rely on."""
+
+
+class RetentionHoldsError(LedgerError):
+    """Carry only safe identifiers from a failed migration retention proof."""
+
+    def __init__(self, holds):
+        super().__init__("retirement ledger: migration history has retention holds")
+        # Refs and field names come from validated records. Do not forward
+        # historical paths, free text, or future history-report fields.
+        self.retention_holds = [
+            {key: hold[key] for key in ("commit", "reason", "ref", "changed_fields")
+             if key in hold}
+            for hold in holds
+        ]
 
 
 def safe_text(value, field):
@@ -135,7 +151,7 @@ def validate_ledger(root, policy_path, before, approvals=(), *,
             raise LedgerError("retirement ledger: migration proof requires baseline commit, baseline policy, and exact migration approvals")
         provenance = audit_history(root, baseline_policy, baseline, migrations)
         if not provenance["passed"]:
-            raise LedgerError("retirement ledger: migration history has retention holds")
+            raise RetentionHoldsError(provenance["holds"])
         if provenance["policy_file"] != policy_file.relative_to(root).as_posix():
             raise LedgerError("retirement ledger: migration proof ends at a different policy")
         historical_policy, _, _ = tree_ledger(root, provenance["head"], provenance["policy_file"])
@@ -280,27 +296,274 @@ def tree_ledger(root, commit, policy_path, *, blobs=None, validated_records=None
     return policy, records, paths
 
 
+HISTORY_REUSE_BYTES = 4 * 1024 * 1024
+
+
+def history_children(obj):
+    """Walk immutable payload edges without retaining a second edge graph."""
+    if isinstance(obj, dict):
+        yield from obj.keys()
+        yield from obj.values()
+    elif isinstance(obj, (tuple, list, set, frozenset)):
+        yield from obj
+
+
+class HistoryObjectNode:
+    __slots__ = ("obj", "references")
+
+    def __init__(self, obj):
+        self.obj = obj
+        self.references = 0
+
+
+class HistoryReuseBudget:
+    """Shared identity-weighted LRU budget, never a validation/record-size limit.
+
+    Charge getsizeof for keys and reachable built-in payload containers/scalars.
+    Shared objects are charged once across all historical caches. Bookkeeping,
+    active working sets and required report evidence are not a process RAM cap.
+    """
+
+    def __init__(self, maxbytes=HISTORY_REUSE_BYTES):
+        self.maxbytes = maxbytes
+        self.used_bytes = 0
+        self.entries = OrderedDict()
+        self.objects = {}
+
+    def graph(self, key, value):
+        objects = {}
+        pending = [key, value]
+        weight = 0
+        while pending:
+            obj = pending.pop()
+            identity = id(obj)
+            if identity in objects:
+                continue
+            size = sys.getsizeof(obj)
+            objects[identity] = obj
+            weight += size
+            if weight > self.maxbytes:
+                return None
+            pending.extend(history_children(obj))
+        return objects
+
+    def touch(self, cache, key):
+        self.entries.move_to_end((cache.identity, key))
+
+    def remove(self, cache, key):
+        _, identities = self.entries.pop((cache.identity, key))
+        pending = list(identities)
+        while pending:
+            identity = pending.pop()
+            node = self.objects[identity]
+            node.references -= 1
+            if node.references == 0:
+                self.used_bytes -= sys.getsizeof(node.obj)
+                pending.extend(map(id, history_children(node.obj)))
+                del self.objects[identity]
+
+    def admit(self, cache, key, value):
+        objects = self.graph(key, value)
+        # Do not flush useful smaller entries for an object that cannot fit.
+        if objects is None:
+            return False
+        while True:
+            extra = sum(sys.getsizeof(obj) for identity, obj in objects.items()
+                        if identity not in self.objects)
+            if self.used_bytes + extra <= self.maxbytes:
+                break
+            _, (old_cache, _) = next(iter(self.entries.items()))
+            old_cache.popitem(last=False)
+        # Payloads already retain their edges. Count them once per live unique
+        # container, but do not duplicate them as tuples of allocated id ints.
+        # JSON and ledger states are immutable and acyclic. References count
+        # cache roots plus edges from live unique containers, including repeats.
+        new_nodes = []
+        for identity, obj in objects.items():
+            if identity in self.objects:
+                continue
+            node = self.objects[identity] = HistoryObjectNode(obj)
+            self.used_bytes += sys.getsizeof(obj)
+            new_nodes.append(node)
+        for node in new_nodes:
+            for child in history_children(node.obj):
+                self.objects[id(child)].references += 1
+        roots = (id(key), id(value))
+        for identity in roots:
+            self.objects[identity].references += 1
+        self.entries[(cache.identity, key)] = (cache, roots)
+        return True
+
+
+class HistoryObjectCache(OrderedDict):
+    """Count- and optionally byte-bounded LRU, separate from audit evidence."""
+
+    def __init__(self, maxsize, *, budget=None):
+        super().__init__()
+        self.maxsize = maxsize
+        self.budget = budget
+        self.identity = id(self)
+
+    def touch(self, key):
+        self.move_to_end(key)
+        if self.budget is not None:
+            self.budget.touch(self, key)
+
+    def __contains__(self, key):
+        present = super().__contains__(key)
+        if present:
+            self.touch(key)
+        return present
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.touch(key)
+        return value
+
+    def __setitem__(self, key, value):
+        if super().__contains__(key):
+            del self[key]
+        if self.maxsize <= 0:
+            return
+        if self.budget is not None and not self.budget.admit(self, key, value):
+            return
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > self.maxsize:
+            self.popitem(last=False)
+
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        if self.budget is not None:
+            self.budget.remove(self, key)
+
+    def popitem(self, last=True):
+        key = next(reversed(self) if last else iter(self))
+        value = OrderedDict.__getitem__(self, key)
+        del self[key]
+        return key, value
+
+    def clear(self):
+        while self:
+            self.popitem()
+
+    def add(self, key):
+        self[key] = True
+
+
+class HistoryStateCache:
+    """Callable snapshot cache using the same budget as parsed blobs."""
+
+    def __init__(self, read, budget, maxsize=32):
+        self.read = read
+        self.cache = HistoryObjectCache(maxsize, budget=budget)
+        self.hits = self.misses = 0
+
+    def __call__(self, tree, policy_path):
+        key = (tree, policy_path)
+        if key in self.cache:
+            self.hits += 1
+            return self.cache[key]
+        self.misses += 1
+        state = self.read(tree, policy_path)
+        self.cache[key] = state
+        return state
+
+    def cache_info(self):
+        return SimpleNamespace(hits=self.hits, misses=self.misses,
+                               maxsize=self.cache.maxsize, currsize=len(self.cache))
+
+
+class HistoryScanCache:
+    """Reuse successful sets and one failed prefix without scan self-eviction."""
+
+    def __init__(self, previous, history, *, older=None, failed=None, validation=False):
+        self.previous = previous
+        self.older = older if older is not None else {}
+        self.failed = failed if failed is not None else {}
+        self.history = history
+        self.validation = validation
+        self.current = {}
+
+    def __contains__(self, key):
+        for working_set in (self.previous, self.older, self.failed):
+            if key in working_set:
+                self.current[key] = working_set[key]
+                return True
+        if key in self.history:
+            self.current[key] = True if self.validation else self.history[key]
+            return True
+        return False
+
+    def __getitem__(self, key):
+        return self.current[key]
+
+    def __setitem__(self, key, value):
+        self.current[key] = value
+        self.history[key] = value
+
+    def add(self, key):
+        self.current[key] = True
+        self.history.add(key)
+
+
 class HistoryLedgerReader:
     """Audit-local immutable-object reuse; never cache mutable refs or files."""
 
     def __init__(self, root):
         self.root = root
-        self.blobs = {}
-        self.validated_records = set()
+        self.reuse_budget = HistoryReuseBudget()
+        self.blobs = HistoryObjectCache(maxsize=128, budget=self.reuse_budget)
+        self.validated_records = HistoryObjectCache(maxsize=1024, budget=self.reuse_budget)
+        self.current_blobs = {}
+        self.current_validations = {}
+        self.previous_blobs = {}
+        self.previous_validations = {}
+        # One failed scan's immutable prefix, separate from valid snapshots.
+        # Replace rather than accumulate it; failed records are never marked
+        # validated, and every new tree still runs path/mode/ledger checks.
+        self.failed_blobs = {}
+        self.failed_validations = {}
         # Bound the number of full ledger snapshots for unrelated tree changes.
-        # Blob identities still share parsed records across evicted snapshots.
-        self.state = lru_cache(maxsize=32)(self._state)
+        # The two most recent distinct valid object sets share objects even
+        # when wider than the LRUs, including alternating A/B ledger scans.
+        # Cold objects may be read/validated again; retention anchors and holds
+        # are separate. Working sets are replaced, not accumulated.
+        # Shared byte accounting covers snapshot references as well as blobs.
+        # Working sets/retained evidence remain exempt, even above the budget.
+        self.state = HistoryStateCache(self._state, self.reuse_budget)
 
     def _state(self, tree, policy_path):
+        blobs = HistoryScanCache(
+            self.current_blobs, self.blobs, older=self.previous_blobs,
+            failed=self.failed_blobs,
+        )
+        validations = HistoryScanCache(
+            self.current_validations, self.validated_records, validation=True,
+            older=self.previous_validations,
+            failed=self.failed_validations,
+        )
         try:
-            return tree_ledger(
-                self.root, tree, policy_path, blobs=self.blobs,
-                validated_records=self.validated_records,
+            state = tree_ledger(
+                self.root, tree, policy_path, blobs=blobs,
+                validated_records=validations,
             )
         except LedgerError as exc:
+            self.failed_blobs = blobs.current
+            self.failed_validations = validations.current
             # Invalid immutable trees can repeat too. Replay the sanitized error
             # at every commit rather than dropping any per-commit hold.
             return str(exc)
+        # Unrelated root edits and policy-only migrations must not replace the
+        # second decision set with another copy of the first. Record OIDs
+        # identify the set independently of policy/path changes; path, mode
+        # and policy checks still run in tree_ledger for every root.
+        if validations.current.keys() != self.current_validations.keys():
+            self.previous_blobs = self.current_blobs
+            self.previous_validations = self.current_validations
+        self.current_blobs = blobs.current
+        self.current_validations = validations.current
+        return state
 
     def read(self, tree, policy_path):
         state = self.state(tree, policy_path)
