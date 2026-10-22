@@ -6522,6 +6522,11 @@ async function runBrandGuardMobileNavigationKeyboard(page, route) {
         navElement?.hasAttribute('inert')
       ),
       focus_is_toggle: document.activeElement === toggleElement,
+      focused_element: {
+        tag: document.activeElement?.tagName ?? null,
+        label: document.activeElement?.getAttribute('aria-label') ??
+          document.activeElement?.textContent?.trim().slice(0, 120) ?? null,
+      },
       focus_is_first_link: document.activeElement === navElement?.querySelector('a[href]'),
     };
   });

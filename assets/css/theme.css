@@ -8819,3 +8819,36 @@ html[data-theme="light"] .askjamie-main .site-footer h4 { color: var(--color-fg)
     min-block-size: 7lh;
   }
 }
+
+/* Preserve line counts observed in the October 22 Mac font review. */
+@media (min-width: 355px) and (max-width: 358px) {
+  .askjamie-main[class*="brandguard"] .capability-transition > p:nth-of-type(2) {
+    min-height: 7lh;
+  }
+}
+@media (min-width: 355px) and (max-width: 355px) {
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-subtitle {
+    min-height: 2lh;
+  }
+}
+@media (min-width: 361px) and (max-width: 364px) {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 3lh;
+  }
+}
+@media (min-width: 371px) and (max-width: 371px) {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy .hero-tagline {
+    min-height: 5lh;
+  }
+}
+@media (min-width: 900px) and (max-width: 900px) {
+  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-tagline {
+    min-height: 4lh;
+  }
+}
+@media (min-width: 356px) and (max-width: 356px),
+       (min-width: 401px) and (max-width: 401px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+}

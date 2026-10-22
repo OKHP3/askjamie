@@ -773,3 +773,77 @@ body.askjamie-main a {
 .askjamie-main .askjamie-hero--universe .askjamie-hero-copy .btn-quiet {
   min-inline-size: min(14rem, 100%);
 }
+
+/* Preserve line counts observed in the October 22 Mac font review. */
+@media (min-width: 355px) and (max-width: 358px) {
+  .askjamie-main[class*="brandguard"] .capability-transition > p:nth-of-type(2) {
+    min-height: 7lh;
+  }
+}
+@media (min-width: 355px) and (max-width: 355px) {
+  .askjamie-main.brandguard-case-costco .askjamie-hero-copy .hero-subtitle {
+    min-height: 2lh;
+  }
+}
+@media (min-width: 361px) and (max-width: 364px) {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy h1 {
+    min-height: 3lh;
+  }
+}
+@media (min-width: 371px) and (max-width: 371px) {
+  .askjamie-main.brandguard-bfs-page .askjamie-hero-copy .hero-tagline {
+    min-height: 5lh;
+  }
+}
+@media (min-width: 900px) and (max-width: 900px) {
+  .askjamie-main.coke-brandguard .askjamie-hero-copy .hero-tagline {
+    min-height: 4lh;
+  }
+}
+@media (min-width: 356px) and (max-width: 356px),
+       (min-width: 401px) and (max-width: 401px) {
+  .askjamie-main.askjamie-brandguard-page .askjamie-hero-copy .hero-subtitle {
+    min-height: 6lh;
+  }
+}
+
+/* Keep the open mobile menu usable before deferred theme activation. */
+@media (max-width: 768px) {
+  .askjamie-main .primary-nav {
+    max-height: calc(100vh - 3.75rem);
+    overflow-y: auto;
+  }
+  .askjamie-main .site-header.nav-open .primary-nav {
+    transform: translateY(0);
+  }
+  .askjamie-main .primary-nav a[href] {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 768px) {
+  .askjamie-main .primary-nav .has-submenu {
+    position: static;
+    align-self: stretch;
+    min-width: 0;
+    width: 100%;
+  }
+  .askjamie-main .primary-nav .submenu {
+    position: static;
+    display: block;
+    box-shadow: none;
+    background: transparent;
+    margin: 0.25rem 0 0;
+    padding: 0.25rem 0 0.5rem 1.25rem;
+    max-width: 100%;
+    width: 100%;
+  }
+  .askjamie-main .primary-nav .submenu a {
+    padding: 0.25rem 0;
+    font-size: 0.95em;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+}
