@@ -699,6 +699,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const headings = normalizeSearchText((entry.headings || []).join(" "));
     const body     = normalizeSearchText(entry.body);
     const url      = normalizeSearchText(entry.url);
+    // Joined route names remain searchable without rewriting stylized titles.
+    const joinedNames = url.split(/[?#]/, 1)[0].split("/").filter(part => part.includes("-"))
+      .map(part => part.replace(/-/g, ""));
 
     let score = 0;
     let allHit = true;
@@ -709,6 +712,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (desc.includes(t))     tokenHit += 4;
       if (body.includes(t))     tokenHit += 2;
       if (url.includes(t))      tokenHit += 1;
+      if (joinedNames.includes(t)) tokenHit += 8;
       if (tokenHit === 0) allHit = false;
       score += tokenHit;
     }

@@ -110,6 +110,47 @@ async function ready(page, route = '/') {
       return { destination: expected };
     } finally { await ctx.close(); }
   });
+  await check('Joined route search finds the page without changing its title', async () => {
+    const ctx = await context();
+    try {
+      const page = await ctx.newPage(); await ready(page, '/search/?q=howaskjamieworks');
+      await page.waitForFunction(() => document.querySelector('#search-stats')?.textContent !== 'Loading index…');
+      const result = page.locator('#search-results a[href="/how-askjamie-works/"]');
+      assert.equal(await result.count(), 1, 'joined route name should find its indexed page');
+      const index = JSON.parse(fs.readFileSync('assets/data/search-index.json', 'utf8'));
+      const entry = index.entries.find(item => item.url === '/how-askjamie-works/');
+      assert.ok(entry, 'the current index contains the expected route');
+      assert.equal(await result.locator('.okh-search-result-title').innerText(), entry.title);
+      await page.locator('#search-page-input').fill('howaskjamieworksx');
+      assert.equal(await result.count(), 0, 'a near-miss route must not match');
+      assert.match(await page.locator('#search-stats').innerText(), /^0 results/);
+      await page.locator('#search-page-input').fill('lenssystem');
+      assert.equal(await page.locator('#search-results a[href="/lens-system/"]').count(), 1);
+      assert.equal(await page.locator('#search-results a[href="/lens-system/enterprise-sleuth/"]').count(), 1);
+      return { query: 'howaskjamieworks', route: entry.url, titlePreserved: true, nearMissRejected: true, ancestorAndDescendantFound: true };
+    } finally { await ctx.close(); }
+  });
+  await check('Joined route search also works in the overlay', async () => {
+    const ctx = await context();
+    try {
+      const page = await ctx.newPage(); await ready(page);
+      await page.locator('.okh-search-trigger').click();
+      const overlay = page.locator('.okh-search-overlay');
+      await overlay.locator('button[data-q]').first().waitFor();
+      const input = overlay.locator('.okh-search-input');
+      await input.fill('howaskjamieworks');
+      const result = overlay.locator('a[href="/how-askjamie-works/"]');
+      assert.equal(await result.count(), 1, 'overlay finds the joined route name');
+      const index = JSON.parse(fs.readFileSync('assets/data/search-index.json', 'utf8'));
+      const entry = index.entries.find(item => item.url === '/how-askjamie-works/');
+      assert.ok(entry, 'the current index contains the expected route');
+      assert.equal(await result.locator('.okh-search-result-title').innerText(), entry.title);
+      await input.fill('howaskjamieworksx');
+      assert.equal(await result.count(), 0, 'overlay rejects a near-miss route');
+      assert.match(await overlay.locator('.okh-search-status').innerText(), /No search results/);
+      return { route: entry.url, titlePreserved: true, nearMissRejected: true };
+    } finally { await ctx.close(); }
+  });
   await check('Delayed index load uses the latest query before Enter navigation', async () => {
     const ctx = await context();
     let release;
