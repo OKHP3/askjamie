@@ -3,4 +3,4 @@
 # Browser automation runs in Node here (responsive-qa.mjs, experience-qa.cjs),
 # so python-playwright is deliberately not pinned in this repository.
 beautifulsoup4==4.15.0
-pytest==9.1.1
+pytest==9.2.0
