@@ -11975,6 +11975,8 @@ async function runWithPlaywright(previousWarningBaseline) {
     const requestedUrls = new Set();
     const requestedAtByUrl = new Map();
     const warnings = [];
+    const lazyImageObservationStartedAtByUrl = new Map();
+    let lazyImageRequestStartEvidence = [];
 
     const recordUniversePageMapFontFailure = failure => {
       if (!checkUniversePageMapFonts) return;
@@ -12020,7 +12022,7 @@ async function runWithPlaywright(previousWarningBaseline) {
     const onRequest = req => {
       requestedUrls.add(req.url());
       if (!requestedAtByUrl.has(req.url())) {
-        requestedAtByUrl.set(req.url(), Date.now());
+        requestedAtByUrl.set(req.url(), performance.now());
       }
       if (checkBrandGuardFonts &&
           req.resourceType() === 'font' &&
@@ -12440,7 +12442,8 @@ async function runWithPlaywright(previousWarningBaseline) {
       const pendingLazyRequests = lazyImageUrls
         .filter(imageUrl => !requestedUrls.has(imageUrl))
         .map(async imageUrl => {
-          const observationStartedAt = Date.now();
+          const observationStartedAt = performance.now();
+          lazyImageObservationStartedAtByUrl.set(imageUrl, observationStartedAt);
           const observed = await page.waitForRequest(
             request => request.url() === imageUrl,
             { timeout: LAZY_IMAGE_REQUEST_TIMEOUT_MS }
@@ -12451,7 +12454,7 @@ async function runWithPlaywright(previousWarningBaseline) {
               { timeout: LAZY_IMAGE_LATE_REQUEST_GRACE_MS }
             ).then(() => true, () => false) || requestedAtByUrl.has(imageUrl);
             if (observedLate) {
-              const requestedAt = requestedAtByUrl.get(imageUrl) ?? Date.now();
+              const requestedAt = requestedAtByUrl.get(imageUrl) ?? performance.now();
               warnings.push(
                 `lazy image request observed too late: started about ` +
                 `${requestedAt - observationStartedAt}ms after observation began; ` +
@@ -12474,6 +12477,19 @@ async function runWithPlaywright(previousWarningBaseline) {
         await lazyImages.nth(index).scrollIntoViewIfNeeded().catch(() => {});
       }
       await Promise.all(pendingLazyRequests);
+      lazyImageRequestStartEvidence = lazyImageUrls.map(imageUrl => {
+        const requestedAt = requestedAtByUrl.get(imageUrl);
+        return {
+          image_path: new URL(imageUrl).pathname,
+          elapsed_ms_from_observation_start:
+            requestedAt === undefined ||
+            !lazyImageObservationStartedAtByUrl.has(imageUrl)
+              ? null
+              : Math.round(
+                requestedAt - lazyImageObservationStartedAtByUrl.get(imageUrl)
+              ),
+        };
+      });
 
       const overflow = await page.evaluate(() =>
         document.documentElement.scrollWidth > window.innerWidth
@@ -12538,6 +12554,7 @@ async function runWithPlaywright(previousWarningBaseline) {
         : null;
       const row = { url, viewport: vp.name, width: vp.width, height: vp.height,
                     mode: 'playwright', pass: errors.length === 0, errors, warnings,
+                    lazy_image_request_starts: lazyImageRequestStartEvidence,
                     ...(brandGuardHeaderThemeGeometry
                       ? {
                           brandguard_header_navigation_theme_geometry:

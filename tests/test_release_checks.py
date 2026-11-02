@@ -11373,8 +11373,39 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     lazy_starts = [event for event in events if event[0] == "start" and event[1] == "/slow-lazy.png"]
     assert len(lazy_starts) == len(rows["/lazy/"]) == len(expected_viewports)
 
+    def lazy_image_starts_by_viewport(route_rows, image_path):
+        starts = {}
+        for row in route_rows:
+            matching = [
+                item for item in row.get("lazy_image_request_starts", [])
+                if item["image_path"] == image_path
+            ]
+            assert len(matching) == 1, json.dumps(row, indent=2)
+            starts[row["viewport"]] = matching[0]["elapsed_ms_from_observation_start"]
+        assert set(starts) == expected_viewports
+        return starts
+
+    normal_starts_by_viewport = lazy_image_starts_by_viewport(
+        rows["/lazy/"], "/slow-lazy.png"
+    )
+    never_starts_by_viewport = lazy_image_starts_by_viewport(
+        rows["/lazy-unobserved/"], "/unobserved-lazy.png"
+    )
+    late_starts_by_viewport = lazy_image_starts_by_viewport(
+        rows["/lazy-late/"], "/late-lazy.png"
+    )
+    assert all(
+        isinstance(elapsed, int) and elapsed >= 0
+        for elapsed in normal_starts_by_viewport.values()
+    ), normal_starts_by_viewport
+    assert all(elapsed is None for elapsed in never_starts_by_viewport.values())
+    assert all(
+        isinstance(elapsed, int) and elapsed >= 5000
+        for elapsed in late_starts_by_viewport.values()
+    ), late_starts_by_viewport
+
     evidence = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated": report["generated"],
         "playwright_version": report["playwright_version"],
         "browser_engine": report["browser_engine"],
@@ -11384,6 +11415,7 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
                 "status": "passed",
                 "request_start_count": len(lazy_starts),
                 "viewport_count": len(rows["/lazy/"]),
+                "request_start_ms_from_observation": normal_starts_by_viewport,
             },
             "never-started": {
                 "status": "expected_warning",
@@ -11392,12 +11424,14 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
                     for event in events
                 ),
                 "warning_count": len(rows["/lazy-unobserved/"]),
+                "request_start_ms_from_observation": never_starts_by_viewport,
             },
             "late-starting": {
                 "status": "expected_warning",
                 "request_deadline_ms": 5000,
                 "request_start_count": len(late_lazy_starts),
                 "late_warning_count": len(late_lazy_warnings),
+                "request_start_ms_from_observation": late_starts_by_viewport,
             },
         },
     }
@@ -11407,6 +11441,9 @@ def test_responsive_qa_browser_fixture_isolates_pages_and_preserves_failures(tmp
     assert evidence["cases"]["never-started"]["warning_count"] == len(expected_viewports)
     assert evidence["cases"]["late-starting"]["request_start_count"] > 0
     assert evidence["cases"]["late-starting"]["late_warning_count"] > 0
+    assert set(evidence["cases"]["normal"]["request_start_ms_from_observation"]) == expected_viewports
+    assert set(evidence["cases"]["never-started"]["request_start_ms_from_observation"]) == expected_viewports
+    assert set(evidence["cases"]["late-starting"]["request_start_ms_from_observation"]) == expected_viewports
     evidence_dir = (
         Path(os.environ["LAZY_IMAGE_EVIDENCE_DIR"])
         if os.environ.get("LAZY_IMAGE_EVIDENCE_DIR")
