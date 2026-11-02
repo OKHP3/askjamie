@@ -606,6 +606,16 @@ def test_lazy_image_browser_boundary_records_deferred_engine_expansion():
     ) in workflow
     assert "Retain versioned lazy-image browser evidence" in workflow
     assert "LAZY_IMAGE_EVIDENCE_DIR" in workflow
+    assert "name: lazy-image-browser-evidence-${{ github.sha }}" in workflow
+    assert "path: .scratch/lazy-image-evidence/*.json" in workflow
+    assert "retention-days: 90" in workflow
+    assert (
+        "GitHub Actions retains these JSON files as the "
+        "`lazy-image-browser-evidence-<commit SHA>` artifact attached to the "
+        "matching Site Validation run."
+    ) in policy
+    assert "The workflow requests 90 days of retention" in policy
+    assert "repository or organization artifact-retention limits may shorten" in policy
     assert "npx playwright install --with-deps chromium" in workflow
 
 
