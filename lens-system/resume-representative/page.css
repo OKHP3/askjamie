@@ -1,0 +1,30 @@
+/* This page retains the light paper header in both color schemes. */
+html .askjamie-main .site-specials--jamie {
+  background: #e4f0ee;
+  color: #2e2b29;
+}
+
+.askjamie-main .site-header .okh-search-trigger,
+.askjamie-main .site-header .okh-search-trigger kbd {
+  color: #2e2b29;
+  border-color: #746f6b;
+}
+
+/* Quiet controls sit on dark surfaces when the dark scheme is active. */
+html[data-color-scheme="dark"] .askjamie-main main .btn-quiet {
+  color: #e8e4e0;
+}
+html[data-color-scheme="dark"] .askjamie-main main .btn-quiet:hover,
+html[data-color-scheme="dark"] .askjamie-main main .btn-quiet:focus-visible {
+  color: #b5e1e5;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-color-scheme="light"]) .askjamie-main main .btn-quiet {
+    color: #e8e4e0;
+  }
+  html:not([data-color-scheme="light"]) .askjamie-main main .btn-quiet:hover,
+  html:not([data-color-scheme="light"]) .askjamie-main main .btn-quiet:focus-visible {
+    color: #b5e1e5;
+  }
+}
