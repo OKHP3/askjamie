@@ -11975,7 +11975,6 @@ async function runWithPlaywright(previousWarningBaseline) {
     const requestedUrls = new Set();
     const requestedAtByUrl = new Map();
     const warnings = [];
-    const lazyImageObservationStartedAtByUrl = new Map();
     let lazyImageRequestStartEvidence = [];
 
     const recordUniversePageMapFontFailure = failure => {
@@ -12210,6 +12209,9 @@ async function runWithPlaywright(previousWarningBaseline) {
         };
       });
     }
+    // Start request evidence before navigation, so images already requested
+    // before the later scroll check retain an honest start time.
+    const requestObservationStartedAt = performance.now();
     page.on('console', onConsole);
     page.on('request', onRequest);
     page.on('requestfailed', onRequestFailed);
@@ -12443,7 +12445,6 @@ async function runWithPlaywright(previousWarningBaseline) {
         .filter(imageUrl => !requestedUrls.has(imageUrl))
         .map(async imageUrl => {
           const observationStartedAt = performance.now();
-          lazyImageObservationStartedAtByUrl.set(imageUrl, observationStartedAt);
           const observed = await page.waitForRequest(
             request => request.url() === imageUrl,
             { timeout: LAZY_IMAGE_REQUEST_TIMEOUT_MS }
@@ -12481,13 +12482,9 @@ async function runWithPlaywright(previousWarningBaseline) {
         const requestedAt = requestedAtByUrl.get(imageUrl);
         return {
           image_path: new URL(imageUrl).pathname,
-          elapsed_ms_from_observation_start:
-            requestedAt === undefined ||
-            !lazyImageObservationStartedAtByUrl.has(imageUrl)
-              ? null
-              : Math.round(
-                requestedAt - lazyImageObservationStartedAtByUrl.get(imageUrl)
-              ),
+          elapsed_ms_from_observation_start: requestedAt === undefined
+            ? null
+            : Math.round(requestedAt - requestObservationStartedAt),
         };
       });
 
