@@ -102,7 +102,7 @@ jobs:
           name: lazy-image-browser-evidence-${{ github.sha }}
           path: .scratch/lazy-image-evidence/*.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
 
       - name: Run regression tests
         # The Playwright fixture already ran as a separate compatibility step.
