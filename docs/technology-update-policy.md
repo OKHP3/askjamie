@@ -48,6 +48,12 @@ and execution lists, run this same fixture independently for each one, and
 retain one engine-and-version-specific evidence file per run. Do not reuse
 Chromium results as evidence for another engine.
 
+GitHub Actions retains these JSON files as the
+`lazy-image-browser-evidence-<commit SHA>` artifact attached to the matching
+Site Validation run. The workflow requests 90 days of retention; repository
+or organization artifact-retention limits may shorten the actual availability.
+The artifact is available from that workflow run's artifacts while retained.
+
 **Reviewed automated QA browser engines:** Chromium
 
 ## Browser target review: 2026-10-18
