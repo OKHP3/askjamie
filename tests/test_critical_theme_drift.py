@@ -827,8 +827,7 @@ console.log(JSON.stringify({
     assert "checkBrandGuardHeroKeyboardFocus(page, {" in keyboard_check
     assert "forcedColors: true" in keyboard_check
     assert "serviceWorkers: 'block'" in keyboard_check
-    assert "[data-transition-dialog][open] [data-transition-dismiss]" in keyboard_check
-    assert "await transitionDismiss.click()" in keyboard_check
+    assert "[data-transition-dialog]" not in keyboard_check
     assert "brandguard_hero_forced_colors_keyboard_focus:" in source
     assert "brandguard_forced_colors_readability:" in source
     assert (
@@ -842,11 +841,8 @@ console.log(JSON.stringify({
     assert "const keyboardPage = await page.context().newPage()" in navigation_check
     assert "await keyboardPage.goto(" in navigation_check
     assert "await keyboardPage.close()" in navigation_check
-    assert "dialog.open || document.readyState === 'complete'" in navigation_check
-    assert "[data-transition-dialog][open] [data-transition-dismiss]" in navigation_check
-    assert "await transitionDismiss.click()" in navigation_check
+    assert "[data-transition-dialog]" not in navigation_check
     assert "await page.waitForFunction(() =>" in navigation_check
-    assert "!document.querySelector('[data-transition-dialog][open]')" in navigation_check
 
     focus_selector = (
         ".askjamie-main:is(.askjamie-brandguard-page, "
@@ -2890,10 +2886,10 @@ def test_brandguard_320_font_swap_records_wraps_and_checks_content_in_both_state
     assert "arrival_notice_web_font_geometry" in font_check
     assert "BRANDGUARD 320PX ARRIVAL NOTICE WEB FONT GEOMETRY SHIFT" in font_check
     assert "the transition notice panel and children, breadcrumb, and hero were not all reserved" in font_check
-    assert "ARRIVAL NOTICE CONTROL NOT READY BEFORE WEB FONT BASELINE" in font_check
-    assert "transition_control_present: Boolean(transitionControl)" in font_check
-    assert "beforeTransitionNotice.transition_control_present &&" in font_check
-    assert "transition_control_reserved" in font_check
+    assert "ARRIVAL NOTICE LINK NOT READY BEFORE WEB FONT BASELINE" in font_check
+    assert "transition_link_present: Boolean(transitionLink)" in font_check
+    assert "!beforeTransitionNotice.transition_link_present" in font_check
+    assert "transition_link_parent_reserved" in font_check
     assert "${errorPrefix} ARRIVAL NOTICE OVERLAPS BREADCRUMB" in narrow_check
     assert "notice_overlaps_breadcrumb" in narrow_check
     assert "deferred_theme_geometry_included: false" in font_check
@@ -3504,10 +3500,7 @@ def test_public_fallback_font_failures_name_route_viewport_and_text_block():
         source.index("function parseBrandGuardForcedColorsColor")
     ]
     assert "window.scrollTo({ top: 0, left: 0, behavior: 'instant' })" in fallback_check
-    assert (
-        fallback_check.index("!document.querySelector('[data-transition-dialog][open]')") <
-        fallback_check.index("window.scrollTo(")
-    )
+    assert "[data-transition-dialog]" not in fallback_check
     assert fallback_check.index("window.scrollTo(") < fallback_check.index(
         "capturePublicFallbackFontReadability(page)"
     )

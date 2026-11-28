@@ -107,8 +107,7 @@ if (needsBrandGuardFontReservation) {
 
   const deferredThemeLink = document.querySelector("link[data-deferred-styles]");
   if (deferredThemeLink) {
-    // The transition notice reveals its access button from app.js at
-    // DOMContentLoaded. Do not measure an incomplete notice.
+    // Measure after deferred application scripts finish initialization.
     reservationStylesReady = true;
     scheduleBrandGuardReservation();
   } else {

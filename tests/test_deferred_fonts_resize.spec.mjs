@@ -242,7 +242,7 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
     '.site-specials-label',
     '.site-specials-link',
     '.capability-transition',
-    '.capability-transition [data-transition-open]',
+    '.capability-transition > p:has(a[href="/whats-next/"])',
     '.capability-transition > *',
     ...geometrySelectors,
   ];
@@ -344,8 +344,8 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
           reservedWidth: element.dataset.fontGeometryReservedWidth || null,
         };
       };
-      const transitionTrigger = document.querySelector(
-        '.capability-transition [data-transition-open]');
+      const transitionLinkParagraph = document.querySelector(
+        '.capability-transition > p:has(a[href="/whats-next/"])');
       const theme = [...document.querySelectorAll('link[rel~="stylesheet"]')]
         .find(link => new URL(link.href).pathname === '/assets/css/theme.css');
       const transitionChildren = [
@@ -369,20 +369,20 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
         };
       });
       return {
-        transitionTriggerVisible: Boolean(
-          transitionTrigger && !transitionTrigger.hidden &&
-          getComputedStyle(transitionTrigger).display !== 'none' &&
-          transitionTrigger.getBoundingClientRect().width > 0 &&
-          transitionTrigger.getBoundingClientRect().height > 0
+        transitionLinkParagraphVisible: Boolean(
+          transitionLinkParagraph && !transitionLinkParagraph.hidden &&
+          getComputedStyle(transitionLinkParagraph).display !== 'none' &&
+          transitionLinkParagraph.getBoundingClientRect().width > 0 &&
+          transitionLinkParagraph.getBoundingClientRect().height > 0
         ),
         readyState: document.readyState,
         viewportWidth: innerWidth,
         scrollY,
         bodyClass: document.body.className,
         activeElement: document.activeElement?.tagName,
-        transitionTriggerHidden: transitionTrigger?.hidden ?? null,
-        transitionTriggerReserved:
-          transitionTrigger?.dataset.fontGeometryReserved === 'true',
+        transitionLinkParagraphHidden: transitionLinkParagraph?.hidden ?? null,
+        transitionLinkParagraphReserved:
+          transitionLinkParagraph?.dataset.fontGeometryReserved === 'true',
         themeSheetReady: Boolean(theme?.sheet?.cssRules.length),
         fontStatus: document.fonts.status,
         geometry: Object.fromEntries(selectors.map(selector =>
@@ -401,17 +401,17 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
         transitionHeight: rect('.capability-transition')?.height ?? null,
       };
     }, {selectors: geometrySelectors, layoutSelectors});
-    assert.equal(reservation.transitionTriggerHidden, false,
-      `${path} ${width}px transition notice control must be visible before fonts release`);
-    assert.equal(reservation.transitionTriggerVisible, true,
-      `${path} ${width}px transition notice control must have a visible box before fonts release: ` +
-      `${JSON.stringify(reservation.layout['.capability-transition [data-transition-open]'])}`);
-    assert.equal(reservation.transitionTriggerReserved, true,
-      `${path} ${width}px transition notice control must be reserved before fonts release`);
+    assert.equal(reservation.transitionLinkParagraphHidden, false,
+      `${path} ${width}px transition notice link paragraph must be visible before fonts release`);
+    assert.equal(reservation.transitionLinkParagraphVisible, true,
+      `${path} ${width}px transition notice link paragraph must have a visible box before fonts release: ` +
+      `${JSON.stringify(reservation.layout['.capability-transition > p:has(a[href="/whats-next/"])'])}`);
+    assert.equal(reservation.transitionLinkParagraphReserved, true,
+      `${path} ${width}px transition notice link paragraph must be reserved before fonts release`);
     const reservationTargets = [
       ['.capability-transition', [reservation.layout['.capability-transition']]],
-      ['.capability-transition [data-transition-open]',
-        [reservation.layout['.capability-transition [data-transition-open]']]],
+      ['.capability-transition > p:has(a[href="/whats-next/"])',
+        [reservation.layout['.capability-transition > p:has(a[href="/whats-next/"])']]],
       ['.capability-transition > *', reservation.transitionChildren],
       ...geometrySelectors.map(selector => [selector, [reservation.layout[selector]]]),
     ];
@@ -465,7 +465,7 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
 
     await page.waitForFunction(() => {
       const trigger = document.querySelector(
-        '.capability-transition [data-transition-open]');
+        '.capability-transition > p:has(a[href="/whats-next/"])');
       return Boolean(trigger && !trigger.hidden);
     }, undefined, {timeout: 10000});
     await page.evaluate(() => document.fonts.ready);
@@ -532,15 +532,15 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
           reservedWidth: element.dataset.fontGeometryReservedWidth || null,
         };
       });
-      const transitionTrigger = document.querySelector(
-        '.capability-transition [data-transition-open]'
+      const transitionLinkParagraph = document.querySelector(
+        '.capability-transition > p:has(a[href="/whats-next/"])'
       );
       return {
-        transitionTriggerVisible: Boolean(
-          transitionTrigger && !transitionTrigger.hidden &&
-          getComputedStyle(transitionTrigger).display !== 'none' &&
-          transitionTrigger.getBoundingClientRect().width > 0 &&
-          transitionTrigger.getBoundingClientRect().height > 0
+        transitionLinkParagraphVisible: Boolean(
+          transitionLinkParagraph && !transitionLinkParagraph.hidden &&
+          getComputedStyle(transitionLinkParagraph).display !== 'none' &&
+          transitionLinkParagraph.getBoundingClientRect().width > 0 &&
+          transitionLinkParagraph.getBoundingClientRect().height > 0
         ),
         readyState: document.readyState,
         viewportWidth: innerWidth,
@@ -550,8 +550,8 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
           [selector, rect(selector)])),
         bodyClass: document.body.className,
         activeElement: document.activeElement?.tagName,
-        transitionTriggerHidden: document.querySelector(
-          '.capability-transition [data-transition-open]'
+        transitionLinkParagraphHidden: document.querySelector(
+          '.capability-transition > p:has(a[href="/whats-next/"])'
         )?.hidden ?? null,
         layout: Object.fromEntries(layoutSelectors.map(selector =>
           [selector, rect(selector)])),
@@ -565,8 +565,8 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
           })),
         transitionChildren,
         transitionHeight: rect('.capability-transition')?.height ?? null,
-        transitionTriggerReserved: document.querySelector(
-          '.capability-transition [data-transition-open]'
+        transitionLinkParagraphReserved: document.querySelector(
+          '.capability-transition > p:has(a[href="/whats-next/"])'
         )?.dataset.fontGeometryReserved === 'true',
       };
     }, {selectors: geometrySelectors, layoutSelectors});
@@ -640,11 +640,11 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
       selector: `.capability-transition > child[${index}]`,
       ...child,
     }));
-    const controlSelector = '.capability-transition [data-transition-open]';
+    const linkParagraphSelector = '.capability-transition > p:has(a[href="/whats-next/"])';
     compare(
-      [{selector: controlSelector, ...reservation.layout[controlSelector]}],
-      [{selector: controlSelector, ...after.layout[controlSelector]}],
-      `${path} ${width}px transition control position`,
+      [{selector: linkParagraphSelector, ...reservation.layout[linkParagraphSelector]}],
+      [{selector: linkParagraphSelector, ...after.layout[linkParagraphSelector]}],
+      `${path} ${width}px transition notice link paragraph position`,
       ['x', 'y']
     );
     compare(
@@ -659,12 +659,12 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
       `${path} ${width}px transition child position`,
       ['x', 'y']
     );
-    assert.equal(reservation.transitionTriggerHidden, false);
-    assert.equal(reservation.transitionTriggerVisible, true);
-    assert.equal(reservation.transitionTriggerReserved, true);
-    assert.equal(after.transitionTriggerReserved, true);
-    assert.equal(after.transitionTriggerHidden, false);
-    assert.equal(after.transitionTriggerVisible, true);
+    assert.equal(reservation.transitionLinkParagraphHidden, false);
+    assert.equal(reservation.transitionLinkParagraphVisible, true);
+    assert.equal(reservation.transitionLinkParagraphReserved, true);
+    assert.equal(after.transitionLinkParagraphReserved, true);
+    assert.equal(after.transitionLinkParagraphHidden, false);
+    assert.equal(after.transitionLinkParagraphVisible, true);
     assert.ok(after.transitionChildren.every(element =>
       element.reserved && element.reservedWidth === String(width) &&
       !element.hidden && element.visible),
@@ -684,10 +684,10 @@ async function checkBrandGuardTransitionInitializationRace(path, width) {
         notice_children: measuredDeltas(childBeforeBoxes, childAfterBoxes),
       },
       transition_control_box_size_delta: {
-        width: after.layout[controlSelector].width -
-          reservation.layout[controlSelector].width,
-        height: after.layout[controlSelector].height -
-          reservation.layout[controlSelector].height,
+        width: after.layout[linkParagraphSelector].width -
+          reservation.layout[linkParagraphSelector].width,
+        height: after.layout[linkParagraphSelector].height -
+          reservation.layout[linkParagraphSelector].height,
       },
       overlaps: {
         beforeFonts: beforeOverlaps,

@@ -436,10 +436,6 @@ body.askjamie-main a {
   font-weight: 600;
 }
 
-.askjamie-main [data-transition-open][hidden] {
-  display: none;
-}
-
 .askjamie-main .btn-primary {
   background: linear-gradient(135deg, #2d6f7e, #3c8ea1);
   color: #f9fafb;

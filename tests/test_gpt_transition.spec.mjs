@@ -32,32 +32,24 @@ try {
   const isMac = await page.evaluate(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform));
   const searchShortcut = isMac ? 'Meta+k' : 'Control+k';
   const searchLabel = isMac ? 'Open search (⌘K)' : 'Open search (Ctrl+K)';
-  const dialog = page.locator('[data-transition-dialog]');
-  await dialog.waitFor({ state: 'visible' });
-  assert.equal(await page.locator('[data-transition-dismiss]').evaluate(el => document.activeElement === el), true);
-  await page.keyboard.press('Tab');
-  assert.equal(await page.getByRole('link', { name: 'What is changing', exact: true }).last().evaluate(el => document.activeElement === el), true);
-  await page.keyboard.press('Shift+Tab');
-  assert.equal(await page.locator('[data-transition-dismiss]').evaluate(el => document.activeElement === el), true);
+  assert.equal(await page.locator('[data-transition-dialog], [data-transition-open]').count(), 0);
+  const homeNotice = page.locator('.site-status--jamie');
+  assert.equal(await homeNotice.isVisible(), true);
+  assert.equal(await homeNotice.getByRole('link', { name: 'Read what is changing', exact: true }).getAttribute('href'), '/whats-next/');
   await page.keyboard.press(searchShortcut);
-  assert.notEqual(await page.locator('.okh-search-overlay').getAttribute('data-open'), 'true');
-  await capture(page, 'homepage-dialog-desktop');
-  await page.keyboard.press('Escape');
-  await dialog.waitFor({ state: 'hidden' });
-  // Native dialog close events are queued after its open attribute disappears.
-  await page.waitForFunction(() => document.activeElement === document.querySelector('[data-transition-open]'));
-  assert.equal(await page.locator('[data-transition-open]').evaluate(el => document.activeElement === el), true);
-  await page.reload();
-  assert.equal(await dialog.isVisible(), false);
-  await page.locator('[data-transition-open]').click();
-  await dialog.waitFor({ state: 'visible' });
-  await page.locator('[data-transition-dismiss]').click();
-  await page.getByRole('button', { name: searchLabel, exact: true }).click();
+  const overlay = page.locator('.okh-search-overlay');
+  await overlay.waitFor({ state: 'visible' });
+  assert.equal(await overlay.getAttribute('data-open'), 'true');
   await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('retirement');
   await page.locator('.okh-search-result[href="/whats-next/"]').waitFor();
   await page.getByRole('button', { name: 'Close search', exact: true }).click();
+  await page.getByRole('button', { name: searchLabel, exact: true }).click();
+  await overlay.waitFor({ state: 'visible' });
+  await page.keyboard.press('Escape');
+  await overlay.waitFor({ state: 'hidden' });
+  await capture(page, 'homepage-without-dialog-desktop');
   await page.goto(base + details[0]);
-  assert.equal(await page.locator('[data-transition-dialog]').isVisible(), false);
+  assert.equal(await page.locator('[data-transition-dialog], [data-transition-open]').count(), 0);
   assert.equal(await page.locator('.capability-transition').isVisible(), true);
   await capture(page, 'gpt-page-notice-desktop');
   await page.goto(base + '/whats-next/');
@@ -65,8 +57,7 @@ try {
   await capture(page, 'transition-page-desktop');
   await context.close();
 
-  // BrandGuard case studies must restore focus from the arrival dialog to its
-  // opener so keyboard users can continue through the page into the hero.
+  // Keyboard users can reach every hero action without a blocking arrival dialog.
   const brandguardKeyboardRoutes = [
     '/lens-system/okhp3-brandguard/',
     '/lens-system/okhp3-brandguard/lvmh/',
@@ -75,117 +66,73 @@ try {
   for (const route of brandguardKeyboardRoutes) {
     const { context, page } = await pageFor({ viewport: { width: 320, height: 844 } });
     await page.goto(base + route);
-    const dialog = page.locator('[data-transition-dialog]');
-    const opener = page.locator('[data-transition-open]');
-    const dismiss = page.locator('[data-transition-dismiss]');
-    await dialog.waitFor({ state: 'visible' });
-    assert.equal(
-      await dismiss.evaluate(element => document.activeElement === element),
-      true,
-      `${route}: arrival dialog did not focus its dismiss button`
-    );
-
-    await page.keyboard.press('Escape');
-    await dialog.waitFor({ state: 'hidden' });
-    await page.waitForFunction(
-      () => document.activeElement === document.querySelector('[data-transition-open]')
-    );
-    assert.equal(
-      await opener.evaluate(element => document.activeElement === element),
-      true,
-      `${route}: Escape did not return focus to the transition-note opener`
-    );
-
-    await page.keyboard.press('Enter');
-    await dialog.waitFor({ state: 'visible' });
-    assert.equal(
-      await dismiss.evaluate(element => document.activeElement === element),
-      true,
-      `${route}: keyboard reopening did not focus the dialog dismiss button`
-    );
-    await page.keyboard.press('Tab');
-    assert.equal(
-      await dialog.getByRole('link', { name: 'What is changing', exact: true })
-        .evaluate(element => document.activeElement === element),
-      true,
-      `${route}: Tab did not move from the dismiss button to the dialog link`
-    );
-    await page.keyboard.press('Shift+Tab');
-    assert.equal(
-      await dismiss.evaluate(element => document.activeElement === element),
-      true,
-      `${route}: Shift+Tab did not wrap to the dialog dismiss button`
-    );
-    await page.keyboard.press('Enter');
-    await dialog.waitFor({ state: 'hidden' });
-    await page.waitForFunction(
-      () => document.activeElement === document.querySelector('[data-transition-open]')
-    );
-    assert.equal(
-      await opener.evaluate(element => document.activeElement === element),
-      true,
-      `${route}: keyboard dismissal did not return focus to the transition-note opener`
-    );
-
+    assert.equal(await page.locator('[data-transition-dialog], [data-transition-open]').count(), 0, route);
+    const noticeLink = page.locator('.capability-transition').getByRole('link', {
+      name: 'Read the transition update', exact: true
+    });
+    assert.equal(await noticeLink.isVisible(), true, route);
     const heroActions = page.locator('.askjamie-hero .hero-actions > a[href]');
     const heroActionCount = await heroActions.count();
     assert.ok(heroActionCount > 0, `${route}: hero actions are missing`);
     const reachedHeroActions = new Set();
+    let reachedNoticeLink = false;
     for (let tab = 0; tab < 60 && reachedHeroActions.size < heroActionCount; tab += 1) {
       await page.keyboard.press('Tab');
-      const focusedAction = await page.evaluate(() =>
-        [...document.querySelectorAll('.askjamie-hero .hero-actions > a[href]')]
-          .indexOf(document.activeElement)
-      );
-      if (focusedAction >= 0) reachedHeroActions.add(focusedAction);
+      const focused = await page.evaluate(() => ({
+        action: [...document.querySelectorAll('.askjamie-hero .hero-actions > a[href]')]
+          .indexOf(document.activeElement),
+        noticeLink: document.activeElement.matches('.capability-transition a[href="/whats-next/"]')
+      }));
+      if (focused.action >= 0) reachedHeroActions.add(focused.action);
+      reachedNoticeLink ||= focused.noticeLink;
     }
-    assert.equal(
-      reachedHeroActions.size,
-      heroActionCount,
-      `${route}: Tab sequence did not reach every hero action after closing the dialog`
-    );
+    assert.equal(reachedNoticeLink, true, `${route}: Tab did not reach the transition link`);
+    assert.equal(reachedHeroActions.size, heroActionCount, `${route}: Tab did not reach every hero action`);
     await context.close();
   }
 
-  // Fresh direct arrivals must see the note on every dedicated GPT page.
+  // Fresh arrivals on every dedicated GPT page retain the inline information.
   assert.equal(details.length, 16);
   for (const route of details) {
     const { context, page } = await pageFor({ viewport: { width: 390, height: 844 } });
     await page.goto(base + route);
-    await page.locator('[data-transition-dialog]').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('[data-transition-dialog], [data-transition-open]').count(), 0, route);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, route);
-    await page.locator('[data-transition-dismiss]').click();
-    assert.equal(await page.locator('.capability-transition').isVisible(), true, route);
+    const notice = page.locator('.capability-transition');
+    assert.equal(await notice.isVisible(), true, route);
+    assert.equal(await notice.getByRole('link', { name: 'Read the transition update', exact: true }).getAttribute('href'), '/whats-next/', route);
     if (route === details[0]) await capture(page, 'gpt-page-notice-mobile');
     await context.close();
   }
   for (const width of [320, 390]) {
     const { context, page } = await pageFor({ viewport: { width, height: 844 } });
     await page.goto(base);
-    await page.locator('[data-transition-dialog]').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('[data-transition-dialog], [data-transition-open]').count(), 0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    await capture(page, 'homepage-dialog-mobile-' + width);
-    await page.locator('[data-transition-dismiss]').click();
+    assert.equal(await page.locator('.site-status--jamie').isVisible(), true);
+    await page.locator('.okh-search-trigger').click();
+    await page.locator('.okh-search-overlay').waitFor({ state: 'visible' });
+    await page.keyboard.press('Escape');
+    await page.locator('.okh-search-overlay').waitFor({ state: 'hidden' });
+    await capture(page, 'homepage-without-dialog-mobile-' + width);
     await page.goto(base + '/whats-next/');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await context.close();
   }
-  // Storage denial must not block dismissal or explicit reopening.
+  // Blocking storage must not prevent use of the inline transition link.
   const denied = await pageFor();
   await denied.context.addInitScript(() => Object.defineProperty(window, 'sessionStorage', {
     get() { throw new DOMException('Storage denied', 'SecurityError'); }
   }));
   await denied.page.goto(base);
-  await denied.page.locator('[data-transition-dialog]').waitFor({ state: 'visible' });
-  await denied.page.locator('[data-transition-dismiss]').click();
-  await denied.page.locator('[data-transition-open]').click();
-  await denied.page.locator('[data-transition-dialog]').waitFor({ state: 'visible' });
+  assert.equal(await denied.page.locator('[data-transition-dialog], [data-transition-open]').count(), 0);
+  await denied.page.locator('.site-status--jamie').getByRole('link', { name: 'Read what is changing', exact: true }).click();
+  assert.equal(new URL(denied.page.url()).pathname, '/whats-next/');
   await denied.context.close();
   const noJs = await pageFor({ javaScriptEnabled: false });
   await noJs.page.goto(base + details[0]);
   assert.equal(await noJs.page.locator('.capability-transition').isVisible(), true);
-  assert.equal(await noJs.page.locator('[data-transition-open]').isVisible(), false);
-  assert.equal(await noJs.page.locator('[data-transition-dialog]').isVisible(), false);
+  assert.equal(await noJs.page.locator('[data-transition-dialog], [data-transition-open]').count(), 0);
   await noJs.page.getByRole('link', { name: 'Read the transition update', exact: true }).click();
   assert.equal(new URL(noJs.page.url()).pathname, '/whats-next/');
   await noJs.context.close();
@@ -203,8 +150,8 @@ try {
     });
     assert.equal(await notice.isVisible(), true, `${route}: transition notice is visible without JavaScript`);
     assert.equal(await transitionLink.isVisible(), true, `${route}: transition link is visible without JavaScript`);
-    assert.equal(await page.locator('[data-transition-open]').isVisible(), false, `${route}: JavaScript-only control stays hidden`);
-    assert.equal(await page.locator('[data-transition-dialog]').isVisible(), false, `${route}: dialog stays closed without JavaScript`);
+    assert.equal(await page.locator('[data-transition-open]').count(), 0, `${route}: transition opener must be absent`);
+    assert.equal(await page.locator('[data-transition-dialog]').count(), 0, `${route}: transition dialog must be absent`);
     const noticeLayout = await notice.evaluate(element => {
       const rect = element.getBoundingClientRect();
       const textBlocks = [
@@ -388,7 +335,7 @@ try {
     await context.close();
   }
   assert.deepEqual(errors, []);
-  console.log('Transition QA passed: 16 direct-entry GPT pages, 1280/390/320px, focus, Escape, reopen, session persistence, search, denied storage, and 320px no-JavaScript checks across 14 BrandGuard routes with and without stylesheets.');
+  console.log('Transition QA passed: 16 direct-entry GPT pages, no retirement dialog, desktop and mobile search, denied storage, keyboard navigation, and 320px no-JavaScript checks across 14 BrandGuard routes with and without stylesheets.');
 } finally {
   await browser.close();
 }
