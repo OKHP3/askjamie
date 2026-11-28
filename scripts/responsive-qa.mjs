@@ -6309,47 +6309,6 @@ async function checkBrandGuardHeroKeyboardFocus(page, { forcedColors = false } =
   return { errors, evidence };
 }
 
-async function dismissBrandGuardTransitionDialogWithKeyboard(page, route) {
-  const errors = [];
-  const evidence = {
-    route,
-    dismissal_method: 'Escape',
-    dialog_open_before_dismissal: false,
-    focus_returned_to_opener: false,
-  };
-  const dialog = page.locator('[data-transition-dialog]');
-  const opener = page.locator('[data-transition-open]');
-  try {
-    evidence.dialog_open_before_dismissal = await dialog.evaluate(element => element.open);
-    if (!evidence.dialog_open_before_dismissal) {
-      errors.push(
-        `BRANDGUARD TRANSITION DIALOG NOT OPEN FOR KEYBOARD DISMISSAL: route=${route}`
-      );
-      return { errors, evidence };
-    }
-    await page.keyboard.press('Escape');
-    await dialog.waitFor({ state: 'hidden' });
-    await page.waitForFunction(
-      () => document.activeElement === document.querySelector('[data-transition-open]')
-    );
-    evidence.focus_returned_to_opener =
-      await opener.evaluate(element => document.activeElement === element);
-    if (!evidence.focus_returned_to_opener) {
-      errors.push(
-        `BRANDGUARD TRANSITION DIALOG FOCUS NOT RESTORED: route=${route}; ` +
-        'expected focus on [data-transition-open] after Escape'
-      );
-    }
-  } catch (error) {
-    errors.push(
-      `BRANDGUARD TRANSITION DIALOG KEYBOARD DISMISSAL FAILED: route=${route}; ` +
-      error.message.split('\n')[0]
-    );
-    evidence.failure = error.message.split('\n')[0];
-  }
-  return { errors, evidence };
-}
-
 async function checkBrandGuardHeroForcedColorsKeyboardFocus(
   browser,
   path,
@@ -6404,12 +6363,6 @@ async function checkBrandGuardHeroForcedColorsKeyboardFocus(
         requestAnimationFrame(resolve)
       ));
     });
-    // Inspect the page behind its arrival note, just as the main viewport run
-    // does; dedicated transition checks cover the open dialog independently.
-    const transitionDismiss = page.locator(
-      '[data-transition-dialog][open] [data-transition-dismiss]'
-    );
-    if (await transitionDismiss.isVisible()) await transitionDismiss.click();
     const result = await checkBrandGuardHeroKeyboardFocus(page, {
       forcedColors: true,
     });
@@ -6471,20 +6424,6 @@ async function runBrandGuardMobileNavigationKeyboard(page, route) {
   const viewportWidth = page.viewportSize()?.width ?? null;
   const prefix = `BRANDGUARD ${viewportWidth ?? 'UNKNOWN'}PX MOBILE NAV KEYBOARD`;
   const fail = message => errors.push(`${prefix}: route=${route}; ${message}`);
-  await page.waitForFunction(() => {
-    const dialog = document.querySelector('dialog[data-transition-dialog]');
-    return !dialog || dialog.open || document.readyState === 'complete';
-  });
-  const transitionDismiss = page.locator(
-    '[data-transition-dialog][open] [data-transition-dismiss]'
-  );
-  if (await transitionDismiss.isVisible()) await transitionDismiss.click();
-  // The native close event restores focus after dialog.open becomes false.
-  // Wait for that handler to finish before beginning the keyboard journey.
-  await page.waitForFunction(() =>
-    !document.querySelector('[data-transition-dialog][open]') &&
-    !document.body.classList.contains('capability-transition-open')
-  );
   try {
     await page.waitForFunction(() =>
       [...document.querySelectorAll('link[data-deferred-styles]')].every(link => {
@@ -6884,18 +6823,6 @@ async function checkBrandGuardMobileMenuDestinations(page) {
             timeout: LOCAL_DOCUMENT_NAVIGATION_TIMEOUT_MS,
           }
         );
-        await sourcePage.waitForFunction(() => {
-          const dialog = document.querySelector('dialog[data-transition-dialog]');
-          return !dialog || dialog.open || document.readyState === 'complete';
-        });
-        const transitionDismiss = sourcePage.locator(
-          '[data-transition-dialog][open] [data-transition-dismiss]'
-        );
-        if (await transitionDismiss.isVisible()) await transitionDismiss.click();
-        await sourcePage.waitForFunction(() =>
-          !document.querySelector('[data-transition-dialog][open]')
-        );
-
         const header = sourcePage.locator('.askjamie-main .site-header');
         const toggle = header.locator('.nav-toggle');
         const nav = header.locator('.primary-nav');
@@ -7268,7 +7195,7 @@ async function checkBrandGuardWebFontGeometry(
           const notice = document.querySelector(
             '.askjamie-main .capability-transition'
           );
-          const transitionControl = notice?.querySelector('[data-transition-open]');
+          const transitionLink = notice?.querySelector('a[href]');
           const breadcrumb = document.querySelector('.askjamie-breadcrumb');
           const heroChildren = [
             ...document.querySelectorAll('.askjamie-hero-copy > *'),
@@ -7281,7 +7208,8 @@ async function checkBrandGuardWebFontGeometry(
           ];
           return Boolean(
             notice &&
-            (!transitionControl || !transitionControl.hidden) &&
+            transitionLink &&
+            transitionLink.getClientRects().length > 0 &&
             required.length > 0 &&
             required.every(element =>
               element.getClientRects().length > 0 &&
@@ -7710,20 +7638,21 @@ async function checkBrandGuardWebFontGeometry(
         ...box(element),
       };
     });
-    const transitionControl = notice.querySelector('[data-transition-open]');
+    const transitionLink = notice.querySelector('a[href]');
     return {
       viewport_width: window.innerWidth,
       notice: box(notice),
       notice_reserved: notice.dataset.fontGeometryReserved === 'true',
-      transition_control_present: Boolean(transitionControl),
-      transition_control_visible: Boolean(
-        transitionControl && !transitionControl.hidden &&
-        getComputedStyle(transitionControl).display !== 'none' &&
-        transitionControl.getBoundingClientRect().width > 0 &&
-        transitionControl.getBoundingClientRect().height > 0
+      transition_link_present: Boolean(transitionLink),
+      transition_link_visible: Boolean(
+        transitionLink && !transitionLink.hidden &&
+        getComputedStyle(transitionLink).display !== 'none' &&
+        getComputedStyle(transitionLink).visibility !== 'hidden' &&
+        transitionLink.getBoundingClientRect().width > 0 &&
+        transitionLink.getBoundingClientRect().height > 0
       ),
-      transition_control_reserved:
-        transitionControl?.dataset.fontGeometryReserved === 'true',
+      transition_link_parent_reserved:
+        transitionLink?.parentElement?.dataset.fontGeometryReserved === 'true',
       children,
     };
   });
@@ -7845,11 +7774,11 @@ async function checkBrandGuardWebFontGeometry(
         `${JSON.stringify(beforeTransitionNotice)}`
       );
     }
-    if (beforeTransitionNotice.transition_control_present &&
-        (!beforeTransitionNotice.transition_control_visible ||
-         !beforeTransitionNotice.transition_control_reserved)) {
+    if (!beforeTransitionNotice.transition_link_present ||
+        !beforeTransitionNotice.transition_link_visible ||
+        !beforeTransitionNotice.transition_link_parent_reserved) {
       errors.push(
-        `BRANDGUARD 320PX ARRIVAL NOTICE CONTROL NOT READY BEFORE WEB FONT BASELINE: ` +
+        `BRANDGUARD 320PX ARRIVAL NOTICE LINK NOT READY BEFORE WEB FONT BASELINE: ` +
         `${JSON.stringify(beforeTransitionNotice)}`
       );
     }
@@ -9436,11 +9365,6 @@ async function checkBrandGuardFallbackFontReadability(
       ));
     });
 
-    const transitionDismiss = page.locator(
-      '[data-transition-dialog][open] [data-transition-dismiss]'
-    );
-    if (await transitionDismiss.isVisible()) await transitionDismiss.click();
-
     const contentCheck = await checkBrandGuardNarrowContent(page, viewport.width);
     return formatBrandGuardFallbackFontReadabilityResult(
       contentCheck,
@@ -9767,13 +9691,6 @@ async function checkPublicFallbackFontReadability(
       ));
     });
 
-    const transitionDismiss = page.locator(
-      '[data-transition-dialog][open] [data-transition-dismiss]'
-    );
-    if (await transitionDismiss.isVisible()) await transitionDismiss.click();
-    await page.waitForFunction(() =>
-      !document.querySelector('[data-transition-dialog][open]')
-    );
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
       requestAnimationFrame(resolve)
     )));
@@ -11646,10 +11563,6 @@ async function checkUniverseMermaidFailure(browser, viewport, url) {
       return route.continue();
     });
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    const transitionDismiss = page.locator(
-      '[data-transition-dialog][open] [data-transition-dismiss]'
-    );
-    if (await transitionDismiss.isVisible()) await transitionDismiss.click();
     await page.locator('.askjamie-hero--universe .mermaid').scrollIntoViewIfNeeded();
 
     const renderStarted = await page.waitForFunction(() => {
@@ -12258,9 +12171,7 @@ async function runWithPlaywright(previousWarningBaseline) {
                  warnings };
       }
 
-      // Application startup may reveal and open the arrival note after a slow
-      // stylesheet response. Settle it before dismissing that dialog or taking
-      // any fallback-font measurements.
+      // Settle application startup before taking fallback-font measurements.
       if (checkBrandGuardFonts) {
         try {
           await waitForFontBaselineReadiness(page, BRANDGUARD_FONT_GEOMETRY_TIMEOUT_MS);
@@ -12281,20 +12192,6 @@ async function runWithPlaywright(previousWarningBaseline) {
             },
           };
         }
-      }
-
-      // Review the underlying layout after acknowledging the arrival note.
-      // At the 320px keyboard-focus routes, verify the actual Escape close
-      // restores focus before continuing the hero-action Tab sequence.
-      const transitionDismiss = page.locator('[data-transition-dialog][open] [data-transition-dismiss]');
-      const brandGuardTransitionFocusRestoration =
-        shouldCheckBrandGuardHeroKeyboardFocus(path, vp.name) &&
-        await transitionDismiss.isVisible()
-          ? await dismissBrandGuardTransitionDialogWithKeyboard(page, path)
-          : null;
-      if (!brandGuardTransitionFocusRestoration &&
-          await transitionDismiss.isVisible()) {
-        await transitionDismiss.click();
       }
 
       const criticalHeroStyles =
@@ -12508,7 +12405,6 @@ async function runWithPlaywright(previousWarningBaseline) {
         ![...blockedExternal].some(blocked => blocked === src)
       );
       const errors = [
-        ...(brandGuardTransitionFocusRestoration?.errors ?? []),
         ...(criticalHeroStyles?.errors ?? []),
         ...(brandGuardHeaderThemeBaseline?.errors ?? []),
         ...(brandGuardHeaderThemeGeometry?.errors ?? []),
@@ -12610,12 +12506,6 @@ async function runWithPlaywright(previousWarningBaseline) {
                       ? {
                           brandguard_hero_keyboard_focus:
                             brandGuardHeroKeyboardFocus.evidence,
-                        }
-                      : {}),
-                    ...(brandGuardTransitionFocusRestoration
-                      ? {
-                          brandguard_transition_focus_restoration:
-                            brandGuardTransitionFocusRestoration.evidence,
                         }
                       : {}),
                      ...(brandGuardHeroForcedColorsKeyboardFocus

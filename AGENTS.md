@@ -152,9 +152,9 @@ record the September 5 baseline. The current evidence boundaries are recorded in
 
 The September 29, 2026 transition update adds `/whats-next/`: 29 public HTML
 pages including two utilities, 27 content routes, and 216 responsive
-route/viewport checks. The homepage and 16 dedicated GPT pages contain a
-native transition dialog. It appears once per tab session, can be reopened,
-and leaves persistent HTML notices and links available without JavaScript.
+route/viewport checks. The update introduced a transition dialog. The November 27
+update removed it from the homepage and dedicated GPT pages. The inline notices
+and links remain available without JavaScript.
 Published GPT names and links remain historical source references. A notice
 does not establish a tested or available replacement skill or plugin.
 
@@ -200,9 +200,8 @@ establish other widths, browser engines or human-spoken output. Browser evidence
 is supplied by CI.
 
 BrandGuard tablet font activation waits for DOMContentLoaded initialization to
-finish before measuring fallback reservations. This includes the transition
-notice control revealed by the shared page script. A delayed-initialization
-PING fixture at 899px checks the notice and four hero elements against the
+finish before measuring fallback reservations. A delayed-initialization PING
+fixture at 899px checks the notice and four hero elements against the
 existing 1px threshold, with matching loaded-font faces. This focused regression
 does not establish human spoken output or every initialization timing.
 
@@ -327,9 +326,8 @@ python3 scripts/audit-site.py --quiet
 
 The Node visual-capture regression checks safe capture destinations, readiness,
 and the small responsive header-avatar sources across tracked public pages.
-The font-baseline fixtures also require completed application startup and reject
-a transition control that never initializes. Site Validation runs this command
-as a required check.
+The font-baseline fixture also verifies that measurement waits for deferred
+application startup. Site Validation runs these tests as a required check.
 
 The Universe freshness check verifies generated page content and the search
 index provenance hash without rewriting outputs. CI runs it after search-index
